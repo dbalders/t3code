@@ -628,6 +628,36 @@ describe("wsNativeApi", () => {
     await expect(stopRequest).resolves.toBeUndefined();
   });
 
+  it("rejects provider control requests on structured runtime errors", async () => {
+    setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4421");
+    const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
+    const api = getOrCreateWsNativeApi();
+
+    const request = api.providers.stopSession({
+      sessionId: "sess-1",
+    });
+    const socket = await waitForSocket();
+    await waitForCondition(() => (socket?.sentMessages.length ?? 0) >= 1);
+    const requestEnvelope = JSON.parse(socket?.sentMessages[0] ?? "{}") as {
+      id: string;
+      method: string;
+    };
+    expect(requestEnvelope.method).toBe("providers.stopSession");
+    socket?.emitMessage(
+      JSON.stringify({
+        type: "response",
+        id: requestEnvelope.id,
+        ok: false,
+        error: {
+          code: "request_failed",
+          message: "provider stop failed",
+        },
+      }),
+    );
+
+    await expect(request).rejects.toThrow("provider stop failed");
+  });
+
   it("sends todo mutation requests with expected payloads", async () => {
     setWindowSearch("?ws=ws%3A%2F%2F127.0.0.1%3A4416");
     const { getOrCreateWsNativeApi } = await import("./wsNativeApi");
