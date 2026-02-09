@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { WebSocketServer, type RawData, type WebSocket } from "ws";
+import { WebSocket, WebSocketServer, type RawData } from "ws";
 
 import {
   EDITORS,
@@ -137,7 +137,7 @@ function responseError(id: string, error: JsonRpcErrorResult): WsResponseMessage
 }
 
 function sendMessage(socket: WebSocket, message: unknown): void {
-  if (socket.readyState !== socket.OPEN) {
+  if (socket.readyState !== WebSocket.OPEN) {
     return;
   }
 
