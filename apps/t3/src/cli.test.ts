@@ -230,6 +230,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("rejects plus-prefixed explicit port values", () => {
+    expect(() => parseCliOptions(["--web-port", "+4318"], {}, "/workspace")).toThrow(
+      "Invalid value for --web-port",
+    );
+  });
+
   it("throws for out-of-range explicit port values", () => {
     expect(() => parseCliOptions(["--backend-port", "65536"], {}, "/workspace")).toThrow(
       "Invalid value for --backend-port",
@@ -293,6 +299,12 @@ describe("parseCliOptions", () => {
   it("rejects non-decimal environment port values", () => {
     expect(() => parseCliOptions([], { T3_WEB_PORT: "1e3" }, "/workspace")).toThrow(
       "Invalid value for T3_WEB_PORT",
+    );
+  });
+
+  it("rejects plus-prefixed environment port values", () => {
+    expect(() => parseCliOptions([], { T3_BACKEND_PORT: "+4317" }, "/workspace")).toThrow(
+      "Invalid value for T3_BACKEND_PORT",
     );
   });
 
