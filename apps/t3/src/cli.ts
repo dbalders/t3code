@@ -14,8 +14,8 @@ const DEFAULT_CLI_VERSION = "0.1.0";
 
 function parseExplicitPort(value: string, key: string): number {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`Invalid value for ${key}: '${value}'. Expected a positive integer.`);
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65_535) {
+    throw new Error(`Invalid value for ${key}: '${value}'. Expected an integer between 1 and 65535.`);
   }
 
   return parsed;
