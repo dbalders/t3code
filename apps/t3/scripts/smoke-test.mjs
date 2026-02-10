@@ -245,6 +245,10 @@ async function main() {
     if (!assetEtag || assetEtag.length === 0) {
       throw new Error("Smoke test failed: expected ETag on built asset response.");
     }
+    const assetLastModified = assetResponse.headers.get("last-modified");
+    if (!assetLastModified || assetLastModified.length === 0) {
+      throw new Error("Smoke test failed: expected Last-Modified on built asset response.");
+    }
     const assetContentLength = Number(assetResponse.headers.get("content-length") ?? "0");
     if (!Number.isFinite(assetContentLength) || assetContentLength <= 0) {
       throw new Error(
@@ -289,6 +293,27 @@ async function main() {
         `Smoke test failed: expected weak conditional asset status 304, received ${weakConditionalAsset.status}.`,
       );
     }
+    const modifiedSinceAsset = await fetch(assetUrl, {
+      headers: {
+        "If-Modified-Since": assetLastModified,
+      },
+    });
+    if (modifiedSinceAsset.status !== 304) {
+      throw new Error(
+        `Smoke test failed: expected If-Modified-Since asset status 304, received ${modifiedSinceAsset.status}.`,
+      );
+    }
+    const precedenceAsset = await fetch(assetUrl, {
+      headers: {
+        "If-Modified-Since": assetLastModified,
+        "If-None-Match": "\"definitely-different-etag\"",
+      },
+    });
+    if (precedenceAsset.status !== 200) {
+      throw new Error(
+        `Smoke test failed: expected If-None-Match precedence status 200, received ${precedenceAsset.status}.`,
+      );
+    }
     const conditionalHeadAsset = await fetch(assetUrl, {
       method: "HEAD",
       headers: {
@@ -319,6 +344,17 @@ async function main() {
     ) {
       throw new Error(
         `Smoke test failed: expected no content-length (or 0) on conditional HEAD asset response, got ${conditionalHeadAssetContentLength}.`,
+      );
+    }
+    const modifiedSinceHeadAsset = await fetch(assetUrl, {
+      method: "HEAD",
+      headers: {
+        "If-Modified-Since": assetLastModified,
+      },
+    });
+    if (modifiedSinceHeadAsset.status !== 304) {
+      throw new Error(
+        `Smoke test failed: expected If-Modified-Since HEAD asset status 304, received ${modifiedSinceHeadAsset.status}.`,
       );
     }
     const rangeEnd = Math.min(15, assetContentLength - 1);

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatStartupError,
+  ifModifiedSinceSatisfied,
   ifNoneMatchSatisfied,
   parseByteRangeHeader,
   parseCliOptions,
@@ -958,6 +959,32 @@ describe("ifNoneMatchSatisfied", () => {
 
   it("does not match non-identical etags", () => {
     expect(ifNoneMatchSatisfied("\"foo\", \"bar\"", "\"abc\"")).toBe(false);
+  });
+
+  it("supports array-valued header representations", () => {
+    expect(ifNoneMatchSatisfied(["\"foo\"", "\"abc\""], "\"abc\"")).toBe(true);
+  });
+});
+
+describe("ifModifiedSinceSatisfied", () => {
+  it("returns false for missing or invalid dates", () => {
+    expect(ifModifiedSinceSatisfied(undefined, Date.now())).toBe(false);
+    expect(ifModifiedSinceSatisfied("not-a-date", Date.now())).toBe(false);
+  });
+
+  it("returns true when resource has not changed since provided timestamp", () => {
+    const modifiedAt = Date.parse("2026-01-01T12:00:00.100Z");
+    expect(ifModifiedSinceSatisfied("Thu, 01 Jan 2026 12:00:00 GMT", modifiedAt)).toBe(true);
+  });
+
+  it("returns false when resource changed after provided timestamp", () => {
+    const modifiedAt = Date.parse("2026-01-01T12:00:01.000Z");
+    expect(ifModifiedSinceSatisfied("Thu, 01 Jan 2026 12:00:00 GMT", modifiedAt)).toBe(false);
+  });
+
+  it("supports array-valued header representations", () => {
+    const modifiedAt = Date.parse("2026-01-01T12:00:00.000Z");
+    expect(ifModifiedSinceSatisfied(["Thu, 01 Jan 2026 12:00:00 GMT"], modifiedAt)).toBe(true);
   });
 });
 

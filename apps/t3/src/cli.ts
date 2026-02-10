@@ -521,12 +521,18 @@ function normalizeWeakEtag(etag: string): string {
   return trimmed.startsWith("W/") ? trimmed.slice(2).trim() : trimmed;
 }
 
-export function ifNoneMatchSatisfied(ifNoneMatchHeader: string | undefined, etag: string): boolean {
+export function ifNoneMatchSatisfied(
+  ifNoneMatchHeader: string | string[] | undefined,
+  etag: string,
+): boolean {
   if (!ifNoneMatchHeader) {
     return false;
   }
 
-  const candidates = ifNoneMatchHeader
+  const rawHeaderValue = Array.isArray(ifNoneMatchHeader)
+    ? ifNoneMatchHeader.join(",")
+    : ifNoneMatchHeader;
+  const candidates = rawHeaderValue
     .split(",")
     .map((token) => token.trim())
     .filter((token) => token.length > 0);
@@ -540,6 +546,29 @@ export function ifNoneMatchSatisfied(ifNoneMatchHeader: string | undefined, etag
 
   const normalizedEtag = normalizeWeakEtag(etag);
   return candidates.some((candidate) => normalizeWeakEtag(candidate) === normalizedEtag);
+}
+
+export function ifModifiedSinceSatisfied(
+  ifModifiedSinceHeader: string | string[] | undefined,
+  modifiedAtMs: number,
+): boolean {
+  if (!ifModifiedSinceHeader) {
+    return false;
+  }
+
+  const rawHeaderValue = Array.isArray(ifModifiedSinceHeader)
+    ? ifModifiedSinceHeader[0]
+    : ifModifiedSinceHeader;
+  if (!rawHeaderValue) {
+    return false;
+  }
+
+  const parsedTimestamp = Date.parse(rawHeaderValue);
+  if (!Number.isFinite(parsedTimestamp)) {
+    return false;
+  }
+
+  return Math.floor(modifiedAtMs / 1_000) <= Math.floor(parsedTimestamp / 1_000);
 }
 
 export function parseByteRangeHeader(
@@ -797,10 +826,17 @@ function startStaticWebServer(distRoot: string, port: number) {
         }
 
         const etag = staticEtagFor(stats);
+        const lastModified = stats.mtime.toUTCString();
+        const hasIfNoneMatchHeader = request.headers["if-none-match"] !== undefined;
+        const ifNoneMatchMatches = ifNoneMatchSatisfied(request.headers["if-none-match"], etag);
+        const ifModifiedSinceMatches = hasIfNoneMatchHeader
+          ? false
+          : ifModifiedSinceSatisfied(request.headers["if-modified-since"], stats.mtimeMs);
 
         response.statusCode = resolvedRange ? 206 : 200;
         response.setHeader("Content-Type", contentTypeFor(targetPath));
         response.setHeader("ETag", etag);
+        response.setHeader("Last-Modified", lastModified);
         response.setHeader(
           "Content-Length",
           String(resolvedRange ? resolvedRange.end - resolvedRange.start + 1 : stats.size),
@@ -814,7 +850,7 @@ function startStaticWebServer(distRoot: string, port: number) {
           cacheControl: cacheControlFor(targetPath),
         });
 
-        if (!resolvedRange && ifNoneMatchSatisfied(request.headers["if-none-match"], etag)) {
+        if (!resolvedRange && (ifNoneMatchMatches || ifModifiedSinceMatches)) {
           response.statusCode = 304;
           response.removeHeader("Content-Length");
           response.end();
