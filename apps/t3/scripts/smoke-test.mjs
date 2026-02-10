@@ -277,6 +277,21 @@ async function main() {
     if ((conditionalAsset.headers.get("cache-control") ?? "").toLowerCase() !== assetCacheControl) {
       throw new Error("Smoke test failed: expected cache-control preserved on conditional asset response.");
     }
+    if ((conditionalAsset.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
+      throw new Error("Smoke test failed: expected nosniff on conditional asset response.");
+    }
+    if ((conditionalAsset.headers.get("x-frame-options") ?? "").toUpperCase() !== "DENY") {
+      throw new Error("Smoke test failed: expected x-frame-options=DENY on conditional asset response.");
+    }
+    if ((conditionalAsset.headers.get("referrer-policy") ?? "").toLowerCase() !== "no-referrer") {
+      throw new Error("Smoke test failed: expected referrer-policy=no-referrer on conditional asset response.");
+    }
+    if ((conditionalAsset.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
+      throw new Error("Smoke test failed: expected accept-ranges=bytes on conditional asset response.");
+    }
+    if ((conditionalAsset.headers.get("vary") ?? "").toLowerCase() !== "range") {
+      throw new Error("Smoke test failed: expected vary=range on conditional asset response.");
+    }
     const conditionalAssetContentLength = conditionalAsset.headers.get("content-length");
     if (conditionalAssetContentLength !== null && conditionalAssetContentLength !== "0") {
       throw new Error(
@@ -336,6 +351,27 @@ async function main() {
       throw new Error(
         "Smoke test failed: expected cache-control preserved on conditional HEAD asset response.",
       );
+    }
+    if ((conditionalHeadAsset.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
+      throw new Error("Smoke test failed: expected nosniff on conditional HEAD asset response.");
+    }
+    if ((conditionalHeadAsset.headers.get("x-frame-options") ?? "").toUpperCase() !== "DENY") {
+      throw new Error(
+        "Smoke test failed: expected x-frame-options=DENY on conditional HEAD asset response.",
+      );
+    }
+    if ((conditionalHeadAsset.headers.get("referrer-policy") ?? "").toLowerCase() !== "no-referrer") {
+      throw new Error(
+        "Smoke test failed: expected referrer-policy=no-referrer on conditional HEAD asset response.",
+      );
+    }
+    if ((conditionalHeadAsset.headers.get("accept-ranges") ?? "").toLowerCase() !== "bytes") {
+      throw new Error(
+        "Smoke test failed: expected accept-ranges=bytes on conditional HEAD asset response.",
+      );
+    }
+    if ((conditionalHeadAsset.headers.get("vary") ?? "").toLowerCase() !== "range") {
+      throw new Error("Smoke test failed: expected vary=range on conditional HEAD asset response.");
     }
     const conditionalHeadAssetContentLength = conditionalHeadAsset.headers.get("content-length");
     if (
