@@ -90,6 +90,31 @@ function waitForUnauthorizedCloseWithoutMessages(socket, timeoutMs = 10_000) {
   });
 }
 
+function waitForCloseCode(socket, expectedCode, label, timeoutMs = 10_000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Smoke test failed: ${label} websocket close event timed out.`));
+    }, timeoutMs);
+
+    socket.addEventListener("close", (event) => {
+      clearTimeout(timer);
+      if (event.code !== expectedCode) {
+        reject(
+          new Error(
+            `Smoke test failed: expected ${label} close code ${expectedCode}, received ${event.code}.`,
+          ),
+        );
+        return;
+      }
+      resolve();
+    });
+    socket.addEventListener("error", () => {
+      clearTimeout(timer);
+      reject(new Error(`Smoke test failed: ${label} websocket client error before close.`));
+    });
+  });
+}
+
 function waitForStartupUrl(readOutput, processRef, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
     const finish = (callback, value) => {
@@ -1587,7 +1612,84 @@ async function main() {
         }),
       );
     });
-    ws.close();
+
+    const replacedClientClosed = waitForCloseCode(ws, 4000, "replaced-client");
+    const replacementWs = new WebSocket(wsUrl);
+    await new Promise((resolve, reject) => {
+      let sawHello = false;
+      let sawHealthResponse = false;
+      const tryResolve = () => {
+        if (!sawHello || !sawHealthResponse) {
+          return;
+        }
+        clearTimeout(timer);
+        replacementWs.removeEventListener("message", onMessage);
+        resolve();
+      };
+      const timer = setTimeout(
+        () => reject(new Error("Smoke test failed: replacement websocket did not respond in time.")),
+        20_000,
+      );
+      const onMessage = (event) => {
+        let message;
+        try {
+          message = JSON.parse(String(event.data));
+        } catch {
+          return;
+        }
+
+        if (message.type === "hello") {
+          if (message.version !== 1 || message.launchCwd !== appRoot) {
+            clearTimeout(timer);
+            replacementWs.removeEventListener("message", onMessage);
+            reject(new Error("Smoke test failed: replacement websocket hello payload mismatch."));
+            return;
+          }
+          sawHello = true;
+          tryResolve();
+          return;
+        }
+
+        if (message.type !== "response" || message.id !== "smoke-replacement-health") {
+          return;
+        }
+        if (
+          message.ok !== true ||
+          message.result?.status !== "ok" ||
+          message.result?.launchCwd !== appRoot ||
+          message.result?.activeClientConnected !== true ||
+          !Number.isInteger(message.result?.sessionCount) ||
+          message.result.sessionCount < 0
+        ) {
+          clearTimeout(timer);
+          replacementWs.removeEventListener("message", onMessage);
+          reject(new Error("Smoke test failed: replacement websocket health payload mismatch."));
+          return;
+        }
+
+        sawHealthResponse = true;
+        tryResolve();
+      };
+
+      replacementWs.addEventListener("open", () => {
+        replacementWs.send(
+          JSON.stringify({
+            type: "request",
+            id: "smoke-replacement-health",
+            method: "app.health",
+          }),
+        );
+      });
+      replacementWs.addEventListener("message", onMessage);
+      replacementWs.addEventListener("error", () => {
+        clearTimeout(timer);
+        replacementWs.removeEventListener("message", onMessage);
+        reject(new Error("Smoke test failed: replacement websocket client error."));
+      });
+    });
+
+    await replacedClientClosed;
+    replacementWs.close();
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : "Smoke test failed."}\n`);
     process.stderr.write(output);
