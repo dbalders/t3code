@@ -77,6 +77,7 @@ Runtime command semantics:
 - When replaced by a newer connection, the previous active websocket is closed with code `4000`.
 - Replacement closes use reason string `replaced-by-new-client` for deterministic client handling.
 - Renderer websocket connection errors now preserve close metadata (`code`/`reason`) to improve reconnect diagnostics.
+- Renderer normalizes close metadata before diagnostics (e.g. trims close reasons and ignores malformed close codes) for cleaner error messages.
 - In-flight renderer requests now surface unauthorized/replacement disconnect causes explicitly.
 - Renderer also fails in-flight requests immediately on websocket `error` events (without waiting for close) for faster feedback.
 - After reconnect, renderer ignores stale events from prior sockets (including provider and agent streams) to avoid cross-connection state corruption.
