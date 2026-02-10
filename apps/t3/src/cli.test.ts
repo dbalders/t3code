@@ -1075,6 +1075,13 @@ describe("ifUnmodifiedSinceSatisfied", () => {
       ifUnmodifiedSinceSatisfied(["Thu, 01 Jan 2026 12:00:00 GMT", "Wed, 31 Dec 2025 12:00:00 GMT"], modifiedAt),
     ).toBe(true);
   });
+
+  it("uses first array value even when later values differ", () => {
+    const modifiedAt = Date.parse("2026-01-01T12:00:01.000Z");
+    expect(
+      ifUnmodifiedSinceSatisfied(["Thu, 01 Jan 2026 12:00:00 GMT", "Thu, 01 Jan 2026 12:00:01 GMT"], modifiedAt),
+    ).toBe(false);
+  });
 });
 
 describe("ifRangeSatisfied", () => {
