@@ -274,6 +274,17 @@ async function main() {
     if ((missingAsset.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
       throw new Error("Smoke test failed: expected cache-control=no-store on missing asset.");
     }
+    const headMissingAsset = await fetch(missingAssetUrl, { method: "HEAD" });
+    if (headMissingAsset.status !== 404) {
+      throw new Error(
+        `Smoke test failed: expected HEAD missing asset status 404, received ${headMissingAsset.status}.`,
+      );
+    }
+    if ((headMissingAsset.headers.get("cache-control") ?? "").toLowerCase() !== "no-store") {
+      throw new Error(
+        "Smoke test failed: expected cache-control=no-store on HEAD missing asset response.",
+      );
+    }
     const postPage = await fetch(parsedAppUrl, {
       method: "POST",
       body: "noop",
