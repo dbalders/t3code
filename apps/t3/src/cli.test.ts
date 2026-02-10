@@ -217,6 +217,12 @@ describe("parseCliOptions", () => {
     );
   });
 
+  it("throws for empty environment port values", () => {
+    expect(() => parseCliOptions([], { T3_WEB_PORT: "" }, "/workspace")).toThrow(
+      "Invalid value for T3_WEB_PORT",
+    );
+  });
+
   it("throws for out-of-range environment port values", () => {
     expect(() => parseCliOptions([], { T3_WEB_PORT: "65536" }, "/workspace")).toThrow(
       "Invalid value for T3_WEB_PORT",
@@ -225,6 +231,12 @@ describe("parseCliOptions", () => {
 
   it("throws for out-of-range backend environment port values", () => {
     expect(() => parseCliOptions([], { T3_BACKEND_PORT: "65536" }, "/workspace")).toThrow(
+      "Invalid value for T3_BACKEND_PORT",
+    );
+  });
+
+  it("throws for whitespace-only backend environment port values", () => {
+    expect(() => parseCliOptions([], { T3_BACKEND_PORT: "   " }, "/workspace")).toThrow(
       "Invalid value for T3_BACKEND_PORT",
     );
   });

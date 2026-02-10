@@ -26,12 +26,17 @@ function parseEnvPort(
   key: string,
   fallback: number,
 ): { port: number; locked: boolean } {
-  if (!value) {
+  if (value === undefined) {
     return { port: fallback, locked: false };
   }
 
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error(`Invalid value for ${key}: expected a non-empty port.`);
+  }
+
   return {
-    port: parseExplicitPort(value, key),
+    port: parseExplicitPort(trimmed, key),
     locked: true,
   };
 }
