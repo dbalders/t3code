@@ -182,6 +182,9 @@ async function main() {
         `Smoke test failed: expected missing asset status 404, received ${missingAsset.status}.`,
       );
     }
+    if ((missingAsset.headers.get("x-content-type-options") ?? "").toLowerCase() !== "nosniff") {
+      throw new Error("Smoke test failed: expected nosniff on missing asset response.");
+    }
     const postPage = await fetch(parsedAppUrl, {
       method: "POST",
       body: "noop",

@@ -566,7 +566,11 @@ function startStaticWebServer(distRoot: string, port: number) {
       message: string,
       extraHeaders: Record<string, string> = {},
     ) => {
+      const body = Buffer.from(message, "utf8");
       response.statusCode = statusCode;
+      response.setHeader("Content-Type", "text/plain; charset=utf-8");
+      response.setHeader("Content-Length", String(body.byteLength));
+      response.setHeader("X-Content-Type-Options", "nosniff");
       for (const [key, value] of Object.entries(extraHeaders)) {
         response.setHeader(key, value);
       }
@@ -574,7 +578,7 @@ function startStaticWebServer(distRoot: string, port: number) {
         response.end();
         return;
       }
-      response.end(message);
+      response.end(body);
     };
 
     if (requestMethod !== "GET" && requestMethod !== "HEAD") {
