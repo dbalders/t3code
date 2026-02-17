@@ -6,6 +6,7 @@ import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
+  type ProviderCheckpoint,
   type ResolvedKeybindingsConfig,
   type ProviderApprovalDecision,
   type ProviderSendTurnAttachmentInput,
@@ -151,6 +152,9 @@ export default function ChatView() {
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoadingCheckpoints, setIsLoadingCheckpoints] = useState(false);
+  const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
+  const [checkpoints, setCheckpoints] = useState<ProviderCheckpoint[]>([]);
   const [selectedEffort, setSelectedEffort] = useState(DEFAULT_REASONING);
   const [envMode, setEnvMode] = useState<"local" | "worktree">("local");
   const [isSwitchingRuntimeMode, setIsSwitchingRuntimeMode] = useState(false);
@@ -174,7 +178,7 @@ export default function ChatView() {
     activeThread?.model ?? activeProject?.model ?? DEFAULT_MODEL,
   );
   const phase = derivePhase(activeThread?.session ?? null);
-  const isWorking = phase === "running" || isSending || isConnecting;
+  const isWorking = phase === "running" || isSending || isConnecting || isRevertingCheckpoint;
   const nowIso = new Date(nowTick).toISOString();
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(activeThread?.events ?? [], undefined),
@@ -294,6 +298,12 @@ export default function ChatView() {
     (activeThread.messages.length > 0 ||
       (activeThread.session !== null && activeThread.session.status !== "closed")),
   );
+  const canCheckpoint =
+    Boolean(api && activeThread && (activeThread.codexThreadId ?? activeThread.session?.threadId)) &&
+    phase !== "running" &&
+    !isSending &&
+    !isConnecting &&
+    !isRevertingCheckpoint;
 
   const revokePreviewUrls = useCallback((images: Array<{ previewUrl?: string }>) => {
     for (const image of images) {
@@ -434,6 +444,12 @@ export default function ChatView() {
 
   useEffect(() => {
     setExpandedWorkGroups({});
+  }, [activeThread?.id]);
+
+  useEffect(() => {
+    setCheckpoints([]);
+    setIsLoadingCheckpoints(false);
+    setIsRevertingCheckpoint(false);
   }, [activeThread?.id]);
 
   useEffect(() => {
@@ -767,6 +783,78 @@ export default function ChatView() {
     }
   };
 
+  const loadCheckpoints = async (): Promise<ProviderCheckpoint[] | null> => {
+    if (!api || !activeThread) return null;
+    if (phase === "running" || isSending || isConnecting || isRevertingCheckpoint) {
+      return null;
+    }
+    const hasThreadIdentity = Boolean(activeThread.codexThreadId ?? activeThread.session?.threadId);
+    if (!hasThreadIdentity) {
+      setCheckpoints([]);
+      return [];
+    }
+
+    setIsLoadingCheckpoints(true);
+    setThreadError(activeThread.id, null);
+    try {
+      const sessionInfo = await ensureSession();
+      if (!sessionInfo) {
+        return null;
+      }
+      const result = await api.providers.listCheckpoints({
+        sessionId: sessionInfo.sessionId,
+      });
+      setCheckpoints(result.checkpoints);
+      return result.checkpoints;
+    } catch (err) {
+      setThreadError(
+        activeThread.id,
+        err instanceof Error ? err.message : "Failed to load checkpoints.",
+      );
+      return null;
+    } finally {
+      setIsLoadingCheckpoints(false);
+    }
+  };
+
+  const onRevertToCheckpoint = async (checkpoint: ProviderCheckpoint) => {
+    if (!api || !activeThread || checkpoint.isCurrent || isRevertingCheckpoint) {
+      return;
+    }
+    if (phase === "running" || isSending || isConnecting) {
+      setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
+      return;
+    }
+
+    setIsRevertingCheckpoint(true);
+    setThreadError(activeThread.id, null);
+    try {
+      const sessionInfo = await ensureSession();
+      if (!sessionInfo) {
+        return;
+      }
+      const result = await api.providers.revertToCheckpoint({
+        sessionId: sessionInfo.sessionId,
+        turnCount: checkpoint.turnCount,
+      });
+      dispatch({
+        type: "REVERT_TO_CHECKPOINT",
+        threadId: activeThread.id,
+        sessionId: sessionInfo.sessionId,
+        threadRuntimeId: result.threadId,
+        messageCount: result.messageCount,
+      });
+      setCheckpoints(result.checkpoints);
+    } catch (err) {
+      setThreadError(
+        activeThread.id,
+        err instanceof Error ? err.message : "Failed to revert checkpoint.",
+      );
+    } finally {
+      setIsRevertingCheckpoint(false);
+    }
+  };
+
   const onSend = async (e: FormEvent) => {
     e.preventDefault();
     if (!api || !activeThread || isSending || isConnecting) return;
@@ -998,6 +1086,14 @@ export default function ChatView() {
           gitCwd={gitCwd}
           diffOpen={state.diffOpen}
           onToggleDiff={onToggleDiff}
+          checkpoints={checkpoints}
+          canCheckpoint={canCheckpoint}
+          isLoadingCheckpoints={isLoadingCheckpoints}
+          isRevertingCheckpoint={isRevertingCheckpoint}
+          onOpenCheckpoints={() => {
+            void loadCheckpoints();
+          }}
+          onRevertToCheckpoint={onRevertToCheckpoint}
         />
       </header>
 
@@ -1291,6 +1387,12 @@ interface ChatHeaderProps {
   gitCwd: string | null;
   diffOpen: boolean;
   onToggleDiff: () => void;
+  checkpoints: ProviderCheckpoint[];
+  canCheckpoint: boolean;
+  isLoadingCheckpoints: boolean;
+  isRevertingCheckpoint: boolean;
+  onOpenCheckpoints: () => void;
+  onRevertToCheckpoint: (checkpoint: ProviderCheckpoint) => void;
 }
 
 const ChatHeader = memo(function ChatHeader({
@@ -1301,6 +1403,12 @@ const ChatHeader = memo(function ChatHeader({
   gitCwd,
   diffOpen,
   onToggleDiff,
+  checkpoints,
+  canCheckpoint,
+  isLoadingCheckpoints,
+  isRevertingCheckpoint,
+  onOpenCheckpoints,
+  onRevertToCheckpoint,
 }: ChatHeaderProps) {
   return (
     <>
@@ -1311,6 +1419,46 @@ const ChatHeader = memo(function ChatHeader({
       <div className="flex items-center gap-3">
         {activeProjectName && <OpenInPicker keybindings={keybindings} />}
         {activeProjectName && <GitActionsControl api={api} gitCwd={gitCwd} />}
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button
+                size="xs"
+                variant="ghost"
+                className="text-muted-foreground/70 hover:text-foreground/80"
+                disabled={!canCheckpoint || isRevertingCheckpoint}
+                onClick={onOpenCheckpoints}
+              >
+                {isRevertingCheckpoint
+                  ? "Reverting..."
+                  : isLoadingCheckpoints
+                    ? "Loading..."
+                    : "Checkpoints"}
+              </Button>
+            }
+          />
+          <MenuPopup align="end" className="w-72">
+            {!canCheckpoint ? (
+              <MenuItem disabled>Send at least one message to create checkpoints.</MenuItem>
+            ) : checkpoints.length === 0 ? (
+              <MenuItem disabled>
+                {isLoadingCheckpoints ? "Loading checkpoints..." : "No checkpoints available."}
+              </MenuItem>
+            ) : (
+              checkpoints.map((checkpoint) => (
+                <MenuItem
+                  key={checkpoint.id}
+                  disabled={checkpoint.isCurrent || isRevertingCheckpoint}
+                  onClick={() => onRevertToCheckpoint(checkpoint)}
+                >
+                  {checkpoint.label}
+                  {checkpoint.preview ? `: ${checkpoint.preview}` : ""}
+                  {checkpoint.isCurrent ? " (Current)" : ""}
+                </MenuItem>
+              ))
+            )}
+          </MenuPopup>
+        </Menu>
         <Button
           size="xs"
           variant="ghost"
