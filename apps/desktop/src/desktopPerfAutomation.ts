@@ -14,7 +14,16 @@ const RUN_TERMINAL_INTERACTIONS = shouldRunTerminalPerfInteractions({
   T3CODE_DESKTOP_PERF_RUN_TERMINAL: process.env.T3CODE_DESKTOP_PERF_RUN_TERMINAL,
   CI: process.env.CI,
 });
-const BENCHMARK_FOLLOW_UP_PASS_COUNT = process.env.CI === "true" ? 0 : 1;
+const BENCHMARK_FOLLOW_UP_PASS_COUNT = (() => {
+  const raw = process.env.T3CODE_DESKTOP_PERF_BENCHMARK_FOLLOW_UP_PASSES?.trim();
+  if (raw && raw.length > 0) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return process.env.CI === "true" ? 0 : 1;
+})();
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
