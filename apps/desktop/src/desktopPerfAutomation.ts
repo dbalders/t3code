@@ -9,7 +9,7 @@ const PERF_AUTOMATION_ENABLED = process.env.T3CODE_DESKTOP_PERF_AUTOMATION === "
 const PERF_TRACE_OUT_PATH = process.env.T3CODE_DESKTOP_PERF_TRACE_OUT?.trim() ?? "";
 const PERF_DONE_OUT_PATH = process.env.T3CODE_DESKTOP_PERF_DONE_OUT?.trim() ?? "";
 const PERF_SEED_PATH = process.env.T3CODE_DESKTOP_PERF_SEED_PATH?.trim() ?? "";
-const RUN_TERMINAL_INTERACTIONS = process.env.T3CODE_DESKTOP_PERF_RUN_TERMINAL === "1";
+const RUN_TERMINAL_INTERACTIONS = process.env.T3CODE_DESKTOP_PERF_RUN_TERMINAL !== "0";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
