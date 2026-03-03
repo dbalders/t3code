@@ -3,6 +3,7 @@
 ## Task Completion Requirements
 
 - Both `bun lint` and `bun typecheck` must pass before considering tasks completed.
+- Dummy marker: touched for a no-op documentation update.
 
 ## Project Snapshot
 
