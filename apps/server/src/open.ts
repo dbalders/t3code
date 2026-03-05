@@ -354,7 +354,7 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
   let target = stripLineColumnSuffix(input.cwd);
   if (runtimeEnvironment.windowsInteropMode === "wsl-hosted" && command === "explorer.exe") {
     target = yield* Effect.try({
-      try: () => stripLineColumnSuffix(translateWslPathToWindows(target)),
+      try: () => translateWslPathToWindows(target),
       catch: (cause) =>
         new OpenError({
           message: "Failed to translate WSL path for Windows file manager launch",

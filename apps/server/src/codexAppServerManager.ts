@@ -847,7 +847,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
   private async writeMessage(context: CodexSessionContext, message: unknown): Promise<void> {
     const encoded = JSON.stringify(message);
-    if (context.stopping) {
+    if (context.stopping || !this.sessions.has(context.session.sessionId)) {
       throw new Error("Cannot write to codex app-server stdin.");
     }
     await this.runPromise(
