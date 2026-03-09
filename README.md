@@ -2,7 +2,7 @@
 
 T3 Code is a minimal web GUI for coding agents. Currently Codex-first, with Claude Code support coming soon.
 
-## How to use
+## How to Use
 
 > [!WARNING]
 > You need to have [Codex CLI](https://github.com/openai/codex) installed and authorized for T3 Code to work.
