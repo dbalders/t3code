@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractTerminalLinks,
   isTerminalLinkActivation,
+  preferredTerminalEditor,
   resolvePathLinkTarget,
 } from "./terminal-links";
 
@@ -103,5 +104,30 @@ describe("isTerminalLinkActivation", () => {
         "Linux",
       ),
     ).toBe(false);
+  });
+});
+
+describe("preferredTerminalEditor", () => {
+  it("returns file-manager when it is the saved preference", () => {
+    const originalWindow = globalThis.window;
+    const mockWindow = {
+      localStorage: {
+        getItem: (key: string) => (key === "t3code:last-editor" ? "file-manager" : null),
+      },
+    } as Pick<Window, "localStorage"> as Window;
+
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: mockWindow,
+    });
+
+    try {
+      expect(preferredTerminalEditor()).toBe("file-manager");
+    } finally {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: originalWindow,
+      });
+    }
   });
 });

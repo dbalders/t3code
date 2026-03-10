@@ -189,7 +189,7 @@ export function preferredTerminalEditor(): EditorId {
   }
 
   const configured = EDITORS.find((editor) => editor.id === storedEditor);
-  if (!configured?.command) {
+  if (!configured) {
     return fallback;
   }
 
