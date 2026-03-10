@@ -115,6 +115,50 @@ describe("resolveEditorLaunch", () => {
       });
     }),
   );
+
+  it.effect("reveals file targets in the platform file manager", () =>
+    Effect.sync(() => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "t3-open-file-manager-"));
+      const filePath = path.join(dir, "keybindings.json");
+      fs.writeFileSync(filePath, "[]", "utf8");
+
+      try {
+        const darwinLaunch = Effect.runSync(
+          resolveEditorLaunch({ cwd: filePath, editor: "file-manager" }, "darwin"),
+        );
+        assert.deepEqual(darwinLaunch, {
+          command: "open",
+          args: ["-R", filePath],
+        });
+
+        const darwinLineLaunch = Effect.runSync(
+          resolveEditorLaunch({ cwd: `${filePath}:12:4`, editor: "file-manager" }, "darwin"),
+        );
+        assert.deepEqual(darwinLineLaunch, {
+          command: "open",
+          args: ["-R", filePath],
+        });
+
+        const win32Launch = Effect.runSync(
+          resolveEditorLaunch({ cwd: filePath, editor: "file-manager" }, "win32"),
+        );
+        assert.deepEqual(win32Launch, {
+          command: "explorer",
+          args: ["/select,", filePath],
+        });
+
+        const linuxLaunch = Effect.runSync(
+          resolveEditorLaunch({ cwd: filePath, editor: "file-manager" }, "linux"),
+        );
+        assert.deepEqual(linuxLaunch, {
+          command: "xdg-open",
+          args: [dir],
+        });
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }),
+  );
 });
 
 describe("launchDetached", () => {

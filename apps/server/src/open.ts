@@ -8,7 +8,7 @@
  */
 import { spawn } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
-import { extname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 
 import { EDITORS, type EditorId } from "@t3tools/contracts";
 import { ServiceMap, Schema, Effect, Layer } from "effect";
@@ -53,6 +53,34 @@ function fileManagerCommandForPlatform(platform: NodeJS.Platform): string {
       return "explorer";
     default:
       return "xdg-open";
+  }
+}
+
+function stripLineColumnSuffix(target: string): string {
+  return target.replace(LINE_COLUMN_SUFFIX_PATTERN, "");
+}
+
+function resolveFileManagerArgs(target: string, platform: NodeJS.Platform): ReadonlyArray<string> {
+  const normalizedTarget = stripLineColumnSuffix(target);
+
+  let isFile = false;
+  try {
+    isFile = statSync(normalizedTarget).isFile();
+  } catch {
+    isFile = false;
+  }
+
+  if (!isFile) {
+    return [normalizedTarget];
+  }
+
+  switch (platform) {
+    case "darwin":
+      return ["-R", normalizedTarget];
+    case "win32":
+      return ["/select,", normalizedTarget];
+    default:
+      return [dirname(normalizedTarget)];
   }
 }
 
@@ -222,7 +250,10 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
     return yield* new OpenError({ message: `Unsupported editor: ${input.editor}` });
   }
 
-  return { command: fileManagerCommandForPlatform(platform), args: [input.cwd] };
+  return {
+    command: fileManagerCommandForPlatform(platform),
+    args: resolveFileManagerArgs(input.cwd, platform),
+  };
 });
 
 export const launchDetached = (launch: EditorLaunch) =>
