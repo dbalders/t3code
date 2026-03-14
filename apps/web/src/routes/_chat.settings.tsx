@@ -215,7 +215,7 @@ function SettingsRouteView() {
             <header className="space-y-1">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
               <p className="text-sm text-muted-foreground">
-                Configure app-level preferences for this device.
+                Configure local app preferences and server-authoritative agent defaults.
               </p>
             </header>
 
@@ -312,7 +312,7 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">Codex App Server</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  These overrides apply to new sessions and let you use a non-default Codex install.
+                  These server-side overrides apply to new sessions across all connected clients.
                 </p>
               </div>
 

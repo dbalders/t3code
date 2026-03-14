@@ -36,7 +36,11 @@ import {
 import { KeybindingRule } from "./keybindings";
 import { ProjectSearchEntriesInput, ProjectWriteFileInput } from "./project";
 import { OpenInEditorInput } from "./editor";
-import { ServerConfigUpdatedPayload } from "./server";
+import {
+  ServerConfigUpdatedPayload,
+  ServerAgentSettingsUpdatedPayload,
+  ServerPatchAgentSettingsInput,
+} from "./server";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -74,6 +78,8 @@ export const WS_METHODS = {
 
   // Server meta
   serverGetConfig: "server.getConfig",
+  serverGetAgentSettings: "server.getAgentSettings",
+  serverPatchAgentSettings: "server.patchAgentSettings",
   serverUpsertKeybinding: "server.upsertKeybinding",
 } as const;
 
@@ -83,6 +89,7 @@ export const WS_CHANNELS = {
   terminalEvent: "terminal.event",
   serverWelcome: "server.welcome",
   serverConfigUpdated: "server.configUpdated",
+  serverAgentSettingsUpdated: "server.agentSettingsUpdated",
 } as const;
 
 // -- Tagged Union of all request body schemas ─────────────────────────
@@ -138,6 +145,8 @@ const WebSocketRequestBody = Schema.Union([
 
   // Server meta
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.serverGetAgentSettings, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.serverPatchAgentSettings, ServerPatchAgentSettingsInput),
   tagRequestBody(WS_METHODS.serverUpsertKeybinding, KeybindingRule),
 ]);
 
@@ -172,6 +181,7 @@ export type WsWelcomePayload = typeof WsWelcomePayload.Type;
 export interface WsPushPayloadByChannel {
   readonly [WS_CHANNELS.serverWelcome]: WsWelcomePayload;
   readonly [WS_CHANNELS.serverConfigUpdated]: typeof ServerConfigUpdatedPayload.Type;
+  readonly [WS_CHANNELS.serverAgentSettingsUpdated]: typeof ServerAgentSettingsUpdatedPayload.Type;
   readonly [WS_CHANNELS.terminalEvent]: typeof TerminalEvent.Type;
   readonly [ORCHESTRATION_WS_CHANNELS.domainEvent]: OrchestrationEvent;
 }
@@ -195,6 +205,10 @@ export const WsPushServerConfigUpdated = makeWsPushSchema(
   WS_CHANNELS.serverConfigUpdated,
   ServerConfigUpdatedPayload,
 );
+export const WsPushServerAgentSettingsUpdated = makeWsPushSchema(
+  WS_CHANNELS.serverAgentSettingsUpdated,
+  ServerAgentSettingsUpdatedPayload,
+);
 export const WsPushTerminalEvent = makeWsPushSchema(WS_CHANNELS.terminalEvent, TerminalEvent);
 export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
   ORCHESTRATION_WS_CHANNELS.domainEvent,
@@ -204,6 +218,7 @@ export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
 export const WsPushChannelSchema = Schema.Literals([
   WS_CHANNELS.serverWelcome,
   WS_CHANNELS.serverConfigUpdated,
+  WS_CHANNELS.serverAgentSettingsUpdated,
   WS_CHANNELS.terminalEvent,
   ORCHESTRATION_WS_CHANNELS.domainEvent,
 ]);
@@ -212,6 +227,7 @@ export type WsPushChannelSchema = typeof WsPushChannelSchema.Type;
 export const WsPush = Schema.Union([
   WsPushServerWelcome,
   WsPushServerConfigUpdated,
+  WsPushServerAgentSettingsUpdated,
   WsPushTerminalEvent,
   WsPushOrchestrationDomainEvent,
 ]);

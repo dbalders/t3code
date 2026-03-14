@@ -14,6 +14,7 @@ import {
   WS_METHODS,
   type WsPush,
   type ServerProviderStatus,
+  type ServerAgentSettings,
 } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -233,6 +234,30 @@ describe("wsNativeApi", () => {
     });
   });
 
+  it("delivers and caches valid server.agentSettingsUpdated payloads", async () => {
+    const { createWsNativeApi, onServerAgentSettingsUpdated } = await import("./wsNativeApi");
+
+    createWsNativeApi();
+    const listener = vi.fn();
+    onServerAgentSettingsUpdated(listener);
+
+    const payload: ServerAgentSettings = {
+      codexBinaryPath: "/usr/local/bin/codex",
+      codexHomePath: "/tmp/.codex",
+      defaultThreadEnvMode: "worktree",
+      customCodexModels: ["custom/model-a"],
+    };
+    emitPush(WS_CHANNELS.serverAgentSettingsUpdated, payload);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(payload);
+
+    const lateListener = vi.fn();
+    onServerAgentSettingsUpdated(lateListener);
+    expect(lateListener).toHaveBeenCalledTimes(1);
+    expect(lateListener).toHaveBeenCalledWith(payload);
+  });
+
   it("forwards valid terminal and orchestration events", async () => {
     const { createWsNativeApi } = await import("./wsNativeApi");
 
@@ -333,6 +358,30 @@ describe("wsNativeApi", () => {
     expect(requestMock).toHaveBeenCalledWith(ORCHESTRATION_WS_METHODS.getFullThreadDiff, {
       threadId: "thread-1",
       toTurnCount: 1,
+    });
+  });
+
+  it("forwards server agent settings methods to websocket requests", async () => {
+    requestMock.mockResolvedValue({
+      settings: {
+        codexBinaryPath: "",
+        codexHomePath: "",
+        defaultThreadEnvMode: "local",
+        customCodexModels: [],
+      },
+      isInitialized: false,
+    });
+    const { createWsNativeApi } = await import("./wsNativeApi");
+
+    const api = createWsNativeApi();
+    await api.server.getAgentSettings();
+    await api.server.patchAgentSettings({
+      codexBinaryPath: "/usr/local/bin/codex",
+    });
+
+    expect(requestMock).toHaveBeenNthCalledWith(1, WS_METHODS.serverGetAgentSettings);
+    expect(requestMock).toHaveBeenNthCalledWith(2, WS_METHODS.serverPatchAgentSettings, {
+      codexBinaryPath: "/usr/local/bin/codex",
     });
   });
 

@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_TIMESTAMP_FORMAT,
+  extractClientAppSettings,
+  extractServerAppSettings,
   getAppModelOptions,
   normalizeCustomModelSlugs,
   resolveAppModelSelection,
+  splitAppSettingsPatch,
 } from "./appSettings";
 
 describe("normalizeCustomModelSlugs", () => {
@@ -62,5 +65,53 @@ describe("resolveAppModelSelection", () => {
 describe("timestamp format defaults", () => {
   it("defaults timestamp format to locale", () => {
     expect(DEFAULT_TIMESTAMP_FORMAT).toBe("locale");
+  });
+});
+
+describe("splitAppSettingsPatch", () => {
+  it("splits local and server settings fields", () => {
+    expect(
+      splitAppSettingsPatch({
+        codexBinaryPath: "/usr/local/bin/codex",
+        customCodexModels: ["custom/model-a"],
+        enableAssistantStreaming: true,
+        timestampFormat: "24-hour",
+      }),
+    ).toEqual({
+      clientPatch: {
+        enableAssistantStreaming: true,
+        timestampFormat: "24-hour",
+      },
+      serverPatch: {
+        codexBinaryPath: "/usr/local/bin/codex",
+        customCodexModels: ["custom/model-a"],
+      },
+    });
+  });
+});
+
+describe("extract*AppSettings helpers", () => {
+  it("extracts client and server settings from legacy settings", () => {
+    const legacySettings = {
+      codexBinaryPath: "/usr/local/bin/codex",
+      codexHomePath: "/tmp/.codex",
+      defaultThreadEnvMode: "worktree" as const,
+      customCodexModels: [" custom/model-a ", "gpt-5.4", "custom/model-a"],
+      confirmThreadDelete: false,
+      enableAssistantStreaming: true,
+      timestampFormat: "12-hour" as const,
+    };
+
+    expect(extractClientAppSettings(legacySettings)).toEqual({
+      confirmThreadDelete: false,
+      enableAssistantStreaming: true,
+      timestampFormat: "12-hour",
+    });
+    expect(extractServerAppSettings(legacySettings)).toEqual({
+      codexBinaryPath: "/usr/local/bin/codex",
+      codexHomePath: "/tmp/.codex",
+      defaultThreadEnvMode: "worktree",
+      customCodexModels: ["custom/model-a"],
+    });
   });
 });

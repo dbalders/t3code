@@ -3,6 +3,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   type ContextMenuItem,
   type NativeApi,
+  type ServerAgentSettingsUpdatedPayload,
   ServerConfigUpdatedPayload,
   WS_CHANNELS,
   WS_METHODS,
@@ -15,6 +16,9 @@ import { WsTransport } from "./wsTransport";
 let instance: { api: NativeApi; transport: WsTransport } | null = null;
 const welcomeListeners = new Set<(payload: WsWelcomePayload) => void>();
 const serverConfigUpdatedListeners = new Set<(payload: ServerConfigUpdatedPayload) => void>();
+const serverAgentSettingsUpdatedListeners = new Set<
+  (payload: ServerAgentSettingsUpdatedPayload) => void
+>();
 
 /**
  * Subscribe to the server welcome message. If a welcome was already received
@@ -62,6 +66,30 @@ export function onServerConfigUpdated(
   };
 }
 
+/**
+ * Subscribe to server agent settings updates. Replays the latest update for
+ * late subscribers to avoid missing cross-client changes.
+ */
+export function onServerAgentSettingsUpdated(
+  listener: (payload: ServerAgentSettingsUpdatedPayload) => void,
+): () => void {
+  serverAgentSettingsUpdatedListeners.add(listener);
+
+  const latestSettings =
+    instance?.transport.getLatestPush(WS_CHANNELS.serverAgentSettingsUpdated)?.data ?? null;
+  if (latestSettings) {
+    try {
+      listener(latestSettings);
+    } catch {
+      // Swallow listener errors
+    }
+  }
+
+  return () => {
+    serverAgentSettingsUpdatedListeners.delete(listener);
+  };
+}
+
 export function createWsNativeApi(): NativeApi {
   if (instance) return instance.api;
 
@@ -80,6 +108,16 @@ export function createWsNativeApi(): NativeApi {
   transport.subscribe(WS_CHANNELS.serverConfigUpdated, (message) => {
     const payload = message.data;
     for (const listener of serverConfigUpdatedListeners) {
+      try {
+        listener(payload);
+      } catch {
+        // Swallow listener errors
+      }
+    }
+  });
+  transport.subscribe(WS_CHANNELS.serverAgentSettingsUpdated, (message) => {
+    const payload = message.data;
+    for (const listener of serverAgentSettingsUpdatedListeners) {
       try {
         listener(payload);
       } catch {
@@ -159,6 +197,8 @@ export function createWsNativeApi(): NativeApi {
     },
     server: {
       getConfig: () => transport.request(WS_METHODS.serverGetConfig),
+      getAgentSettings: () => transport.request(WS_METHODS.serverGetAgentSettings),
+      patchAgentSettings: (input) => transport.request(WS_METHODS.serverPatchAgentSettings, input),
       upsertKeybinding: (input) => transport.request(WS_METHODS.serverUpsertKeybinding, input),
     },
     orchestration: {

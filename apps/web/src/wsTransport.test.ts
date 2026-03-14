@@ -180,7 +180,7 @@ describe("WsTransport", () => {
     expect(warnSpy).toHaveBeenNthCalledWith(
       2,
       "Dropped inbound WebSocket envelope",
-      expect.stringContaining('Expected "server.configUpdated"'),
+      expect.stringContaining("Expected"),
     );
 
     transport.dispose();

@@ -73,6 +73,20 @@ it.effect("accepts git.preparePullRequestThread requests", () =>
   }),
 );
 
+it.effect("accepts server.patchAgentSettings requests", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeWebSocketRequest({
+      id: "req-server-settings-1",
+      body: {
+        _tag: WS_METHODS.serverPatchAgentSettings,
+        codexBinaryPath: "/usr/local/bin/codex",
+        defaultThreadEnvMode: "worktree",
+      },
+    });
+    assert.strictEqual(parsed.body._tag, WS_METHODS.serverPatchAgentSettings);
+  }),
+);
+
 it.effect("accepts typed websocket push envelopes with sequence", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeWsResponse({
@@ -110,5 +124,27 @@ it.effect("rejects push envelopes when channel payload does not match the channe
     );
 
     assert.strictEqual(result._tag, "Failure");
+  }),
+);
+
+it.effect("accepts server.agentSettingsUpdated push envelopes", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeWsResponse({
+      type: "push",
+      sequence: 3,
+      channel: WS_CHANNELS.serverAgentSettingsUpdated,
+      data: {
+        codexBinaryPath: "/usr/local/bin/codex",
+        codexHomePath: "/tmp/.codex",
+        defaultThreadEnvMode: "local",
+        customCodexModels: ["custom/model-a"],
+      },
+    });
+
+    if (!("type" in parsed) || parsed.type !== "push") {
+      assert.fail("expected websocket response to decode as a push envelope");
+    }
+
+    assert.strictEqual(parsed.channel, WS_CHANNELS.serverAgentSettingsUpdated);
   }),
 );

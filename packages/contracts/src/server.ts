@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas";
 import { KeybindingRule, ResolvedKeybindingsConfig } from "./keybindings";
 import { EditorId } from "./editor";
@@ -22,6 +22,50 @@ export const ServerConfigIssue = Schema.Union([
 export type ServerConfigIssue = typeof ServerConfigIssue.Type;
 
 const ServerConfigIssues = Schema.Array(ServerConfigIssue);
+
+export const SERVER_AGENT_SETTINGS_MAX_PATH_LENGTH = 4096;
+export const SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_COUNT = 32;
+export const SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_LENGTH = 256;
+
+export const ServerAgentSettings = Schema.Struct({
+  codexBinaryPath: Schema.String.check(
+    Schema.isMaxLength(SERVER_AGENT_SETTINGS_MAX_PATH_LENGTH),
+  ).pipe(Schema.withConstructorDefault(() => Option.some(""))),
+  codexHomePath: Schema.String.check(
+    Schema.isMaxLength(SERVER_AGENT_SETTINGS_MAX_PATH_LENGTH),
+  ).pipe(Schema.withConstructorDefault(() => Option.some(""))),
+  defaultThreadEnvMode: Schema.Literals(["local", "worktree"]).pipe(
+    Schema.withConstructorDefault(() => Option.some("local")),
+  ),
+  customCodexModels: Schema.Array(
+    Schema.String.check(Schema.isMaxLength(SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_LENGTH)),
+  )
+    .check(Schema.isMaxLength(SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_COUNT))
+    .pipe(Schema.withConstructorDefault(() => Option.some([]))),
+});
+export type ServerAgentSettings = typeof ServerAgentSettings.Type;
+
+export const ServerAgentSettingsState = Schema.Struct({
+  settings: ServerAgentSettings,
+  isInitialized: Schema.Boolean,
+});
+export type ServerAgentSettingsState = typeof ServerAgentSettingsState.Type;
+
+export const ServerPatchAgentSettingsInput = Schema.Struct({
+  codexBinaryPath: Schema.optional(
+    Schema.String.check(Schema.isMaxLength(SERVER_AGENT_SETTINGS_MAX_PATH_LENGTH)),
+  ),
+  codexHomePath: Schema.optional(
+    Schema.String.check(Schema.isMaxLength(SERVER_AGENT_SETTINGS_MAX_PATH_LENGTH)),
+  ),
+  defaultThreadEnvMode: Schema.optional(Schema.Literals(["local", "worktree"])),
+  customCodexModels: Schema.optional(
+    Schema.Array(
+      Schema.String.check(Schema.isMaxLength(SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_LENGTH)),
+    ).check(Schema.isMaxLength(SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_COUNT)),
+  ),
+});
+export type ServerPatchAgentSettingsInput = typeof ServerPatchAgentSettingsInput.Type;
 
 export const ServerProviderStatusState = Schema.Literals(["ready", "warning", "error"]);
 export type ServerProviderStatusState = typeof ServerProviderStatusState.Type;
@@ -69,3 +113,6 @@ export const ServerConfigUpdatedPayload = Schema.Struct({
   providers: ServerProviderStatuses,
 });
 export type ServerConfigUpdatedPayload = typeof ServerConfigUpdatedPayload.Type;
+
+export const ServerAgentSettingsUpdatedPayload = ServerAgentSettings;
+export type ServerAgentSettingsUpdatedPayload = typeof ServerAgentSettingsUpdatedPayload.Type;

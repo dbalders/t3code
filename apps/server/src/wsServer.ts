@@ -55,6 +55,7 @@ import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnap
 import { OrchestrationReactor } from "./orchestration/Services/OrchestrationReactor";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { ProviderHealth } from "./provider/Services/ProviderHealth";
+import { ServerAgentSettingsService } from "./serverSettings/Services/ServerAgentSettings.ts";
 import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery";
 import { clamp } from "effect/Number";
 import { Open, resolveAvailableEditors } from "./open";
@@ -216,6 +217,7 @@ export type ServerRuntimeServices =
   | GitCore
   | TerminalManager
   | Keybindings
+  | ServerAgentSettingsService
   | Open
   | AnalyticsService;
 
@@ -253,6 +255,7 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
   const gitManager = yield* GitManager;
   const terminalManager = yield* TerminalManager;
   const keybindingsManager = yield* Keybindings;
+  const serverAgentSettingsService = yield* ServerAgentSettingsService;
   const providerHealth = yield* ProviderHealth;
   const git = yield* GitCore;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -617,6 +620,9 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
       providers: providerStatuses,
     }),
   ).pipe(Effect.forkIn(subscriptionsScope));
+  yield* Stream.runForEach(serverAgentSettingsService.streamChanges, (settings) =>
+    pushBus.publishAll(WS_CHANNELS.serverAgentSettingsUpdated, settings),
+  ).pipe(Effect.forkIn(subscriptionsScope));
 
   yield* Scope.provide(orchestrationReactor.start, subscriptionsScope);
   yield* readiness.markOrchestrationSubscriptionsReady;
@@ -876,6 +882,14 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           providers: providerStatuses,
           availableEditors,
         };
+
+      case WS_METHODS.serverGetAgentSettings:
+        return yield* serverAgentSettingsService.getState;
+
+      case WS_METHODS.serverPatchAgentSettings: {
+        const body = stripRequestTag(request.body);
+        return yield* serverAgentSettingsService.patch(body);
+      }
 
       case WS_METHODS.serverUpsertKeybinding: {
         const body = stripRequestTag(request.body);

@@ -25,6 +25,8 @@ import {
   type WebSocketResponse,
   type ProviderRuntimeEvent,
   type ServerProviderStatus,
+  type ServerAgentSettings,
+  type ServerAgentSettingsState,
   type KeybindingsConfig,
   type ResolvedKeybindingsConfig,
   type WsPushChannel,
@@ -833,6 +835,120 @@ describe("WebSocket Server", () => {
       availableEditors: expect.any(Array),
     });
     expectAvailableEditors((response.result as { availableEditors: unknown }).availableEditors);
+  });
+
+  it("responds to server.getAgentSettings with defaults when uninitialized", async () => {
+    server = await createTestServer({ cwd: "/my/workspace" });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const [ws] = await connectAndAwaitWelcome(port);
+    connections.push(ws);
+
+    const response = await sendRequest(ws, WS_METHODS.serverGetAgentSettings);
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      settings: {
+        codexBinaryPath: "",
+        codexHomePath: "",
+        defaultThreadEnvMode: "local",
+        customCodexModels: [],
+      } satisfies ServerAgentSettings,
+      isInitialized: false,
+    } satisfies ServerAgentSettingsState);
+  });
+
+  it("patches server agent settings and broadcasts server.agentSettingsUpdated", async () => {
+    server = await createTestServer({ cwd: "/my/workspace" });
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const [ws] = await connectAndAwaitWelcome(port);
+    connections.push(ws);
+
+    const patchResponse = await sendRequest(ws, WS_METHODS.serverPatchAgentSettings, {
+      codexBinaryPath: "/usr/local/bin/codex",
+      codexHomePath: "/tmp/.codex",
+      defaultThreadEnvMode: "worktree",
+      customCodexModels: [" custom/model-alpha ", "gpt-5.4", "custom/model-alpha"],
+    });
+    expect(patchResponse.error).toBeUndefined();
+    expect(patchResponse.result).toEqual({
+      codexBinaryPath: "/usr/local/bin/codex",
+      codexHomePath: "/tmp/.codex",
+      defaultThreadEnvMode: "worktree",
+      customCodexModels: ["custom/model-alpha"],
+    } satisfies ServerAgentSettings);
+
+    const push = await waitForPush(ws, WS_CHANNELS.serverAgentSettingsUpdated);
+    expect(push.data).toEqual({
+      codexBinaryPath: "/usr/local/bin/codex",
+      codexHomePath: "/tmp/.codex",
+      defaultThreadEnvMode: "worktree",
+      customCodexModels: ["custom/model-alpha"],
+    } satisfies ServerAgentSettings);
+
+    const getResponse = await sendRequest(ws, WS_METHODS.serverGetAgentSettings);
+    expect(getResponse.error).toBeUndefined();
+    expect(getResponse.result).toEqual({
+      settings: {
+        codexBinaryPath: "/usr/local/bin/codex",
+        codexHomePath: "/tmp/.codex",
+        defaultThreadEnvMode: "worktree",
+        customCodexModels: ["custom/model-alpha"],
+      } satisfies ServerAgentSettings,
+      isInitialized: true,
+    } satisfies ServerAgentSettingsState);
+  });
+
+  it("persists server agent settings across restart with sqlite state", async () => {
+    const stateDir = makeTempDir("t3code-state-server-agent-settings-");
+    const dbPath = path.join(stateDir, "state.sqlite");
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath).pipe(
+      Layer.provide(NodeServices.layer),
+    );
+
+    server = await createTestServer({
+      cwd: "/my/workspace",
+      stateDir,
+      persistenceLayer,
+    });
+    let addr = server.address();
+    let port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const [firstWs] = await connectAndAwaitWelcome(port);
+    connections.push(firstWs);
+    const patchResponse = await sendRequest(firstWs, WS_METHODS.serverPatchAgentSettings, {
+      codexBinaryPath: "/usr/local/bin/codex",
+      defaultThreadEnvMode: "worktree",
+    });
+    expect(patchResponse.error).toBeUndefined();
+
+    await closeTestServer();
+    server = null;
+
+    server = await createTestServer({
+      cwd: "/my/workspace",
+      stateDir,
+      persistenceLayer,
+    });
+    addr = server.address();
+    port = typeof addr === "object" && addr !== null ? addr.port : 0;
+
+    const [secondWs] = await connectAndAwaitWelcome(port);
+    connections.push(secondWs);
+
+    const getResponse = await sendRequest(secondWs, WS_METHODS.serverGetAgentSettings);
+    expect(getResponse.error).toBeUndefined();
+    expect(getResponse.result).toEqual({
+      settings: {
+        codexBinaryPath: "/usr/local/bin/codex",
+        codexHomePath: "",
+        defaultThreadEnvMode: "worktree",
+        customCodexModels: [],
+      } satisfies ServerAgentSettings,
+      isInitialized: true,
+    } satisfies ServerAgentSettingsState);
   });
 
   it("bootstraps default keybindings file when missing", async () => {

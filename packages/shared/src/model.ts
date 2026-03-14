@@ -3,6 +3,8 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   MODEL_OPTIONS_BY_PROVIDER,
   MODEL_SLUG_ALIASES_BY_PROVIDER,
+  SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_COUNT,
+  SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_LENGTH,
   type CodexReasoningEffort,
   type ModelSlug,
   type ProviderKind,
@@ -38,6 +40,35 @@ export function normalizeModelSlug(
   const aliases = MODEL_SLUG_ALIASES_BY_PROVIDER[provider] as Record<string, ModelSlug>;
   const aliased = aliases[trimmed];
   return typeof aliased === "string" ? aliased : (trimmed as ModelSlug);
+}
+
+export function normalizeCustomModelSlugs(
+  models: Iterable<string | null | undefined>,
+  provider: ProviderKind = "codex",
+): string[] {
+  const normalizedModels: string[] = [];
+  const seen = new Set<string>();
+  const builtInModelSlugs = MODEL_SLUG_SET_BY_PROVIDER[provider];
+
+  for (const candidate of models) {
+    const normalized = normalizeModelSlug(candidate, provider);
+    if (
+      !normalized ||
+      normalized.length > SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_LENGTH ||
+      builtInModelSlugs.has(normalized) ||
+      seen.has(normalized)
+    ) {
+      continue;
+    }
+
+    seen.add(normalized);
+    normalizedModels.push(normalized);
+    if (normalizedModels.length >= SERVER_AGENT_SETTINGS_MAX_CUSTOM_MODEL_COUNT) {
+      break;
+    }
+  }
+
+  return normalizedModels;
 }
 
 export function resolveModelSlug(
