@@ -13,6 +13,7 @@ import type {
   ProviderKind,
   ProviderUserInputAnswers,
   ProviderRuntimeEvent,
+  ProviderStartReviewInput,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
@@ -67,6 +68,13 @@ export interface ProviderAdapterShape<TError> {
    * Interrupt an active turn.
    */
   readonly interruptTurn: (threadId: ThreadId, turnId?: TurnId) => Effect.Effect<void, TError>;
+
+  /**
+   * Start a provider-native review run.
+   */
+  readonly startReview: (
+    input: ProviderStartReviewInput,
+  ) => Effect.Effect<ProviderTurnStartResult, TError>;
 
   /**
    * Respond to an interactive approval request.

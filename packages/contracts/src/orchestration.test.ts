@@ -3,6 +3,7 @@ import { it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 
 import {
+  ClientOrchestrationCommand,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   OrchestrationGetTurnDiffInput,
@@ -17,6 +18,7 @@ import {
 const decodeTurnDiffInput = Schema.decodeUnknownEffect(OrchestrationGetTurnDiffInput);
 const decodeThreadTurnDiff = Schema.decodeUnknownEffect(ThreadTurnDiff);
 const decodeProjectCreateCommand = Schema.decodeUnknownEffect(ProjectCreateCommand);
+const decodeClientOrchestrationCommand = Schema.decodeUnknownEffect(ClientOrchestrationCommand);
 const decodeThreadTurnStartCommand = Schema.decodeUnknownEffect(ThreadTurnStartCommand);
 const decodeThreadTurnStartRequestedPayload = Schema.decodeUnknownEffect(
   ThreadTurnStartRequestedPayload,
@@ -183,6 +185,22 @@ it.effect("accepts provider-scoped model options in thread.turn.start", () =>
     assert.strictEqual(parsed.provider, "codex");
     assert.strictEqual(parsed.modelOptions?.codex?.reasoningEffort, "high");
     assert.strictEqual(parsed.modelOptions?.codex?.fastMode, true);
+  }),
+);
+
+it.effect("decodes thread.review.start as a valid client orchestration command", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeClientOrchestrationCommand({
+      type: "thread.review.start",
+      commandId: "cmd-review-1",
+      threadId: "thread-1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.type, "thread.review.start");
+    if (parsed.type !== "thread.review.start") {
+      return;
+    }
+    assert.strictEqual(parsed.threadId, "thread-1");
   }),
 );
 

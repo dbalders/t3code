@@ -17,6 +17,7 @@ import type {
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
   ProviderRuntimeEvent,
+  ProviderStartReviewInput,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
@@ -55,6 +56,13 @@ export interface ProviderServiceShape {
   readonly interruptTurn: (
     input: ProviderInterruptTurnInput,
   ) => Effect.Effect<void, ProviderServiceError>;
+
+  /**
+   * Start a provider-native review run.
+   */
+  readonly startReview: (
+    input: ProviderStartReviewInput,
+  ) => Effect.Effect<ProviderTurnStartResult, ProviderServiceError>;
 
   /**
    * Respond to a provider approval request.

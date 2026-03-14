@@ -1389,6 +1389,17 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
       });
 
+    const startReview: CodexAdapterShape["startReview"] = (input) =>
+      Effect.tryPromise({
+        try: () => manager.startReview(input.threadId),
+        catch: (cause) => toRequestError(input.threadId, "review/start", cause),
+      }).pipe(
+        Effect.map((result) => ({
+          ...result,
+          threadId: input.threadId,
+        })),
+      );
+
     const readThread: CodexAdapterShape["readThread"] = (threadId) =>
       Effect.tryPromise({
         try: () => manager.readThread(threadId),
@@ -1506,6 +1517,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       startSession,
       sendTurn,
       interruptTurn,
+      startReview,
       readThread,
       rollbackThread,
       respondToRequest,

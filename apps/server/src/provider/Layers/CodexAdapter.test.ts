@@ -58,6 +58,13 @@ class FakeCodexManager extends CodexAppServerManager {
     async (_threadId: ThreadId, _turnId?: TurnId): Promise<void> => undefined,
   );
 
+  public startReviewImpl = vi.fn(
+    async (threadId: ThreadId): Promise<ProviderTurnStartResult> => ({
+      threadId,
+      turnId: asTurnId("turn-review-1"),
+    }),
+  );
+
   public readThreadImpl = vi.fn(async (_threadId: ThreadId) => ({
     threadId: asThreadId("thread-1"),
     turns: [],
@@ -96,6 +103,10 @@ class FakeCodexManager extends CodexAppServerManager {
 
   override interruptTurn(threadId: ThreadId, turnId?: TurnId): Promise<void> {
     return this.interruptTurnImpl(threadId, turnId);
+  }
+
+  override startReview(threadId: ThreadId): Promise<ProviderTurnStartResult> {
+    return this.startReviewImpl(threadId);
   }
 
   override readThread(threadId: ThreadId) {
@@ -180,6 +191,24 @@ validationLayer("CodexAdapterLive validation", (it) => {
         serviceTier: "fast",
         runtimeMode: "full-access",
       });
+    }),
+  );
+
+  it.effect("routes startReview to the Codex app-server manager", () =>
+    Effect.gen(function* () {
+      validationManager.startReviewImpl.mockClear();
+      const adapter = yield* CodexAdapter;
+
+      const result = yield* adapter.startReview({
+        threadId: asThreadId("thread-1"),
+      });
+
+      assert.deepStrictEqual(
+        validationManager.startReviewImpl.mock.calls[0]?.[0],
+        asThreadId("thread-1"),
+      );
+      assert.equal(result.threadId, "thread-1");
+      assert.equal(result.turnId, "turn-review-1");
     }),
   );
 });

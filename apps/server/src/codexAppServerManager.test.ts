@@ -548,6 +548,35 @@ describe("sendTurn", () => {
 });
 
 describe("thread checkpoint control", () => {
+  it("starts review via review/start and updates session running state", async () => {
+    const { manager, context, sendRequest, updateSession } = createThreadControlHarness();
+    sendRequest.mockResolvedValue({
+      turn: {
+        id: "turn_review_1",
+      },
+    });
+
+    const result = await manager.startReview(asThreadId("thread_1"));
+
+    expect(sendRequest).toHaveBeenCalledWith(context, "review/start", {
+      threadId: "thread_1",
+      target: {
+        type: "uncommittedChanges",
+      },
+      delivery: "inline",
+    });
+    expect(updateSession).toHaveBeenCalledWith(context, {
+      status: "running",
+      activeTurnId: "turn_review_1",
+      resumeCursor: { threadId: "thread_1" },
+    });
+    expect(result).toEqual({
+      threadId: "thread_1",
+      turnId: "turn_review_1",
+      resumeCursor: { threadId: "thread_1" },
+    });
+  });
+
   it("reads thread turns from thread/read", async () => {
     const { manager, context, requireSession, sendRequest } = createThreadControlHarness();
     sendRequest.mockResolvedValue({

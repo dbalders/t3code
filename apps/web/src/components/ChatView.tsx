@@ -958,6 +958,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
           label: "/default",
           description: "Switch this thread back to normal chat mode",
         },
+        {
+          id: "slash:review",
+          type: "slash-command",
+          command: "review",
+          label: "/review",
+          description: "Run a review on current uncommitted changes",
+        },
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
       const query = composerTrigger.query.trim().toLowerCase();
       if (!query) {
@@ -1421,6 +1428,35 @@ export default function ChatView({ threadId }: ChatViewProps) {
       threadId,
     ],
   );
+  const handleReviewStart = useCallback(async () => {
+    if (!activeThread) {
+      return;
+    }
+    if (!isServerThread) {
+      setStoreThreadError(
+        activeThread.id,
+        "/review is available after the thread is created. Send a message first.",
+      );
+      return;
+    }
+    const api = readNativeApi();
+    if (!api) {
+      return;
+    }
+    await api.orchestration
+      .dispatchCommand({
+        type: "thread.review.start",
+        commandId: newCommandId(),
+        threadId: activeThread.id,
+        createdAt: new Date().toISOString(),
+      })
+      .catch((err: unknown) => {
+        setStoreThreadError(
+          activeThread.id,
+          err instanceof Error ? err.message : "Failed to start review.",
+        );
+      });
+  }, [activeThread, isServerThread, setStoreThreadError]);
   const toggleInteractionMode = useCallback(() => {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode]);
@@ -2222,7 +2258,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
     const standaloneSlashCommand =
       composerImages.length === 0 ? parseStandaloneComposerSlashCommand(trimmed) : null;
     if (standaloneSlashCommand) {
-      await handleInteractionModeChange(standaloneSlashCommand);
+      if (standaloneSlashCommand === "review") {
+        await handleReviewStart();
+      } else {
+        handleInteractionModeChange(standaloneSlashCommand);
+      }
       promptRef.current = "";
       clearComposerDraftContent(activeThread.id);
       setComposerHighlightedItemId(null);
@@ -3036,7 +3076,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
           }
           return;
         }
-        void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
+        if (item.command === "review") {
+          void handleReviewStart();
+        } else {
+          void handleInteractionModeChange(item.command === "plan" ? "plan" : "default");
+        }
         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
         });
@@ -3056,6 +3100,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [
       applyPromptReplacement,
       handleInteractionModeChange,
+      handleReviewStart,
       onProviderModelSelect,
       resolveActiveComposerTrigger,
     ],

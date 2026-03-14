@@ -809,29 +809,28 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
 
     const response = await this.sendRequest(context, "turn/start", turnStartParams);
+    return this.parseTurnStartResult(context, response, "turn/start");
+  }
 
-    const turn = this.readObject(this.readObject(response), "turn");
-    const turnIdRaw = this.readString(turn, "id");
-    if (!turnIdRaw) {
-      throw new Error("turn/start response did not include a turn id.");
-    }
-    const turnId = TurnId.makeUnsafe(turnIdRaw);
-
-    this.updateSession(context, {
-      status: "running",
-      activeTurnId: turnId,
-      ...(context.session.resumeCursor !== undefined
-        ? { resumeCursor: context.session.resumeCursor }
-        : {}),
-    });
-
-    return {
+  async startReview(threadId: ThreadId): Promise<ProviderTurnStartResult> {
+    const context = this.requireSession(threadId);
+    const providerThreadId = readResumeThreadId({
       threadId: context.session.threadId,
-      turnId,
-      ...(context.session.resumeCursor !== undefined
-        ? { resumeCursor: context.session.resumeCursor }
-        : {}),
-    };
+      runtimeMode: context.session.runtimeMode,
+      resumeCursor: context.session.resumeCursor,
+    });
+    if (!providerThreadId) {
+      throw new Error("Session is missing provider resume thread id.");
+    }
+
+    const response = await this.sendRequest(context, "review/start", {
+      threadId: providerThreadId,
+      target: {
+        type: "uncommittedChanges",
+      },
+      delivery: "inline",
+    });
+    return this.parseTurnStartResult(context, response, "review/start");
   }
 
   async interruptTurn(threadId: ThreadId, turnId?: TurnId): Promise<void> {
@@ -1389,6 +1388,35 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     return {
       threadId: threadIdRaw,
       turns,
+    };
+  }
+
+  private parseTurnStartResult(
+    context: CodexSessionContext,
+    response: unknown,
+    method: "turn/start" | "review/start",
+  ): ProviderTurnStartResult {
+    const turn = this.readObject(this.readObject(response), "turn");
+    const turnIdRaw = this.readString(turn, "id");
+    if (!turnIdRaw) {
+      throw new Error(`${method} response did not include a turn id.`);
+    }
+    const turnId = TurnId.makeUnsafe(turnIdRaw);
+
+    this.updateSession(context, {
+      status: "running",
+      activeTurnId: turnId,
+      ...(context.session.resumeCursor !== undefined
+        ? { resumeCursor: context.session.resumeCursor }
+        : {}),
+    });
+
+    return {
+      threadId: context.session.threadId,
+      turnId,
+      ...(context.session.resumeCursor !== undefined
+        ? { resumeCursor: context.session.resumeCursor }
+        : {}),
     };
   }
 

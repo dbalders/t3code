@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { Schema } from "effect";
 
-import { ProviderSendTurnInput, ProviderSessionStartInput } from "./provider";
+import {
+  ProviderSendTurnInput,
+  ProviderSessionStartInput,
+  ProviderStartReviewInput,
+} from "./provider";
 
 const decodeProviderSessionStartInput = Schema.decodeUnknownSync(ProviderSessionStartInput);
 const decodeProviderSendTurnInput = Schema.decodeUnknownSync(ProviderSendTurnInput);
+const decodeProviderStartReviewInput = Schema.decodeUnknownSync(ProviderStartReviewInput);
 
 describe("ProviderSessionStartInput", () => {
   it("accepts codex-compatible payloads", () => {
@@ -60,5 +65,14 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.model).toBe("gpt-5.3-codex");
     expect(parsed.modelOptions?.codex?.reasoningEffort).toBe("xhigh");
     expect(parsed.modelOptions?.codex?.fastMode).toBe(true);
+  });
+});
+
+describe("ProviderStartReviewInput", () => {
+  it("accepts thread id payload", () => {
+    const parsed = decodeProviderStartReviewInput({
+      threadId: "thread-1",
+    });
+    expect(parsed.threadId).toBe("thread-1");
   });
 });

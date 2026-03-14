@@ -1222,6 +1222,7 @@ describe("WebSocket Server", () => {
           turnId: asTurnId("provider-turn-1"),
         }),
       interruptTurn: () => unsupported(),
+      startReview: () => unsupported(),
       respondToRequest: () => unsupported(),
       respondToUserInput: () => unsupported(),
       stopSession: () => unsupported(),

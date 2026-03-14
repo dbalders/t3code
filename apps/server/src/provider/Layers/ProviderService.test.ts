@@ -109,6 +109,14 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
       Effect.void,
   );
 
+  const startReview = vi.fn(
+    (input: { threadId: ThreadId }): Effect.Effect<ProviderTurnStartResult, ProviderAdapterError> =>
+      Effect.succeed({
+        threadId: input.threadId,
+        turnId: TurnId.makeUnsafe(`review-${String(input.threadId)}`),
+      }),
+  );
+
   const respondToRequest = vi.fn(
     (
       _threadId: ThreadId,
@@ -180,6 +188,7 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
     startSession,
     sendTurn,
     interruptTurn,
+    startReview,
     respondToRequest,
     respondToUserInput,
     stopSession,
@@ -201,6 +210,7 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
     startSession,
     sendTurn,
     interruptTurn,
+    startReview,
     respondToRequest,
     respondToUserInput,
     stopSession,
@@ -443,6 +453,12 @@ routing.layer("ProviderServiceLive routing", (it) => {
 
       yield* provider.interruptTurn({ threadId: session.threadId });
       assert.deepEqual(routing.codex.interruptTurn.mock.calls, [[session.threadId, undefined]]);
+
+      const review = yield* provider.startReview({
+        threadId: session.threadId,
+      });
+      assert.equal(review.turnId, `review-${String(session.threadId)}`);
+      assert.deepEqual(routing.codex.startReview.mock.calls, [[{ threadId: session.threadId }]]);
 
       yield* provider.respondToRequest({
         threadId: session.threadId,

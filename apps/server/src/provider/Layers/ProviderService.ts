@@ -16,6 +16,7 @@ import {
   ProviderRespondToRequestInput,
   ProviderRespondToUserInputInput,
   ProviderSendTurnInput,
+  ProviderStartReviewInput,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
   type ProviderRuntimeEvent,
@@ -368,6 +369,36 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         });
       });
 
+    const startReview: ProviderServiceShape["startReview"] = (rawInput) =>
+      Effect.gen(function* () {
+        const input = yield* decodeInputOrValidationError({
+          operation: "ProviderService.startReview",
+          schema: ProviderStartReviewInput,
+          payload: rawInput,
+        });
+        const routed = yield* resolveRoutableSession({
+          threadId: input.threadId,
+          operation: "ProviderService.startReview",
+          allowRecovery: true,
+        });
+        const result = yield* routed.adapter.startReview(input);
+        yield* directory.upsert({
+          threadId: input.threadId,
+          provider: routed.adapter.provider,
+          status: "running",
+          ...(result.resumeCursor !== undefined ? { resumeCursor: result.resumeCursor } : {}),
+          runtimePayload: {
+            activeTurnId: result.turnId,
+            lastRuntimeEvent: "provider.startReview",
+            lastRuntimeEventAt: new Date().toISOString(),
+          },
+        });
+        yield* analytics.record("provider.review.started", {
+          provider: routed.adapter.provider,
+        });
+        return result;
+      });
+
     const respondToRequest: ProviderServiceShape["respondToRequest"] = (rawInput) =>
       Effect.gen(function* () {
         const input = yield* decodeInputOrValidationError({
@@ -531,6 +562,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       startSession,
       sendTurn,
       interruptTurn,
+      startReview,
       respondToRequest,
       respondToUserInput,
       stopSession,
