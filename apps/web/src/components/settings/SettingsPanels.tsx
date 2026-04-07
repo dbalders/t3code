@@ -20,8 +20,9 @@ import {
 } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { normalizeModelSlug } from "@t3tools/shared/model";
+import { T3_CODEX_OPENAI_BASE_URL } from "@t3tools/shared/codex";
 import { Equal } from "effect";
-import { APP_VERSION } from "../../branding";
+import { APP_BASE_NAME, APP_VERSION } from "../../branding";
 import {
   canCheckForUpdate,
   getDesktopUpdateButtonTooltip,
@@ -99,18 +100,12 @@ type InstallProviderSettings = {
 const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
   {
     provider: "codex",
-    title: "Codex",
-    binaryPlaceholder: "Codex binary path",
-    binaryDescription: "Path to the Codex binary",
+    title: "UCSD",
+    binaryPlaceholder: "UCSD app-server binary path",
+    binaryDescription: "Path to the underlying app-server binary.",
     homePathKey: "codexHomePath",
     homePlaceholder: "CODEX_HOME",
-    homeDescription: "Optional custom Codex home and config directory.",
-  },
-  {
-    provider: "claudeAgent",
-    title: "Claude",
-    binaryPlaceholder: "Claude binary path",
-    binaryDescription: "Path to the Claude binary",
+    homeDescription: "Optional advanced config directory for the bundled client.",
   },
 ] as const;
 
@@ -140,7 +135,8 @@ function getProviderSummary(provider: ServerProvider | undefined) {
     return {
       headline: "Disabled",
       detail:
-        provider.message ?? "This provider is installed but disabled for new sessions in T3 Code.",
+        provider.message ??
+        `This provider is installed but disabled for new sessions in ${APP_BASE_NAME}.`,
     };
   }
   if (!provider.installed) {
@@ -530,6 +526,8 @@ export function GeneralSettingsPanel() {
     codex: Boolean(
       settings.providers.codex.binaryPath !== DEFAULT_UNIFIED_SETTINGS.providers.codex.binaryPath ||
       settings.providers.codex.homePath !== DEFAULT_UNIFIED_SETTINGS.providers.codex.homePath ||
+      settings.providers.codex.lightllmApiKey !==
+        DEFAULT_UNIFIED_SETTINGS.providers.codex.lightllmApiKey ||
       settings.providers.codex.customModels.length > 0,
     ),
     claudeAgent: Boolean(
@@ -781,7 +779,7 @@ export function GeneralSettingsPanel() {
       <SettingsSection title="General">
         <SettingsRow
           title="Theme"
-          description="Choose how T3 Code looks across the app."
+          description={`Choose how ${APP_BASE_NAME} looks across the app.`}
           resetAction={
             theme !== "system" ? (
               <SettingResetButton label="theme" onClick={() => setTheme("system")} />
@@ -999,8 +997,53 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
+          title="UCSD API key"
+          description={`Required for UCSD-hosted model access. Enter the LiteLLM virtual key from UCSD (starts with sk-). Requests are routed through ${T3_CODEX_OPENAI_BASE_URL}.`}
+          resetAction={
+            settings.providers.codex.lightllmApiKey !==
+            DEFAULT_UNIFIED_SETTINGS.providers.codex.lightllmApiKey ? (
+              <SettingResetButton
+                label="UCSD API key"
+                onClick={() =>
+                  updateSettings({
+                    providers: {
+                      ...settings.providers,
+                      codex: {
+                        ...settings.providers.codex,
+                        lightllmApiKey: DEFAULT_UNIFIED_SETTINGS.providers.codex.lightllmApiKey,
+                      },
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Input
+              id="ucsd-api-key"
+              className="w-full sm:w-72"
+              type="password"
+              value={settings.providers.codex.lightllmApiKey}
+              onChange={(event) =>
+                updateSettings({
+                  providers: {
+                    ...settings.providers,
+                    codex: {
+                      ...settings.providers.codex,
+                      lightllmApiKey: event.target.value,
+                    },
+                  },
+                })
+              }
+              placeholder="Enter your UCSD LiteLLM virtual key"
+              spellCheck={false}
+            />
+          }
+        />
+
+        <SettingsRow
           title="Text generation model"
-          description="Configure the model used for generated commit messages, PR titles, and similar Git text."
+          description="Configure the UCSD model used for generated commit messages, PR titles, and similar Git text."
           resetAction={
             isGitWritingModelDirty ? (
               <SettingResetButton
@@ -1019,7 +1062,7 @@ export function GeneralSettingsPanel() {
               <ProviderModelPicker
                 provider={textGenProvider}
                 model={textGenModel}
-                lockedProvider={null}
+                lockedProvider="codex"
                 providers={serverProviders}
                 modelOptionsByProvider={gitModelOptionsByProvider}
                 triggerVariant="outline"
@@ -1071,7 +1114,7 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection
-        title="Providers"
+        title="UCSD"
         headerAction={
           <div className="flex items-center gap-1.5">
             <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
@@ -1272,7 +1315,6 @@ export function GeneralSettingsPanel() {
                         </label>
                       </div>
                     ) : null}
-
                     <div className="border-t border-border/60 px-4 py-3 sm:px-5">
                       <div className="text-xs font-medium text-foreground">Models</div>
                       <div className="mt-1 text-xs text-muted-foreground">

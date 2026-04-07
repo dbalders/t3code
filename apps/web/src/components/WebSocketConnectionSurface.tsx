@@ -1,7 +1,7 @@
 import { AlertTriangle, CloudOff, LoaderCircle, RotateCw } from "lucide-react";
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { APP_DISPLAY_NAME } from "../branding";
+import { APP_DISPLAY_NAME, APP_SERVER_NAME } from "../branding";
 import { type SlowRpcAckRequest, useSlowRpcAckRequests } from "../rpc/requestLatencyState";
 import { useServerConfig } from "../rpc/serverState";
 import {
@@ -60,10 +60,10 @@ function describeExhaustedToast(): string {
 
 function buildReconnectTitle(status: WsConnectionStatus): string {
   if (status.nextRetryAt === null) {
-    return "Disconnected from T3 Server";
+    return `Disconnected from ${APP_SERVER_NAME}`;
   }
 
-  return "Disconnected from T3 Server";
+  return `Disconnected from ${APP_SERVER_NAME}`;
 }
 
 function describeRecoveredToast(
@@ -411,7 +411,7 @@ export function WebSocketConnectionCoordinator() {
               },
               description: describeExhaustedToast(),
               timeout: 0,
-              title: "Disconnected from T3 Server",
+              title: `Disconnected from ${APP_SERVER_NAME}`,
               type: "error" as const,
               data: {
                 hideCopyButton: true,
@@ -451,7 +451,7 @@ export function WebSocketConnectionCoordinator() {
     ) {
       const successToast = {
         description: describeRecoveredToast(previousDisconnectedAt, status.connectedAt),
-        title: "Reconnected to T3 Server",
+        title: `Reconnected to ${APP_SERVER_NAME}`,
         type: "success" as const,
         timeout: 0,
         data: {

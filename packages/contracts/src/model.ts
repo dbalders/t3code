@@ -91,6 +91,6 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
 // ── Provider display names ────────────────────────────────────────────
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
-  codex: "Codex",
+  codex: "UCSD",
   claudeAgent: "Claude",
 };

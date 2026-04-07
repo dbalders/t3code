@@ -1252,17 +1252,15 @@ describe("deriveActiveWorkStartedAt", () => {
 });
 
 describe("PROVIDER_OPTIONS", () => {
-  it("advertises Claude as available while keeping Cursor as a placeholder", () => {
-    const claude = PROVIDER_OPTIONS.find((option) => option.value === "claudeAgent");
+  it("advertises UCSD as available while keeping Cursor as a placeholder", () => {
     const cursor = PROVIDER_OPTIONS.find((option) => option.value === "cursor");
     expect(PROVIDER_OPTIONS).toEqual([
-      { value: "codex", label: "Codex", available: true },
-      { value: "claudeAgent", label: "Claude", available: true },
+      { value: "codex", label: "UCSD", available: true },
       { value: "cursor", label: "Cursor", available: false },
     ]);
-    expect(claude).toEqual({
-      value: "claudeAgent",
-      label: "Claude",
+    expect(PROVIDER_OPTIONS.find((option) => option.value === "codex")).toEqual({
+      value: "codex",
+      label: "UCSD",
       available: true,
     });
     expect(cursor).toEqual({

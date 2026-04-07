@@ -76,7 +76,7 @@ export function codexAuthSubType(account: CodexAccountSnapshot | undefined): str
 export function codexAuthSubLabel(account: CodexAccountSnapshot | undefined): string | undefined {
   switch (codexAuthSubType(account)) {
     case "apiKey":
-      return "OpenAI API Key";
+      return "UCSD API Key";
     case "chatgpt":
       return "ChatGPT Subscription";
     case "free":
