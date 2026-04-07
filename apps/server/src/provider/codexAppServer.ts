@@ -1,6 +1,8 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import readline from "node:readline";
+import type { CodexSettings } from "@t3tools/contracts";
 import { readCodexAccountSnapshot, type CodexAccountSnapshot } from "./codexAccount";
+import { buildCodexCommandArgs, buildCodexCommandEnv } from "./codexLaunchConfig";
 
 interface JsonRpcProbeResponse {
   readonly id?: unknown;
@@ -43,14 +45,16 @@ export function killCodexChildProcess(child: ChildProcessWithoutNullStreams): vo
 export async function probeCodexAccount(input: {
   readonly binaryPath: string;
   readonly homePath?: string;
+  readonly lightllmApiKey?: string;
   readonly signal?: AbortSignal;
 }): Promise<CodexAccountSnapshot> {
+  const codexSettings: Pick<CodexSettings, "homePath" | "lightllmApiKey"> = {
+    homePath: input.homePath ?? "",
+    lightllmApiKey: input.lightllmApiKey ?? "",
+  };
   return await new Promise((resolve, reject) => {
-    const child = spawn(input.binaryPath, ["app-server"], {
-      env: {
-        ...process.env,
-        ...(input.homePath ? { CODEX_HOME: input.homePath } : {}),
-      },
+    const child = spawn(input.binaryPath, buildCodexCommandArgs(["app-server"]), {
+      env: buildCodexCommandEnv(codexSettings),
       stdio: ["pipe", "pipe", "pipe"],
       shell: process.platform === "win32",
     });

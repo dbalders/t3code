@@ -86,10 +86,11 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         enabled: true,
         binaryPath: "/opt/homebrew/bin/codex",
         homePath: "/Users/julius/.codex",
+        lightllmApiKey: "",
         customModels: [],
       });
       assert.deepEqual(next.providers.claudeAgent, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/usr/local/bin/claude",
         customModels: ["claude-custom"],
       });
@@ -150,6 +151,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           codex: {
             binaryPath: "  /opt/homebrew/bin/codex  ",
             homePath: "   ",
+            lightllmApiKey: "  sk-test  ",
           },
           claudeAgent: {
             binaryPath: "  /opt/homebrew/bin/claude  ",
@@ -161,10 +163,11 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         enabled: true,
         binaryPath: "/opt/homebrew/bin/codex",
         homePath: "",
+        lightllmApiKey: "sk-test",
         customModels: [],
       });
       assert.deepEqual(next.providers.claudeAgent, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/opt/homebrew/bin/claude",
         customModels: [],
       });

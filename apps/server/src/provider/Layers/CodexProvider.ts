@@ -3,10 +3,12 @@ import type {
   ModelCapabilities,
   CodexSettings,
   ServerProvider,
-  ServerProviderModel,
   ServerProviderAuth,
+  ServerProviderModel,
   ServerProviderState,
 } from "@t3tools/contracts";
+import { ServerSettingsError } from "@t3tools/contracts";
+import { T3_CODEX_API_KEY_PREFIX } from "@t3tools/shared/codex";
 import {
   Cache,
   Duration,
@@ -38,16 +40,15 @@ import {
   isCodexCliVersionSupported,
   parseCodexCliVersion,
 } from "../codexCliVersion";
+import type { CodexAccountSnapshot } from "../codexAccount";
 import {
-  adjustCodexModelsForAccount,
-  codexAuthSubLabel,
-  codexAuthSubType,
-  type CodexAccountSnapshot,
-} from "../codexAccount";
-import { probeCodexAccount } from "../codexAppServer";
+  buildCodexCommandArgs,
+  buildCodexCommandEnv,
+  resolveCodexApiKey,
+} from "../codexLaunchConfig";
+import { CodexRemoteModelsError, fetchCodexRemoteModelIds } from "../codexRemoteModels";
 import { CodexProvider } from "../Services/CodexProvider";
 import { ServerSettingsService } from "../../serverSettings";
-import { ServerSettingsError } from "@t3tools/contracts";
 
 const PROVIDER = "codex" as const;
 const OPENAI_AUTH_PROVIDERS = new Set(["openai"]);
@@ -167,6 +168,30 @@ export function getCodexModelCapabilities(model: string | null | undefined): Mod
       promptInjectedEffortLevels: [],
     }
   );
+}
+
+function buildResolvedCodexModels(
+  modelIds: ReadonlyArray<string>,
+  customModels: ReadonlyArray<string>,
+): ReadonlyArray<ServerProviderModel> {
+  const discoveredModels: ServerProviderModel[] = [];
+  const seen = new Set<string>();
+
+  for (const modelId of modelIds) {
+    const slug = modelId.trim();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+
+    const builtInModel = BUILT_IN_MODELS.find((candidate) => candidate.slug === slug);
+    discoveredModels.push({
+      slug,
+      name: builtInModel?.name ?? slug,
+      isCustom: false,
+      capabilities: builtInModel?.capabilities ?? null,
+    });
+  }
+
+  return providerModelsFromSettings(discoveredModels, PROVIDER, customModels);
 }
 
 export function parseAuthStatusFromOutput(result: CommandResult): {
@@ -291,19 +316,24 @@ export const hasCustomModelProvider = readCodexConfigModelProvider().pipe(
   Effect.orElseSucceed(() => false),
 );
 
-const CAPABILITIES_PROBE_TIMEOUT_MS = 8_000;
+const MODELS_PROBE_TIMEOUT_MS = 8_000;
 
-const probeCodexCapabilities = (input: {
-  readonly binaryPath: string;
-  readonly homePath?: string;
-}) =>
-  Effect.tryPromise((signal) => probeCodexAccount({ ...input, signal })).pipe(
-    Effect.timeoutOption(CAPABILITIES_PROBE_TIMEOUT_MS),
-    Effect.result,
-    Effect.map((result) => {
-      if (Result.isFailure(result)) return undefined;
-      return Option.isSome(result.success) ? result.success.value : undefined;
-    }),
+const probeCodexRemoteModels = (apiKey: string) =>
+  Effect.tryPromise({
+    try: (signal) => fetchCodexRemoteModelIds({ apiKey, signal }),
+    catch: (error) =>
+      error instanceof CodexRemoteModelsError
+        ? error
+        : new CodexRemoteModelsError(
+            error instanceof Error ? error.message : "Could not discover available UCSD models.",
+          ),
+  }).pipe(
+    Effect.timeoutOption(MODELS_PROBE_TIMEOUT_MS),
+    Effect.flatMap((result) =>
+      Option.isSome(result)
+        ? Effect.succeed(result.value)
+        : Effect.fail(new CodexRemoteModelsError("Timed out while discovering UCSD models.")),
+    ),
   );
 
 const runCodexCommand = Effect.fn("runCodexCommand")(function* (args: ReadonlyArray<string>) {
@@ -311,48 +341,52 @@ const runCodexCommand = Effect.fn("runCodexCommand")(function* (args: ReadonlyAr
   const codexSettings = yield* settingsService.getSettings.pipe(
     Effect.map((settings) => settings.providers.codex),
   );
-  const command = ChildProcess.make(codexSettings.binaryPath, [...args], {
-    shell: process.platform === "win32",
-    env: {
-      ...process.env,
-      ...(codexSettings.homePath ? { CODEX_HOME: codexSettings.homePath } : {}),
-    },
-  });
-  return yield* spawnAndCollect(codexSettings.binaryPath, command);
+  return yield* spawnAndCollect(
+    codexSettings.binaryPath,
+    ChildProcess.make(codexSettings.binaryPath, buildCodexCommandArgs(args), {
+      shell: process.platform === "win32",
+      env: buildCodexCommandEnv(codexSettings),
+    }),
+  );
 });
 
 export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(function* (
-  resolveAccount?: (input: {
+  _resolveAccount?: (input: {
     readonly binaryPath: string;
     readonly homePath?: string;
+    readonly lightllmApiKey?: string;
   }) => Effect.Effect<CodexAccountSnapshot | undefined>,
+  resolveRemoteModels?: (
+    apiKey: string,
+  ) => Effect.Effect<ReadonlyArray<string>, CodexRemoteModelsError>,
 ): Effect.fn.Return<
   ServerProvider,
   ServerSettingsError,
-  | ChildProcessSpawner.ChildProcessSpawner
-  | FileSystem.FileSystem
-  | Path.Path
-  | ServerSettingsService
+  ChildProcessSpawner.ChildProcessSpawner | ServerSettingsService
 > {
   const codexSettings = yield* Effect.service(ServerSettingsService).pipe(
     Effect.flatMap((service) => service.getSettings),
     Effect.map((settings) => settings.providers.codex),
   );
   const checkedAt = new Date().toISOString();
-  const models = providerModelsFromSettings(BUILT_IN_MODELS, PROVIDER, codexSettings.customModels);
+  const fallbackModels = providerModelsFromSettings(
+    BUILT_IN_MODELS,
+    PROVIDER,
+    codexSettings.customModels,
+  );
 
   if (!codexSettings.enabled) {
     return buildServerProvider({
       provider: PROVIDER,
       enabled: false,
       checkedAt,
-      models,
+      models: fallbackModels,
       probe: {
         installed: false,
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Codex is disabled in T3 Code settings.",
+        message: "UCSD is disabled in T3 Code settings.",
       },
     });
   }
@@ -368,15 +402,15 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       provider: PROVIDER,
       enabled: codexSettings.enabled,
       checkedAt,
-      models,
+      models: fallbackModels,
       probe: {
         installed: !isCommandMissingCause(error),
         version: null,
         status: "error",
         auth: { status: "unknown" },
         message: isCommandMissingCause(error)
-          ? "Codex CLI (`codex`) is not installed or not on PATH."
-          : `Failed to execute Codex CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+          ? "The UCSD app-server client (`codex`) is not installed or not on PATH."
+          : `Failed to execute the UCSD app-server client health check: ${error instanceof Error ? error.message : String(error)}.`,
       },
     });
   }
@@ -386,13 +420,14 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       provider: PROVIDER,
       enabled: codexSettings.enabled,
       checkedAt,
-      models,
+      models: fallbackModels,
       probe: {
         installed: true,
         version: null,
         status: "error",
         auth: { status: "unknown" },
-        message: "Codex CLI is installed but failed to run. Timed out while running command.",
+        message:
+          "The UCSD app-server client is installed but failed to run. Timed out while running command.",
       },
     });
   }
@@ -407,15 +442,15 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       provider: PROVIDER,
       enabled: codexSettings.enabled,
       checkedAt,
-      models,
+      models: fallbackModels,
       probe: {
         installed: true,
         version: parsedVersion,
         status: "error",
         auth: { status: "unknown" },
         message: detail
-          ? `Codex CLI is installed but failed to run. ${detail}`
-          : "Codex CLI is installed but failed to run.",
+          ? `The UCSD app-server client is installed but failed to run. ${detail}`
+          : "The UCSD app-server client is installed but failed to run.",
       },
     });
   }
@@ -425,7 +460,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       provider: PROVIDER,
       enabled: codexSettings.enabled,
       checkedAt,
-      models,
+      models: fallbackModels,
       probe: {
         installed: true,
         version: parsedVersion,
@@ -436,73 +471,85 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     });
   }
 
-  if (yield* hasCustomModelProvider) {
+  const apiKey = resolveCodexApiKey(codexSettings);
+
+  if (!apiKey) {
     return buildServerProvider({
       provider: PROVIDER,
       enabled: codexSettings.enabled,
       checkedAt,
-      models,
+      models: fallbackModels,
       probe: {
         installed: true,
         version: parsedVersion,
-        status: "ready",
-        auth: { status: "unknown" },
-        message: "Using a custom Codex model provider; OpenAI login check skipped.",
+        status: "error",
+        auth: {
+          status: "unauthenticated",
+          type: "apiKey",
+          label: "UCSD API Key",
+        },
+        message: "Enter a UCSD LiteLLM virtual key to connect.",
       },
     });
   }
 
-  const authProbe = yield* runCodexCommand(["login", "status"]).pipe(
-    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-    Effect.result,
-  );
-  const account = resolveAccount
-    ? yield* resolveAccount({
-        binaryPath: codexSettings.binaryPath,
-        homePath: codexSettings.homePath,
-      })
-    : undefined;
-  const resolvedModels = adjustCodexModelsForAccount(models, account);
-
-  if (Result.isFailure(authProbe)) {
-    const error = authProbe.failure;
+  if (!apiKey.startsWith(T3_CODEX_API_KEY_PREFIX)) {
     return buildServerProvider({
       provider: PROVIDER,
       enabled: codexSettings.enabled,
       checkedAt,
-      models: resolvedModels,
+      models: fallbackModels,
       probe: {
         installed: true,
         version: parsedVersion,
-        status: "warning",
-        auth: { status: "unknown" },
+        status: "error",
+        auth: {
+          status: "unauthenticated",
+          type: "apiKey",
+          label: "UCSD API Key",
+        },
+        message: `UCSD API keys must be LiteLLM virtual keys starting with '${T3_CODEX_API_KEY_PREFIX}'.`,
+      },
+    });
+  }
+
+  const discoveredModelsResult = resolveRemoteModels
+    ? yield* resolveRemoteModels(apiKey).pipe(Effect.result)
+    : yield* probeCodexRemoteModels(apiKey).pipe(Effect.result);
+
+  if (Result.isFailure(discoveredModelsResult)) {
+    const error = discoveredModelsResult.failure;
+    const authStatus =
+      error instanceof CodexRemoteModelsError && (error.status === 401 || error.status === 403)
+        ? "unauthenticated"
+        : "unknown";
+    const status = authStatus === "unauthenticated" ? "error" : "warning";
+
+    return buildServerProvider({
+      provider: PROVIDER,
+      enabled: codexSettings.enabled,
+      checkedAt,
+      models: fallbackModels,
+      probe: {
+        installed: true,
+        version: parsedVersion,
+        status,
+        auth: {
+          status: authStatus,
+          type: "apiKey",
+          label: "UCSD API Key",
+        },
         message:
-          error instanceof Error
-            ? `Could not verify Codex authentication status: ${error.message}.`
-            : "Could not verify Codex authentication status.",
+          error instanceof Error ? error.message : "Could not discover available UCSD models.",
       },
     });
   }
 
-  if (Option.isNone(authProbe.success)) {
-    return buildServerProvider({
-      provider: PROVIDER,
-      enabled: codexSettings.enabled,
-      checkedAt,
-      models: resolvedModels,
-      probe: {
-        installed: true,
-        version: parsedVersion,
-        status: "warning",
-        auth: { status: "unknown" },
-        message: "Could not verify Codex authentication status. Timed out while running command.",
-      },
-    });
-  }
+  const resolvedModels = buildResolvedCodexModels(
+    discoveredModelsResult.success,
+    codexSettings.customModels,
+  );
 
-  const parsed = parseAuthStatusFromOutput(authProbe.success.value);
-  const authType = codexAuthSubType(account);
-  const authLabel = codexAuthSubLabel(account);
   return buildServerProvider({
     provider: PROVIDER,
     enabled: codexSettings.enabled,
@@ -511,13 +558,12 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     probe: {
       installed: true,
       version: parsedVersion,
-      status: parsed.status,
+      status: "ready",
       auth: {
-        ...parsed.auth,
-        ...(authType ? { type: authType } : {}),
-        ...(authLabel ? { label: authLabel } : {}),
+        status: "authenticated",
+        type: "apiKey",
+        label: "UCSD API Key",
       },
-      ...(parsed.message ? { message: parsed.message } : {}),
     },
   });
 });
@@ -526,27 +572,17 @@ export const CodexProviderLive = Layer.effect(
   CodexProvider,
   Effect.gen(function* () {
     const serverSettings = yield* ServerSettingsService;
-    const fileSystem = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const accountProbeCache = yield* Cache.make({
+    const remoteModelsCache = yield* Cache.make({
       capacity: 4,
       timeToLive: Duration.minutes(5),
-      lookup: (key: string) => {
-        const [binaryPath, homePath] = JSON.parse(key) as [string, string | undefined];
-        return probeCodexCapabilities({
-          binaryPath,
-          ...(homePath ? { homePath } : {}),
-        });
-      },
+      lookup: (apiKey: string) => probeCodexRemoteModels(apiKey),
     });
 
-    const checkProvider = checkCodexProviderStatus((input) =>
-      Cache.get(accountProbeCache, JSON.stringify([input.binaryPath, input.homePath])),
+    const checkProvider = checkCodexProviderStatus(undefined, (apiKey) =>
+      Cache.get(remoteModelsCache, apiKey),
     ).pipe(
       Effect.provideService(ServerSettingsService, serverSettings),
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, path),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
 

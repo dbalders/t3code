@@ -1857,6 +1857,106 @@ const engineLayer = it.layer(
 );
 
 engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
+  it.effect("marks an active turn errored when the session enters error state", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngineService;
+      const sql = yield* SqlClient.SqlClient;
+
+      const threadId = ThreadId.makeUnsafe("thread-runtime-error");
+      const projectId = ProjectId.makeUnsafe("project-runtime-error");
+      const turnId = TurnId.makeUnsafe("turn-runtime-error");
+      const requestedAt = "2026-02-27T10:00:00.000Z";
+      const erroredAt = "2026-02-27T10:00:05.000Z";
+
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.makeUnsafe("cmd-runtime-error-project-created"),
+        projectId,
+        title: "Runtime Error Project",
+        workspaceRoot: "/tmp/project-runtime-error",
+        defaultModelSelection: {
+          provider: "codex",
+          model: "minimax-m2.5",
+        },
+        createdAt: requestedAt,
+      });
+
+      yield* engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe("cmd-runtime-error-thread-created"),
+        threadId,
+        projectId,
+        title: "Runtime error thread",
+        modelSelection: {
+          provider: "codex",
+          model: "minimax-m2.5",
+        },
+        interactionMode: "default",
+        runtimeMode: "full-access",
+        branch: null,
+        worktreePath: null,
+        createdAt: requestedAt,
+      });
+
+      yield* engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-runtime-error-session-running"),
+        threadId,
+        createdAt: requestedAt,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: turnId,
+          lastError: null,
+          updatedAt: requestedAt,
+        },
+      });
+
+      yield* engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-runtime-error-session-errored"),
+        threadId,
+        createdAt: erroredAt,
+        session: {
+          threadId,
+          status: "error",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: turnId,
+          lastError: "stream disconnected",
+          updatedAt: erroredAt,
+        },
+      });
+
+      const turnRows = yield* sql<{
+        readonly turnId: string;
+        readonly state: string;
+        readonly startedAt: string | null;
+        readonly completedAt: string | null;
+      }>`
+        SELECT
+          turn_id AS "turnId",
+          state,
+          started_at AS "startedAt",
+          completed_at AS "completedAt"
+        FROM projection_turns
+        WHERE thread_id = ${threadId}
+          AND turn_id = ${turnId}
+      `;
+
+      assert.deepEqual(turnRows, [
+        {
+          turnId: "turn-runtime-error",
+          state: "error",
+          startedAt: requestedAt,
+          completedAt: erroredAt,
+        },
+      ]);
+    }),
+  );
+
   it.effect("projects dispatched engine events immediately", () =>
     Effect.gen(function* () {
       const engine = yield* OrchestrationEngineService;

@@ -32,6 +32,7 @@ import {
   type CodexAccountSnapshot,
 } from "./provider/codexAccount";
 import { buildCodexInitializeParams, killCodexChildProcess } from "./provider/codexAppServer";
+import { buildCodexCommandArgs, buildCodexCommandEnv } from "./provider/codexLaunchConfig";
 
 export { buildCodexInitializeParams } from "./provider/codexAppServer";
 export { readCodexAccountSnapshot, resolveCodexModelForAccount } from "./provider/codexAccount";
@@ -124,6 +125,7 @@ export interface CodexAppServerStartSessionInput {
   readonly resumeCursor?: unknown;
   readonly binaryPath: string;
   readonly homePath?: string;
+  readonly lightllmApiKey?: string;
   readonly runtimeMode: RuntimeMode;
 }
 
@@ -459,17 +461,19 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
       const codexBinaryPath = input.binaryPath;
       const codexHomePath = input.homePath;
+      const codexLightllmApiKey = input.lightllmApiKey ?? "";
       this.assertSupportedCodexCliVersion({
         binaryPath: codexBinaryPath,
         cwd: resolvedCwd,
         ...(codexHomePath ? { homePath: codexHomePath } : {}),
+        lightllmApiKey: codexLightllmApiKey,
       });
-      const child = spawn(codexBinaryPath, ["app-server"], {
+      const child = spawn(codexBinaryPath, buildCodexCommandArgs(["app-server"]), {
         cwd: resolvedCwd,
-        env: {
-          ...process.env,
-          ...(codexHomePath ? { CODEX_HOME: codexHomePath } : {}),
-        },
+        env: buildCodexCommandEnv({
+          homePath: codexHomePath ?? "",
+          lightllmApiKey: codexLightllmApiKey,
+        }),
         stdio: ["pipe", "pipe", "pipe"],
         shell: process.platform === "win32",
       });
@@ -1294,6 +1298,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     readonly binaryPath: string;
     readonly cwd: string;
     readonly homePath?: string;
+    readonly lightllmApiKey?: string;
   }): void {
     assertSupportedCodexCliVersion(input);
   }
@@ -1526,13 +1531,14 @@ function assertSupportedCodexCliVersion(input: {
   readonly binaryPath: string;
   readonly cwd: string;
   readonly homePath?: string;
+  readonly lightllmApiKey?: string;
 }): void {
-  const result = spawnSync(input.binaryPath, ["--version"], {
+  const result = spawnSync(input.binaryPath, buildCodexCommandArgs(["--version"]), {
     cwd: input.cwd,
-    env: {
-      ...process.env,
-      ...(input.homePath ? { CODEX_HOME: input.homePath } : {}),
-    },
+    env: buildCodexCommandEnv({
+      homePath: input.homePath ?? "",
+      lightllmApiKey: input.lightllmApiKey ?? "",
+    }),
     encoding: "utf8",
     shell: process.platform === "win32",
     stdio: ["ignore", "pipe", "pipe"],

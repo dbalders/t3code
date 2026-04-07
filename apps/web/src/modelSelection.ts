@@ -33,9 +33,9 @@ export interface AppModelOption {
 const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConfig> = {
   codex: {
     provider: "codex",
-    title: "Codex",
-    description: "Save additional Codex model slugs for the picker and `/model` command.",
-    placeholder: "your-codex-model-slug",
+    title: "UCSD",
+    description: "Save additional UCSD model slugs for the picker and `/model` command.",
+    placeholder: "your-ucsd-model-slug",
     example: "gpt-6.7-codex-ultra-preview",
   },
   claudeAgent: {
