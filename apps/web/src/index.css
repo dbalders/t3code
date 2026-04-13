@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark, .dark *));
+/* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
+@custom-variant wco (&:is(.wco, .wco *));
 
 @theme inline {
   --animate-skeleton: skeleton 2s -1s infinite linear;
@@ -47,8 +49,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    background-color: var(--app-chrome-background);
+  }
   body {
-    @apply bg-background text-foreground relative;
+    @apply text-foreground relative;
+    background-color: var(--app-chrome-background);
   }
 }
 
@@ -71,6 +77,7 @@
   --ucsd-sand: #f5f0e6;
   --ucsd-cool-gray: #747678;
   --background: color-mix(in srgb, var(--color-white) 90%, var(--ucsd-sand));
+  --app-chrome-background: var(--background);
   --foreground: var(--ucsd-navy);
   --card: color-mix(in srgb, var(--color-white) 92%, var(--ucsd-sand));
   --card-foreground: var(--ucsd-navy);
@@ -99,6 +106,7 @@
   @variant dark {
     color-scheme: dark;
     --background: color-mix(in srgb, var(--ucsd-navy) 86%, var(--color-black));
+    --app-chrome-background: var(--background);
     --foreground: color-mix(in srgb, var(--color-white) 92%, var(--ucsd-sand));
     --card: color-mix(in srgb, var(--ucsd-navy) 88%, var(--color-black));
     --card-foreground: color-mix(in srgb, var(--color-white) 92%, var(--ucsd-sand));

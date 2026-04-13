@@ -5,6 +5,7 @@ import type {
   ServerProvider,
   ServerProviderAuth,
   ServerProviderModel,
+  ServerProviderSkill,
   ServerProviderState,
 } from "@t3tools/contracts";
 import { ServerSettingsError } from "@t3tools/contracts";
@@ -41,6 +42,7 @@ import {
   parseCodexCliVersion,
 } from "../codexCliVersion";
 import type { CodexAccountSnapshot } from "../codexAccount";
+import { probeCodexDiscovery } from "../codexAppServer";
 import {
   buildCodexCommandArgs,
   buildCodexCommandEnv,
@@ -49,6 +51,19 @@ import {
 import { CodexRemoteModelsError, fetchCodexRemoteModelIds } from "../codexRemoteModels";
 import { CodexProvider } from "../Services/CodexProvider";
 import { ServerSettingsService } from "../../serverSettings";
+
+const DEFAULT_CODEX_MODEL_CAPABILITIES: ModelCapabilities = {
+  reasoningEffortLevels: [
+    { value: "xhigh", label: "Extra High" },
+    { value: "high", label: "High", isDefault: true },
+    { value: "medium", label: "Medium" },
+    { value: "low", label: "Low" },
+  ],
+  supportsFastMode: true,
+  supportsThinkingToggle: false,
+  contextWindowOptions: [],
+  promptInjectedEffortLevels: [],
+};
 
 const PROVIDER = "codex" as const;
 const OPENAI_AUTH_PROVIDERS = new Set(["openai"]);
@@ -160,13 +175,8 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
 export function getCodexModelCapabilities(model: string | null | undefined): ModelCapabilities {
   const slug = model?.trim();
   return (
-    BUILT_IN_MODELS.find((candidate) => candidate.slug === slug)?.capabilities ?? {
-      reasoningEffortLevels: [],
-      supportsFastMode: false,
-      supportsThinkingToggle: false,
-      contextWindowOptions: [],
-      promptInjectedEffortLevels: [],
-    }
+    BUILT_IN_MODELS.find((candidate) => candidate.slug === slug)?.capabilities ??
+    DEFAULT_CODEX_MODEL_CAPABILITIES
   );
 }
 
@@ -191,7 +201,12 @@ function buildResolvedCodexModels(
     });
   }
 
-  return providerModelsFromSettings(discoveredModels, PROVIDER, customModels);
+  return providerModelsFromSettings(
+    discoveredModels,
+    PROVIDER,
+    customModels,
+    DEFAULT_CODEX_MODEL_CAPABILITIES,
+  );
 }
 
 export function parseAuthStatusFromOutput(result: CommandResult): {
@@ -316,7 +331,23 @@ export const hasCustomModelProvider = readCodexConfigModelProvider().pipe(
   Effect.orElseSucceed(() => false),
 );
 
+const CAPABILITIES_PROBE_TIMEOUT_MS = 8_000;
 const MODELS_PROBE_TIMEOUT_MS = 8_000;
+
+const probeCodexCapabilities = (input: {
+  readonly binaryPath: string;
+  readonly homePath?: string;
+  readonly lightllmApiKey?: string;
+  readonly cwd: string;
+}) =>
+  Effect.tryPromise((signal) => probeCodexDiscovery({ ...input, signal })).pipe(
+    Effect.timeoutOption(CAPABILITIES_PROBE_TIMEOUT_MS),
+    Effect.result,
+    Effect.map((result) => {
+      if (Result.isFailure(result)) return undefined;
+      return Option.isSome(result.success) ? result.success.value : undefined;
+    }),
+  );
 
 const probeCodexRemoteModels = (apiKey: string) =>
   Effect.tryPromise({
@@ -356,6 +387,12 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     readonly homePath?: string;
     readonly lightllmApiKey?: string;
   }) => Effect.Effect<CodexAccountSnapshot | undefined>,
+  resolveSkills?: (input: {
+    readonly binaryPath: string;
+    readonly homePath?: string;
+    readonly lightllmApiKey?: string;
+    readonly cwd: string;
+  }) => Effect.Effect<ReadonlyArray<ServerProviderSkill> | undefined>,
   resolveRemoteModels?: (
     apiKey: string,
   ) => Effect.Effect<ReadonlyArray<string>, CodexRemoteModelsError>,
@@ -373,6 +410,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     BUILT_IN_MODELS,
     PROVIDER,
     codexSettings.customModels,
+    DEFAULT_CODEX_MODEL_CAPABILITIES,
   );
 
   if (!codexSettings.enabled) {
@@ -513,6 +551,16 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     });
   }
 
+  const skills =
+    (resolveSkills
+      ? yield* resolveSkills({
+          binaryPath: codexSettings.binaryPath,
+          homePath: codexSettings.homePath,
+          lightllmApiKey: apiKey,
+          cwd: process.cwd(),
+        }).pipe(Effect.orElseSucceed(() => undefined))
+      : undefined) ?? [];
+
   const discoveredModelsResult = resolveRemoteModels
     ? yield* resolveRemoteModels(apiKey).pipe(Effect.result)
     : yield* probeCodexRemoteModels(apiKey).pipe(Effect.result);
@@ -530,6 +578,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
       enabled: codexSettings.enabled,
       checkedAt,
       models: fallbackModels,
+      skills,
       probe: {
         installed: true,
         version: parsedVersion,
@@ -555,6 +604,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     enabled: codexSettings.enabled,
     checkedAt,
     models: resolvedModels,
+    skills,
     probe: {
       installed: true,
       version: parsedVersion,
@@ -573,14 +623,45 @@ export const CodexProviderLive = Layer.effect(
   Effect.gen(function* () {
     const serverSettings = yield* ServerSettingsService;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const discoveryCache = yield* Cache.make({
+      capacity: 4,
+      timeToLive: Duration.minutes(5),
+      lookup: (key: string) => {
+        const [binaryPath, homePath, lightllmApiKey, cwd] = JSON.parse(key) as [
+          string,
+          string | undefined,
+          string | undefined,
+          string,
+        ];
+        return probeCodexCapabilities({
+          binaryPath,
+          cwd,
+          ...(homePath ? { homePath } : {}),
+          ...(lightllmApiKey ? { lightllmApiKey } : {}),
+        });
+      },
+    });
     const remoteModelsCache = yield* Cache.make({
       capacity: 4,
       timeToLive: Duration.minutes(5),
       lookup: (apiKey: string) => probeCodexRemoteModels(apiKey),
     });
 
-    const checkProvider = checkCodexProviderStatus(undefined, (apiKey) =>
-      Cache.get(remoteModelsCache, apiKey),
+    const getDiscovery = (input: {
+      readonly binaryPath: string;
+      readonly homePath?: string;
+      readonly lightllmApiKey?: string;
+      readonly cwd: string;
+    }) =>
+      Cache.get(
+        discoveryCache,
+        JSON.stringify([input.binaryPath, input.homePath, input.lightllmApiKey, input.cwd]),
+      );
+
+    const checkProvider = checkCodexProviderStatus(
+      undefined,
+      (input) => getDiscovery(input).pipe(Effect.map((discovery) => discovery?.skills)),
+      (apiKey) => Cache.get(remoteModelsCache, apiKey),
     ).pipe(
       Effect.provideService(ServerSettingsService, serverSettings),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),

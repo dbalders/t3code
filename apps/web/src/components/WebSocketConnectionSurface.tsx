@@ -5,7 +5,6 @@ import { APP_DISPLAY_NAME, APP_SERVER_NAME } from "../branding";
 import { type SlowRpcAckRequest, useSlowRpcAckRequests } from "../rpc/requestLatencyState";
 import { useServerConfig } from "../rpc/serverState";
 import {
-  exhaustWsReconnectIfStillWaiting,
   getWsConnectionStatus,
   getWsConnectionUiState,
   setBrowserOnlineStatus,
@@ -14,9 +13,9 @@ import {
   useWsConnectionStatus,
   WS_RECONNECT_MAX_ATTEMPTS,
 } from "../rpc/wsConnectionState";
+import { getPrimaryEnvironmentConnection } from "../environments/runtime";
 import { Button } from "./ui/button";
 import { toastManager } from "./ui/toast";
-import { getWsRpcClient } from "~/wsRpcClient";
 
 const FORCED_WS_RECONNECT_DEBOUNCE_MS = 5_000;
 type WsAutoReconnectTrigger = "focus" | "online";
@@ -58,11 +57,7 @@ function describeExhaustedToast(): string {
   return "Retries exhausted trying to reconnect";
 }
 
-function buildReconnectTitle(status: WsConnectionStatus): string {
-  if (status.nextRetryAt === null) {
-    return `Disconnected from ${APP_SERVER_NAME}`;
-  }
-
+function buildReconnectTitle(_status: WsConnectionStatus): string {
   return `Disconnected from ${APP_SERVER_NAME}`;
 }
 
@@ -110,6 +105,18 @@ export function shouldAutoReconnect(
     status.online &&
     status.hasConnected &&
     (uiState === "reconnecting" || status.reconnectPhase === "exhausted")
+  );
+}
+
+export function shouldRestartStalledReconnect(
+  status: WsConnectionStatus,
+  expectedNextRetryAt: string,
+): boolean {
+  return (
+    status.reconnectPhase === "waiting" &&
+    status.nextRetryAt === expectedNextRetryAt &&
+    status.online &&
+    status.hasConnected
   );
 }
 
@@ -277,9 +284,9 @@ export function WebSocketConnectionCoordinator() {
       toastResetTimerRef.current = null;
     }
     lastForcedReconnectAtRef.current = Date.now();
-    void getWsRpcClient()
+    void getPrimaryEnvironmentConnection()
       .reconnect()
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (!showFailureToast) {
           console.warn("Automatic WebSocket reconnect failed", { error });
           return;
@@ -362,7 +369,12 @@ export function WebSocketConnectionCoordinator() {
     const nextRetryAt = status.nextRetryAt;
     const timeoutMs = Math.max(0, new Date(nextRetryAt).getTime() - Date.now()) + 1_500;
     const timeoutId = window.setTimeout(() => {
-      exhaustWsReconnectIfStillWaiting(nextRetryAt);
+      const currentStatus = getWsConnectionStatus();
+      if (!shouldRestartStalledReconnect(currentStatus, nextRetryAt)) {
+        return;
+      }
+
+      runReconnect(false);
     }, timeoutMs);
 
     return () => {
