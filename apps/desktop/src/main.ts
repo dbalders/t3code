@@ -16,7 +16,6 @@ import {
   shell,
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
-import * as Effect from "effect/Effect";
 import type {
   DesktopTheme,
   DesktopUpdateActionResult,
@@ -26,9 +25,9 @@ import type {
 import { autoUpdater } from "electron-updater";
 
 import type { ContextMenuItem } from "@t3tools/contracts";
-import { NetService } from "@t3tools/shared/Net";
 import { RotatingFileSink } from "@t3tools/shared/logging";
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
+import { DEFAULT_DESKTOP_BACKEND_PORT, resolveDesktopBackendPort } from "./backendPort";
 import { showDesktopConfirmDialog } from "./confirmDialog";
 import { syncShellEnvironment } from "./syncShellEnvironment";
 import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState";
@@ -59,6 +58,7 @@ const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
+const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = "desktop:get-local-environment-bootstrap";
 const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
@@ -84,6 +84,8 @@ const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const DESKTOP_UPDATE_CHANNEL = "latest";
 const DESKTOP_UPDATE_ALLOW_PRERELEASE = false;
+const DESKTOP_LOOPBACK_HOST = "127.0.0.1";
+const DESKTOP_REQUIRED_PORT_PROBE_HOSTS = ["0.0.0.0", "::"] as const;
 
 type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
 type LinuxDesktopNamedApp = Electron.App & {
@@ -94,6 +96,8 @@ let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess.ChildProcess | null = null;
 let backendPort = 0;
 let backendAuthToken = "";
+let backendBootstrapToken = "";
+let backendHttpUrl = "";
 let backendWsUrl = "";
 let restartAttempt = 0;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
@@ -140,6 +144,19 @@ function readPersistedBackendObservabilitySettings(): {
     console.warn("[desktop] failed to read persisted backend observability settings", error);
     return { otlpTracesUrl: undefined, otlpMetricsUrl: undefined };
   }
+}
+
+function resolveConfiguredDesktopBackendPort(rawPort: string | undefined): number | undefined {
+  if (!rawPort) {
+    return undefined;
+  }
+
+  const parsedPort = Number.parseInt(rawPort, 10);
+  if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65_535) {
+    return undefined;
+  }
+
+  return parsedPort;
 }
 
 function backendChildEnv(): NodeJS.ProcessEnv {
@@ -1043,6 +1060,7 @@ function startBackend(): void {
         noBrowser: true,
         port: backendPort,
         t3Home: BASE_DIR,
+        desktopBootstrapToken: backendBootstrapToken,
         authToken: backendAuthToken,
         ...(backendObservabilitySettings.otlpTracesUrl
           ? { otlpTracesUrl: backendObservabilitySettings.otlpTracesUrl }
@@ -1175,6 +1193,16 @@ async function stopBackendAndWaitForExit(timeoutMs = 5_000): Promise<void> {
 }
 
 function registerIpcHandlers(): void {
+  ipcMain.removeAllListeners(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL);
+  ipcMain.on(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL, (event) => {
+    event.returnValue = {
+      label: "Local environment",
+      httpBaseUrl: backendHttpUrl || null,
+      wsBaseUrl: backendWsUrl || null,
+      bootstrapToken: backendBootstrapToken || undefined,
+    } as const;
+  });
+
   ipcMain.removeAllListeners(GET_WS_URL_CHANNEL);
   ipcMain.on(GET_WS_URL_CHANNEL, (event) => {
     event.returnValue = backendWsUrl;
@@ -1438,16 +1466,31 @@ configureAppIdentity();
 
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap start");
-  backendPort = await Effect.service(NetService).pipe(
-    Effect.flatMap((net) => net.reserveLoopbackPort()),
-    Effect.provide(NetService.layer),
-    Effect.runPromise,
+  const configuredBackendPort = resolveConfiguredDesktopBackendPort(process.env.T3CODE_PORT);
+  if (isDevelopment && configuredBackendPort === undefined) {
+    throw new Error("T3CODE_PORT is required in desktop development.");
+  }
+
+  backendPort =
+    configuredBackendPort ??
+    (await resolveDesktopBackendPort({
+      host: DESKTOP_LOOPBACK_HOST,
+      startPort: DEFAULT_DESKTOP_BACKEND_PORT,
+      requiredHosts: DESKTOP_REQUIRED_PORT_PROBE_HOSTS,
+    }));
+  writeDesktopLogHeader(
+    configuredBackendPort === undefined
+      ? `selected backend port via sequential scan startPort=${DEFAULT_DESKTOP_BACKEND_PORT} port=${backendPort}`
+      : `using configured backend port port=${backendPort}`,
   );
-  writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`);
+  backendBootstrapToken = Crypto.randomBytes(24).toString("hex");
   backendAuthToken = Crypto.randomBytes(24).toString("hex");
-  const baseUrl = `ws://127.0.0.1:${backendPort}`;
-  backendWsUrl = `${baseUrl}/?token=${encodeURIComponent(backendAuthToken)}`;
-  writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`);
+  backendHttpUrl = `http://${DESKTOP_LOOPBACK_HOST}:${backendPort}`;
+  const baseWsUrl = `ws://${DESKTOP_LOOPBACK_HOST}:${backendPort}`;
+  backendWsUrl = `${baseWsUrl}/?token=${encodeURIComponent(backendAuthToken)}`;
+  writeDesktopLogHeader(
+    `bootstrap resolved local endpoints httpBaseUrl=${backendHttpUrl} wsBaseUrl=${baseWsUrl}`,
+  );
 
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");
