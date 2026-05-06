@@ -368,7 +368,7 @@ export class DesktopSshEnvironmentBridge {
   private async requestPasswordFromRenderer(input: SshPasswordRequest): Promise<string | null> {
     const window = this.options.getMainWindow();
     if (!window || window.isDestroyed()) {
-      throw new Error("T3 Code window is not available for SSH authentication.");
+      throw new Error("TritonGPT Code window is not available for SSH authentication.");
     }
 
     const request: DesktopSshPasswordPromptRequest = {
@@ -395,24 +395,24 @@ export class DesktopSshEnvironmentBridge {
 
       try {
         if (window.isDestroyed()) {
-          throw new Error("T3 Code window is not available for SSH authentication.");
+          throw new Error("TritonGPT Code window is not available for SSH authentication.");
         }
         window.webContents.send(SSH_PASSWORD_PROMPT_CHANNEL, request);
         if (window.isDestroyed()) {
-          throw new Error("T3 Code window is not available for SSH authentication.");
+          throw new Error("TritonGPT Code window is not available for SSH authentication.");
         }
         if (window.isMinimized()) {
           window.restore();
         }
         if (window.isDestroyed()) {
-          throw new Error("T3 Code window is not available for SSH authentication.");
+          throw new Error("TritonGPT Code window is not available for SSH authentication.");
         }
         window.focus();
       } catch (error) {
         rejectPrompt(
           error instanceof Error
             ? error
-            : new Error("T3 Code window is not available for SSH authentication."),
+            : new Error("TritonGPT Code window is not available for SSH authentication."),
         );
       }
     });

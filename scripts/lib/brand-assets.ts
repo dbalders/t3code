@@ -1,22 +1,22 @@
 export const BRAND_ASSET_PATHS = {
-  productionMacIconPng: "assets/prod/black-macos-1024.png",
-  productionLinuxIconPng: "assets/prod/black-universal-1024.png",
-  productionWindowsIconIco: "assets/prod/t3-black-windows.ico",
-  productionWebFaviconIco: "assets/prod/t3-black-web-favicon.ico",
-  productionWebFavicon16Png: "assets/prod/t3-black-web-favicon-16x16.png",
-  productionWebFavicon32Png: "assets/prod/t3-black-web-favicon-32x32.png",
-  productionWebAppleTouchIconPng: "assets/prod/t3-black-web-apple-touch-180.png",
+  productionMacIconPng: "assets/ucsd/tritongpt-code-icon-1024.png",
+  productionLinuxIconPng: "assets/ucsd/tritongpt-code-icon-1024.png",
+  productionWindowsIconIco: "assets/ucsd/tritongpt-code-windows.ico",
+  productionWebFaviconIco: "assets/ucsd/tritongpt-code-web-favicon.ico",
+  productionWebFavicon16Png: "assets/ucsd/tritongpt-code-favicon-16x16.png",
+  productionWebFavicon32Png: "assets/ucsd/tritongpt-code-favicon-32x32.png",
+  productionWebAppleTouchIconPng: "assets/ucsd/tritongpt-code-apple-touch-180.png",
 
-  nightlyMacIconPng: "assets/nightly/blueprint-macos-1024.png",
-  nightlyLinuxIconPng: "assets/nightly/blueprint-universal-1024.png",
-  nightlyWindowsIconIco: "assets/nightly/blueprint-windows.ico",
+  nightlyMacIconPng: "assets/ucsd/tritongpt-code-icon-1024.png",
+  nightlyLinuxIconPng: "assets/ucsd/tritongpt-code-icon-1024.png",
+  nightlyWindowsIconIco: "assets/ucsd/tritongpt-code-windows.ico",
 
-  developmentDesktopIconPng: "assets/dev/blueprint-macos-1024.png",
-  developmentWindowsIconIco: "assets/dev/blueprint-windows.ico",
-  developmentWebFaviconIco: "assets/dev/blueprint-web-favicon.ico",
-  developmentWebFavicon16Png: "assets/dev/blueprint-web-favicon-16x16.png",
-  developmentWebFavicon32Png: "assets/dev/blueprint-web-favicon-32x32.png",
-  developmentWebAppleTouchIconPng: "assets/dev/blueprint-web-apple-touch-180.png",
+  developmentDesktopIconPng: "assets/ucsd/tritongpt-code-icon-1024.png",
+  developmentWindowsIconIco: "assets/ucsd/tritongpt-code-windows.ico",
+  developmentWebFaviconIco: "assets/ucsd/tritongpt-code-web-favicon.ico",
+  developmentWebFavicon16Png: "assets/ucsd/tritongpt-code-favicon-16x16.png",
+  developmentWebFavicon32Png: "assets/ucsd/tritongpt-code-favicon-32x32.png",
+  developmentWebAppleTouchIconPng: "assets/ucsd/tritongpt-code-apple-touch-180.png",
 } as const;
 
 export type WebAssetBrand = "development" | "production";

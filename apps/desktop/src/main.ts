@@ -871,7 +871,7 @@ function handleFatalStartupError(stage: string, error: unknown): void {
   console.error(`[desktop] fatal startup error (${stage})`, error);
   if (!isQuitting) {
     isQuitting = true;
-    dialog.showErrorBox("T3 Code failed to start", `Stage: ${stage}\n${message}${detail}`);
+    dialog.showErrorBox("TritonGPT Code failed to start", `Stage: ${stage}\n${message}${detail}`);
   }
   stopBackend();
   restoreStdIoCapture?.();
@@ -976,7 +976,7 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     void dialog.showMessageBox({
       type: "info",
       title: "You're up to date!",
-      message: `T3 Code ${updateState.currentVersion} is currently the newest version available.`,
+      message: `TritonGPT Code ${updateState.currentVersion} is currently the newest version available.`,
       buttons: ["OK"],
     });
   } else if (updateState.status === "error") {
@@ -1090,8 +1090,8 @@ function resolveIconPath(ext: "ico" | "icns" | "png"): string | null {
     const developmentDockIconPath = Path.join(
       ROOT_DIR,
       "assets",
-      "dev",
-      "blueprint-macos-1024.png",
+      "ucsd",
+      "tritongpt-code-icon-1024.png",
     );
     if (FS.existsSync(developmentDockIconPath)) {
       return developmentDockIconPath;
@@ -1106,11 +1106,11 @@ function resolveIconPath(ext: "ico" | "icns" | "png"): string | null {
  *
  * Electron derives the default userData path from `productName` in
  * package.json, which currently produces directories with spaces and
- * parentheses (e.g. `~/.config/T3 Code (Alpha)` on Linux). This is
+ * parentheses (e.g. `~/.config/TritonGPT Code (Alpha)` on Linux). This is
  * unfriendly for shell usage and violates Linux naming conventions.
  *
- * We override it to a clean lowercase name (`t3code`). If the legacy
- * directory already exists we keep using it so existing users don't
+ * We override it to a clean lowercase name (`t3code`). If the old upstream
+ * legacy directory already exists we keep using it so existing users don't
  * lose their Chromium profile data (localStorage, cookies, sessions).
  */
 function resolveUserDataPath(): string {
