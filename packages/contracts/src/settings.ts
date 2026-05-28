@@ -353,7 +353,7 @@ export const ServerSettings = Schema.Struct({
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
-        instanceId: ProviderInstanceId.make("codex"),
+        instanceId: ProviderInstanceId.make("opencode"),
         model: DEFAULT_GIT_TEXT_GENERATION_MODEL,
       }),
     ),

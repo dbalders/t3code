@@ -25,7 +25,7 @@ import { sortModelsForProviderInstance } from "./modelOrdering";
 
 const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
-const DEFAULT_TEXT_GENERATION_INSTANCE_ID = ProviderInstanceId.make("codex");
+const DEFAULT_TEXT_GENERATION_INSTANCE_ID = ProviderInstanceId.make("opencode");
 
 /**
  * Resolve the custom-model list for a given instance, preferring the
@@ -115,7 +115,7 @@ function applyInstanceModelPreferences(
 export function normalizeCustomModelSlugs(
   models: Iterable<string | null | undefined>,
   builtInModelSlugs: ReadonlySet<string>,
-  provider: ProviderDriverKind = ProviderDriverKind.make("codex"),
+  provider: ProviderDriverKind = ProviderDriverKind.make("opencode"),
 ): string[] {
   const normalizedModels: string[] = [];
   const seen = new Set<string>();

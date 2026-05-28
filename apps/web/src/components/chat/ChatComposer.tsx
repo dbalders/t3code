@@ -611,7 +611,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       providerInstanceEntries,
       providerStatuses,
       explicitSelectedInstanceId,
-    ) ?? ProviderDriverKind.make("codex");
+    ) ?? ProviderDriverKind.make("opencode");
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
   const lockedContinuationGroupKey = useMemo((): string | null => {
     if (!lockedProvider || !activeThread) return null;
@@ -680,7 +680,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       providerInstanceEntries[0]?.instanceId ??
       activeThreadModelSelection?.instanceId ??
       activeProjectDefaultModelSelection?.instanceId ??
-      ProviderInstanceId.make("codex")
+      ProviderInstanceId.make("opencode")
     );
   }, [
     activeProjectDefaultModelSelection?.instanceId,

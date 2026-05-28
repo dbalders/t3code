@@ -723,7 +723,7 @@ function normalizeModelSelection(
   // into a driver kind here; they get generic default normalization.
   const driverKindHint =
     normalizeProviderDriverKind(candidate?.provider ?? legacy?.provider) ??
-    ProviderDriverKind.make("codex");
+    ProviderDriverKind.make("opencode");
   const model = normalizeModelSlug(rawModel, driverKindHint);
   if (!model) {
     return null;
