@@ -45,13 +45,19 @@ async function main() {
   const brandSha = gitStdout(["rev-parse", brandRef]);
 
   if (isAncestor(upstreamSha, brandSha)) {
-    console.log(JSON.stringify({
-      status: "already-current",
-      upstreamRef,
-      upstreamSha,
-      brandRef,
-      brandSha,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          status: "already-current",
+          upstreamRef,
+          upstreamSha,
+          brandRef,
+          brandSha,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 
@@ -73,7 +79,9 @@ async function main() {
       const conflicts = gitStdout(["diff", "--name-only", "--diff-filter=U"], {
         cwd: worktree,
         allowFailure: true,
-      }).split("\n").filter(Boolean);
+      })
+        .split("\n")
+        .filter(Boolean);
       const status = gitStdout(["status", "--short"], { cwd: worktree, allowFailure: true });
 
       if (config.reviewMode === "agent" && config.agentCanEdit) {
@@ -94,7 +102,9 @@ async function main() {
         const remainingConflicts = gitStdout(["diff", "--name-only", "--diff-filter=U"], {
           cwd: worktree,
           allowFailure: true,
-        }).split("\n").filter(Boolean);
+        })
+          .split("\n")
+          .filter(Boolean);
 
         if (remainingConflicts.length === 0) {
           runGit(["add", "-A"], { cwd: worktree });
@@ -123,7 +133,11 @@ async function main() {
                 mergedSha = gitStdout(["rev-parse", "HEAD"], { cwd: worktree });
                 changeSummary = collectChangeSummary({ worktree, upstreamRef, brandRef });
                 checkResult = options.skipChecks
-                  ? { ok: true, skipped: true, output: "Checks skipped by --skip-checks after agent edits." }
+                  ? {
+                      ok: true,
+                      skipped: true,
+                      output: "Checks skipped by --skip-checks after agent edits.",
+                    }
                   : runChecks(worktree);
               }
               review.agentChange = agentChange;
@@ -193,7 +207,11 @@ async function main() {
         mergedSha = gitStdout(["rev-parse", "HEAD"], { cwd: worktree });
         changeSummary = collectChangeSummary({ worktree, upstreamRef, brandRef });
         checkResult = options.skipChecks
-          ? { ok: true, skipped: true, output: "Checks skipped by --skip-checks after agent edits." }
+          ? {
+              ok: true,
+              skipped: true,
+              output: "Checks skipped by --skip-checks after agent edits.",
+            }
           : runChecks(worktree);
       }
       review.agentChange = agentChange;
@@ -260,15 +278,17 @@ function ensureRemote(remote) {
 }
 
 function resolveBrandRef() {
-  const localExists = spawnGit(["rev-parse", "--verify", "--quiet", config.brandBranch], {
-    allowFailure: true,
-  }).status === 0;
+  const localExists =
+    spawnGit(["rev-parse", "--verify", "--quiet", config.brandBranch], {
+      allowFailure: true,
+    }).status === 0;
   if (localExists) return config.brandBranch;
 
   const remoteRef = `${config.originRemote}/${config.brandBranch}`;
-  const remoteExists = spawnGit(["rev-parse", "--verify", "--quiet", remoteRef], {
-    allowFailure: true,
-  }).status === 0;
+  const remoteExists =
+    spawnGit(["rev-parse", "--verify", "--quiet", remoteRef], {
+      allowFailure: true,
+    }).status === 0;
   if (remoteExists) return remoteRef;
 
   throw new Error(`Could not resolve branded branch '${config.brandBranch}'.`);
@@ -282,17 +302,22 @@ function updateLocalMirror(upstreamRef) {
 }
 
 function isAncestor(ancestor, descendant) {
-  return spawnGit(["merge-base", "--is-ancestor", ancestor, descendant], {
-    allowFailure: true,
-  }).status === 0;
+  return (
+    spawnGit(["merge-base", "--is-ancestor", ancestor, descendant], {
+      allowFailure: true,
+    }).status === 0
+  );
 }
 
 function collectChangeSummary({ worktree, upstreamRef, brandRef }) {
   return {
-    upstreamCommits: gitStdout(["log", "--oneline", "--decorate", "--max-count=80", `${brandRef}..${upstreamRef}`], {
-      cwd: worktree,
-      allowFailure: true,
-    }),
+    upstreamCommits: gitStdout(
+      ["log", "--oneline", "--decorate", "--max-count=80", `${brandRef}..${upstreamRef}`],
+      {
+        cwd: worktree,
+        allowFailure: true,
+      },
+    ),
     mergedDiffStat: gitStdout(["diff", "--stat", `${brandRef}..HEAD`], {
       cwd: worktree,
       allowFailure: true,
@@ -371,7 +396,9 @@ async function reviewWithAgent({ phase, worktree, context }) {
     const parsed = parseJsonObject(rawResponse);
     return {
       autoMerge: parsed.auto_merge === true || parsed.autoMerge === true,
-      reason: String(parsed.reason || (result.status === 0 ? "agent-review" : "agent-command-failed")),
+      reason: String(
+        parsed.reason || (result.status === 0 ? "agent-review" : "agent-command-failed"),
+      ),
       summary: String(parsed.summary || ""),
       risks: Array.isArray(parsed.risks) ? parsed.risks.map(String) : [],
       reviewer: "agent",
@@ -408,12 +435,16 @@ function buildAgentPrompt({ phase, context }) {
     "- Return strict JSON at the end, preferably by writing it to T3_SYNC_AGENT_RESPONSE_FILE.",
     "",
     "Required JSON shape:",
-    JSON.stringify({
-      auto_merge: false,
-      reason: "short-machine-readable-reason",
-      summary: "human summary",
-      risks: ["risk or follow-up"],
-    }, null, 2),
+    JSON.stringify(
+      {
+        auto_merge: false,
+        reason: "short-machine-readable-reason",
+        summary: "human summary",
+        risks: ["risk or follow-up"],
+      },
+      null,
+      2,
+    ),
     "",
     "Context:",
     "```json",
@@ -456,20 +487,27 @@ async function reviewWithLiteLlm(context) {
       },
       {
         role: "user",
-        content: truncate(JSON.stringify({
-          upstreamRef: context.upstreamRef,
-          upstreamSha: context.upstreamSha,
-          brandRef: context.brandRef,
-          brandSha: context.brandSha,
-          mergedSha: context.mergedSha,
-          checks: {
-            ok: context.checkResult.ok,
-            skipped: context.checkResult.skipped,
-            command: context.checkResult.command,
-            output: context.checkResult.output,
-          },
-          changeSummary: context.changeSummary,
-        }, null, 2), 60000),
+        content: truncate(
+          JSON.stringify(
+            {
+              upstreamRef: context.upstreamRef,
+              upstreamSha: context.upstreamSha,
+              brandRef: context.brandRef,
+              brandSha: context.brandSha,
+              mergedSha: context.mergedSha,
+              checks: {
+                ok: context.checkResult.ok,
+                skipped: context.checkResult.skipped,
+                command: context.checkResult.command,
+                output: context.checkResult.output,
+              },
+              changeSummary: context.changeSummary,
+            },
+            null,
+            2,
+          ),
+          60000,
+        ),
       },
     ],
   };
@@ -477,7 +515,7 @@ async function reviewWithLiteLlm(context) {
   const response = await fetch(`${config.liteLlmBaseUrl}/v1/chat/completions`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${config.liteLlmApiKey}`,
+      Authorization: `Bearer ${config.liteLlmApiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -506,7 +544,11 @@ async function reviewWithLiteLlm(context) {
 
 function parseJsonObject(content) {
   if (typeof content !== "string") return {};
-  const trimmed = content.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+  const trimmed = content
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
   try {
     return JSON.parse(trimmed);
   } catch {
@@ -529,7 +571,9 @@ function commitAgentChangesIfNeeded(cwd) {
   const conflicts = gitStdout(["diff", "--name-only", "--diff-filter=U"], {
     cwd,
     allowFailure: true,
-  }).split("\n").filter(Boolean);
+  })
+    .split("\n")
+    .filter(Boolean);
   if (conflicts.length > 0) {
     return { committed: false, reason: "unresolved-conflicts", conflicts, status };
   }
@@ -601,7 +645,9 @@ function handlePublishOptions({ worktree, syncBranch, reportPath, report, canAut
       return;
     }
 
-    runGit(["push", config.originRemote, `HEAD:refs/heads/${config.brandBranch}`], { cwd: worktree });
+    runGit(["push", config.originRemote, `HEAD:refs/heads/${config.brandBranch}`], {
+      cwd: worktree,
+    });
     console.log(`Updated ${config.originRemote}/${config.brandBranch}.`);
   }
 }
@@ -614,22 +660,26 @@ function createPullRequest({ cwd, syncBranch, reportPath, report }) {
   }
 
   const title = `Sync upstream T3 Code into TritonGPT (${report.upstreamSha.slice(0, 12)})`;
-  const result = spawnSync("gh", [
-    "pr",
-    "create",
-    "--base",
-    config.brandBranch,
-    "--head",
-    syncBranch,
-    "--title",
-    title,
-    "--body-file",
-    reportPath,
-  ], {
-    cwd,
-    encoding: "utf8",
-    stdio: "inherit",
-  });
+  const result = spawnSync(
+    "gh",
+    [
+      "pr",
+      "create",
+      "--base",
+      config.brandBranch,
+      "--head",
+      syncBranch,
+      "--title",
+      title,
+      "--body-file",
+      reportPath,
+    ],
+    {
+      cwd,
+      encoding: "utf8",
+      stdio: "inherit",
+    },
+  );
 
   if (result.status !== 0) {
     throw new Error("gh pr create failed.");
