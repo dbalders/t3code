@@ -60,7 +60,7 @@ jobs:
           T3_SYNC_LITELLM_MODEL: ${{ secrets.T3_SYNC_LITELLM_MODEL }}
           T3_SYNC_REVIEW_MODE: ${{ vars.T3_SYNC_REVIEW_MODE || 'agent' }}
           T3_SYNC_AGENT_COMMAND: ${{ secrets.T3_SYNC_AGENT_COMMAND }}
-          T3_SYNC_AGENT_CAN_EDIT: ${{ vars.T3_SYNC_AGENT_CAN_EDIT || '0' }}
+          T3_SYNC_AGENT_CAN_EDIT: ${{ vars.T3_SYNC_AGENT_CAN_EDIT || '1' }}
           T3_SYNC_BRAND_BRANCH: ${{ inputs.brand_branch }}
         run: |
           args=(--push)

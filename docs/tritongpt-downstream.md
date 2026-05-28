@@ -44,6 +44,17 @@ Open a PR when the merge is clean enough to review:
 bun run tritongpt:sync:pr
 ```
 
+Preferred DSMLP mode uses OpenCode as the repair/review agent:
+
+```sh
+export OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
+export T3_SYNC_REVIEW_MODE="agent"
+export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
+export T3_SYNC_AGENT_CAN_EDIT="1"
+```
+
+In this mode OpenCode may fix conflicts or failed checks inside the temporary sync worktree. The script still owns pushing the generated `sync/upstream-*` branch and opening the PR, and it does not merge `tritongpt` unless `--auto-merge` is explicitly added.
+
 The script exits with:
 
 - `0`: already current or auto-merge-ready.
@@ -158,6 +169,10 @@ cat > ~/.tritongpt-sync.env <<'EOF'
 export LITELLM_BASE_URL="https://your-litellm.example.edu"
 export LITELLM_API_KEY="replace-me"
 export T3_SYNC_LITELLM_MODEL="api-gemma-4-26b"
+export OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
+export T3_SYNC_REVIEW_MODE="agent"
+export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
+export T3_SYNC_AGENT_CAN_EDIT="1"
 export T3_SYNC_BRAND_BRANCH="tritongpt"
 export T3_SYNC_CHECKS="bun run lint && bun run typecheck && bun run test && bun run release:smoke"
 EOF

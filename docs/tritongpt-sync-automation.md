@@ -53,7 +53,7 @@ cd ~/tritonai-code-server/t3code
 bun run tritongpt:sync:review
 ```
 
-For runs that should push a sync branch and open a PR:
+For runs that should let the agent repair the temporary merge, push a sync branch, and open a PR:
 
 ```sh
 source ~/.tritongpt-sync.env
@@ -67,7 +67,7 @@ Example cron entry:
 17 */6 * * * bash -lc 'source ~/.tritongpt-sync.env && cd ~/tritonai-code-server/t3code && git fetch --all --prune && bun run tritongpt:sync:pr >> ~/logs/tritongpt-sync-cron.log 2>&1'
 ```
 
-Do not enable the cron job until one manual `tritongpt:sync:review` and one manual `tritongpt:sync:pr` have produced the expected result.
+Do not enable the cron job until one manual synthetic agent test and one manual `tritongpt:sync:pr` have produced the expected result. Do not add `--auto-merge` to the cron job; the intended control point is your GitHub PR approval.
 
 ## Agent Review Mode
 
@@ -76,12 +76,15 @@ Preferred mode is agent review. The script owns the git mechanics and the agent 
 Recommended DSMLP env shape:
 
 ```sh
+export OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
 export T3_SYNC_REVIEW_MODE="agent"
-export T3_SYNC_AGENT_COMMAND='opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
-export T3_SYNC_AGENT_CAN_EDIT="0"
+export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
+export T3_SYNC_AGENT_CAN_EDIT="1"
 ```
 
-Set `T3_SYNC_AGENT_CAN_EDIT=1` only after manual test runs are behaving correctly. With edit mode enabled, the agent may resolve merge conflicts or fix check failures inside the temporary worktree. The script then commits those agent changes onto the generated `sync/upstream-*` branch, reruns checks, and still refuses auto-merge unless checks pass and the agent returns `auto_merge: true`.
+With edit mode enabled, the agent may resolve merge conflicts or fix check failures inside the temporary worktree. The script then commits those agent changes onto the generated `sync/upstream-*` branch, reruns checks, pushes the branch, and opens a PR when `tritongpt:sync:pr` is used.
+
+The agent still does not push, create PRs, or merge `tritongpt`. The script owns publishing, and you approve the PR before anything lands in the controlled branch.
 
 The agent command receives these environment variables:
 
@@ -123,6 +126,8 @@ The script refuses or stops when:
 - The reviewer says the merge is risky.
 
 Even in agent mode, review does not replace checks. Agent edits are only useful if the final worktree passes the configured check command.
+
+For the preferred DSMLP flow, do not use `--auto-merge`. Let DSMLP create a PR and keep the final merge into `tritongpt` as a manual approval step.
 
 ## Branch Flow
 

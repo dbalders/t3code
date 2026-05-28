@@ -62,9 +62,10 @@ if [[ ! -f "$env_file" ]]; then
 export LITELLM_BASE_URL="https://your-litellm.example.edu"
 export LITELLM_API_KEY="replace-me"
 export T3_SYNC_LITELLM_MODEL="api-gemma-4-26b"
+export OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
 export T3_SYNC_REVIEW_MODE="agent"
-export T3_SYNC_AGENT_COMMAND='opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
-export T3_SYNC_AGENT_CAN_EDIT="0"
+export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
+export T3_SYNC_AGENT_CAN_EDIT="1"
 export T3_SYNC_BRAND_BRANCH="tritongpt"
 export T3_SYNC_CHECKS="bun run lint && bun run typecheck && bun run test && bun run release:smoke"
 ENVEOF
@@ -77,6 +78,16 @@ bun install --frozen-lockfile
 echo
 echo "Running dry sync check..."
 bun run tritongpt:sync:check
+
+if command -v gh >/dev/null 2>&1; then
+  if ! gh auth status >/dev/null 2>&1; then
+    echo
+    echo "GitHub CLI is installed but not authenticated. Run 'gh auth login' before using tritongpt:sync:pr."
+  fi
+else
+  echo
+  echo "GitHub CLI is not installed. Install and authenticate 'gh' before using tritongpt:sync:pr."
+fi
 
 cat <<EOF
 
