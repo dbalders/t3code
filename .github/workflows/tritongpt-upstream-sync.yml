@@ -1,0 +1,73 @@
+name: TritonGPT Upstream Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand_branch:
+        description: "Downstream branded branch to merge into"
+        required: true
+        default: tritongpt
+        type: string
+      create_pr:
+        description: "Push sync branch and open a PR"
+        required: true
+        default: true
+        type: boolean
+      skip_checks:
+        description: "Skip local quality checks"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Merge upstream into TritonGPT branch
+    runs-on: self-hosted
+    timeout-minutes: 60
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup upstream remote
+        run: |
+          git remote add upstream https://github.com/pingdotgg/t3code.git 2>/dev/null || true
+          git remote set-url upstream https://github.com/pingdotgg/t3code.git
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Sync and review upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LITELLM_BASE_URL: ${{ secrets.LITELLM_BASE_URL }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+          T3_SYNC_LITELLM_MODEL: ${{ secrets.T3_SYNC_LITELLM_MODEL }}
+          T3_SYNC_BRAND_BRANCH: ${{ inputs.brand_branch }}
+        run: |
+          args=(--push)
+
+          if [[ "${{ inputs.create_pr }}" == "true" ]]; then
+            args+=(--create-pr)
+          fi
+
+          if [[ "${{ inputs.skip_checks }}" == "true" ]]; then
+            args+=(--skip-checks)
+          fi
+
+          node scripts/tritongpt-sync-upstream.mjs "${args[@]}"
