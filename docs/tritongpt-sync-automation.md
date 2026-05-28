@@ -17,7 +17,7 @@ There are two scripts:
 
 The bootstrap script is for setup or repair. Run it manually inside the DSMLP checkout. It installs dependencies, configures remotes, creates/updates the local `tritongpt` target branch, writes a private LiteLLM env template, and runs a dry sync check.
 
-The sync script is the real automation target. It fetches `upstream/main`, compares it with `tritongpt`, attempts a merge in a temporary worktree, runs checks, and optionally asks LiteLLM whether the merge is safe.
+The sync script is the real automation target. It fetches `upstream/main`, compares it with `tritongpt`, attempts a merge in a temporary worktree, runs checks, and delegates review to either LiteLLM directly or an external coding agent command.
 
 Package scripts wrap the sync script:
 
@@ -69,18 +69,60 @@ Example cron entry:
 
 Do not enable the cron job until one manual `tritongpt:sync:review` and one manual `tritongpt:sync:pr` have produced the expected result.
 
-## LiteLLM Role
+## Agent Review Mode
 
-LiteLLM is only the review layer. It does not replace hard gates.
+Preferred mode is agent review. The script owns the git mechanics and the agent works inside the temporary sync worktree.
+
+Recommended DSMLP env shape:
+
+```sh
+export T3_SYNC_REVIEW_MODE="agent"
+export T3_SYNC_AGENT_COMMAND='opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
+export T3_SYNC_AGENT_CAN_EDIT="0"
+```
+
+Set `T3_SYNC_AGENT_CAN_EDIT=1` only after manual test runs are behaving correctly. With edit mode enabled, the agent may resolve merge conflicts or fix check failures inside the temporary worktree. The script then commits those agent changes onto the generated `sync/upstream-*` branch, reruns checks, and still refuses auto-merge unless checks pass and the agent returns `auto_merge: true`.
+
+The agent command receives these environment variables:
+
+- `T3_SYNC_AGENT_PHASE`: `merge-review` or `conflict-resolution`
+- `T3_SYNC_AGENT_PROMPT_FILE`: prompt and context file
+- `T3_SYNC_AGENT_RESPONSE_FILE`: where the agent should write final JSON
+- `T3_SYNC_AGENT_CAN_EDIT`: `0` or `1`
+
+The final response must be JSON:
+
+```json
+{
+  "auto_merge": false,
+  "reason": "short reason",
+  "summary": "what happened",
+  "risks": ["risk or follow-up"]
+}
+```
+
+## LiteLLM Direct Mode
+
+LiteLLM direct mode is still available for simple classification:
+
+```sh
+export T3_SYNC_REVIEW_MODE="litellm"
+export LITELLM_BASE_URL="https://your-litellm-base"
+export LITELLM_API_KEY="..."
+```
+
+This mode sends the merge/check summary directly to `/v1/chat/completions`. It does not let a coding agent edit files.
+
+## Hard Gates
 
 The script refuses or stops when:
 
 - Git has merge conflicts.
 - Checks fail.
-- LiteLLM is not configured.
-- LiteLLM says the merge is risky.
+- Review is not configured.
+- The reviewer says the merge is risky.
 
-LiteLLM receives a structured summary of commits, diffs, check output, and merge status. It returns JSON saying whether the merge is safe enough to proceed or needs human review.
+Even in agent mode, review does not replace checks. Agent edits are only useful if the final worktree passes the configured check command.
 
 ## Branch Flow
 

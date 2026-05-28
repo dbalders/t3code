@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -21,6 +21,10 @@ const config = {
   liteLlmBaseUrl: trimTrailingSlash(env("LITELLM_BASE_URL", "")),
   liteLlmApiKey: env("LITELLM_API_KEY", ""),
   liteLlmModel: env("T3_SYNC_LITELLM_MODEL", env("LITELLM_MODEL", "api-gemma-4-26b")),
+  reviewMode: env("T3_SYNC_REVIEW_MODE", env("T3_SYNC_AGENT_COMMAND", "") ? "agent" : "litellm"),
+  agentCommand: env("T3_SYNC_AGENT_COMMAND", ""),
+  agentCanEdit: env("T3_SYNC_AGENT_CAN_EDIT", "0") === "1",
+  agentTimeoutMs: Number(env("T3_SYNC_AGENT_TIMEOUT_MS", "1800000")),
 };
 
 main().catch((error) => {
@@ -71,6 +75,83 @@ async function main() {
         allowFailure: true,
       }).split("\n").filter(Boolean);
       const status = gitStdout(["status", "--short"], { cwd: worktree, allowFailure: true });
+
+      if (config.reviewMode === "agent" && config.agentCanEdit) {
+        const conflictReview = await reviewWithAgent({
+          phase: "conflict-resolution",
+          worktree,
+          context: {
+            upstreamRef,
+            upstreamSha,
+            brandRef,
+            brandSha,
+            conflicts,
+            gitStatus: status,
+            mergeOutput: truncate(`${merge.stdout || ""}\n${merge.stderr || ""}`, 20000),
+          },
+        });
+
+        const remainingConflicts = gitStdout(["diff", "--name-only", "--diff-filter=U"], {
+          cwd: worktree,
+          allowFailure: true,
+        }).split("\n").filter(Boolean);
+
+        if (remainingConflicts.length === 0) {
+          runGit(["add", "-A"], { cwd: worktree });
+          const commit = spawnGit(["commit", "--no-edit"], { cwd: worktree, allowFailure: true });
+          if (commit.status === 0) {
+            let mergedSha = gitStdout(["rev-parse", "HEAD"], { cwd: worktree });
+            let changeSummary = collectChangeSummary({ worktree, upstreamRef, brandRef });
+            let checkResult = options.skipChecks
+              ? { ok: true, skipped: true, output: "Checks skipped by --skip-checks." }
+              : runChecks(worktree);
+            const review = await reviewMerge({
+              worktree,
+              changeSummary,
+              checkResult,
+              upstreamRef,
+              upstreamSha,
+              brandRef,
+              brandSha,
+              mergedSha,
+              priorAgentReview: conflictReview,
+            });
+
+            if (config.agentCanEdit) {
+              const agentChange = commitAgentChangesIfNeeded(worktree);
+              if (agentChange.committed) {
+                mergedSha = gitStdout(["rev-parse", "HEAD"], { cwd: worktree });
+                changeSummary = collectChangeSummary({ worktree, upstreamRef, brandRef });
+                checkResult = options.skipChecks
+                  ? { ok: true, skipped: true, output: "Checks skipped by --skip-checks after agent edits." }
+                  : runChecks(worktree);
+              }
+              review.agentChange = agentChange;
+            }
+
+            const canAutoMerge = checkResult.ok && review.autoMerge === true;
+            const report = buildReport({
+              canAutoMerge,
+              reason: canAutoMerge ? "agent-resolved-conflict-checks-and-review" : review.reason,
+              syncBranch,
+              upstreamRef,
+              upstreamSha,
+              brandRef,
+              brandSha,
+              mergedSha,
+              checkResult,
+              review,
+              changeSummary,
+            });
+            writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+            console.log(JSON.stringify(report, null, 2));
+            handlePublishOptions({ worktree, syncBranch, reportPath, report, canAutoMerge });
+            if (!canAutoMerge) process.exitCode = 2;
+            return;
+          }
+        }
+      }
+
       spawnGit(["merge", "--abort"], { cwd: worktree, allowFailure: true });
 
       const report = {
@@ -90,12 +171,13 @@ async function main() {
       return;
     }
 
-    const mergedSha = gitStdout(["rev-parse", "HEAD"], { cwd: worktree });
-    const changeSummary = collectChangeSummary({ worktree, upstreamRef, brandRef });
-    const checkResult = options.skipChecks
+    let mergedSha = gitStdout(["rev-parse", "HEAD"], { cwd: worktree });
+    let changeSummary = collectChangeSummary({ worktree, upstreamRef, brandRef });
+    let checkResult = options.skipChecks
       ? { ok: true, skipped: true, output: "Checks skipped by --skip-checks." }
       : runChecks(worktree);
-    const review = await reviewWithLiteLlm({
+    const review = await reviewMerge({
+      worktree,
       changeSummary,
       checkResult,
       upstreamRef,
@@ -105,9 +187,21 @@ async function main() {
       mergedSha,
     });
 
+    if (config.reviewMode === "agent" && config.agentCanEdit) {
+      const agentChange = commitAgentChangesIfNeeded(worktree);
+      if (agentChange.committed) {
+        mergedSha = gitStdout(["rev-parse", "HEAD"], { cwd: worktree });
+        changeSummary = collectChangeSummary({ worktree, upstreamRef, brandRef });
+        checkResult = options.skipChecks
+          ? { ok: true, skipped: true, output: "Checks skipped by --skip-checks after agent edits." }
+          : runChecks(worktree);
+      }
+      review.agentChange = agentChange;
+    }
+
     const canAutoMerge = checkResult.ok && review.autoMerge === true;
-    const report = {
-      status: canAutoMerge ? "auto-merge-ready" : "needs-human-review",
+    const report = buildReport({
+      canAutoMerge,
       reason: canAutoMerge ? "clean-merge-checks-and-review" : review.reason,
       syncBranch,
       upstreamRef,
@@ -115,42 +209,15 @@ async function main() {
       brandRef,
       brandSha,
       mergedSha,
-      checks: {
-        ok: checkResult.ok,
-        skipped: checkResult.skipped === true,
-      },
+      checkResult,
       review,
       changeSummary,
-    };
+    });
 
     writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
     console.log(JSON.stringify(report, null, 2));
 
-    if (options.push) {
-      runGit(["push", config.originRemote, `${syncBranch}:${syncBranch}`], { cwd: worktree });
-      console.log(`Pushed ${syncBranch} to ${config.originRemote}.`);
-    }
-
-    if (options.createPr) {
-      createPullRequest({ cwd: worktree, syncBranch, reportPath, report });
-    }
-
-    if (options.autoMerge) {
-      if (!canAutoMerge) {
-        console.error("Refusing --auto-merge because the report is not auto-merge-ready.");
-        process.exitCode = 3;
-        return;
-      }
-
-      if (!options.push) {
-        console.error("Refusing --auto-merge without --push.");
-        process.exitCode = 3;
-        return;
-      }
-
-      runGit(["push", config.originRemote, `HEAD:refs/heads/${config.brandBranch}`], { cwd: worktree });
-      console.log(`Updated ${config.originRemote}/${config.brandBranch} to ${mergedSha}.`);
-    }
+    handlePublishOptions({ worktree, syncBranch, reportPath, report, canAutoMerge });
 
     if (!canAutoMerge) {
       process.exitCode = 2;
@@ -256,6 +323,101 @@ function runChecks(cwd) {
   };
 }
 
+async function reviewMerge(context) {
+  if (config.reviewMode === "agent") {
+    return reviewWithAgent({
+      phase: "merge-review",
+      worktree: context.worktree,
+      context,
+    });
+  }
+
+  return reviewWithLiteLlm(context);
+}
+
+async function reviewWithAgent({ phase, worktree, context }) {
+  if (!config.agentCommand) {
+    return {
+      autoMerge: false,
+      reason: "missing-agent-command",
+      summary: "Set T3_SYNC_AGENT_COMMAND to let an agent review or repair upstream sync work.",
+      risks: ["No agent command was configured."],
+    };
+  }
+
+  const agentScratchDir = mkdtempSync(join(tmpdir(), "tritongpt-agent-"));
+  const promptPath = join(agentScratchDir, `tritongpt-agent-${phase}.md`);
+  const responsePath = join(agentScratchDir, `tritongpt-agent-${phase}-response.json`);
+  writeFileSync(promptPath, buildAgentPrompt({ phase, context }), "utf8");
+
+  try {
+    const result = spawnSync("/bin/sh", ["-lc", config.agentCommand], {
+      cwd: worktree,
+      env: {
+        ...process.env,
+        T3_SYNC_AGENT_PHASE: phase,
+        T3_SYNC_AGENT_PROMPT_FILE: promptPath,
+        T3_SYNC_AGENT_RESPONSE_FILE: responsePath,
+        T3_SYNC_AGENT_CAN_EDIT: config.agentCanEdit ? "1" : "0",
+      },
+      encoding: "utf8",
+      timeout: config.agentTimeoutMs,
+      maxBuffer: 20 * 1024 * 1024,
+    });
+
+    const rawResponse = existsSync(responsePath)
+      ? readFileSync(responsePath, "utf8")
+      : `${result.stdout || ""}\n${result.stderr || ""}`;
+    const parsed = parseJsonObject(rawResponse);
+    return {
+      autoMerge: parsed.auto_merge === true || parsed.autoMerge === true,
+      reason: String(parsed.reason || (result.status === 0 ? "agent-review" : "agent-command-failed")),
+      summary: String(parsed.summary || ""),
+      risks: Array.isArray(parsed.risks) ? parsed.risks.map(String) : [],
+      reviewer: "agent",
+      phase,
+      command: config.agentCommand,
+      exitCode: result.status,
+      output: truncate(rawResponse, 20000),
+    };
+  } finally {
+    rmSync(agentScratchDir, { recursive: true, force: true });
+  }
+}
+
+function buildAgentPrompt({ phase, context }) {
+  return [
+    "# TritonGPT upstream sync agent task",
+    "",
+    `Phase: ${phase}`,
+    `Can edit worktree: ${config.agentCanEdit ? "yes" : "no"}`,
+    "",
+    "You are running inside a temporary git worktree for dbalders/t3code.",
+    "Goal: keep the TritonGPT downstream branch updated from upstream T3 Code while preserving downstream-owned branding and release-control changes.",
+    "",
+    "Rules:",
+    "- Do not push to remotes.",
+    "- Do not read or print secrets.",
+    "- Keep edits limited to resolving this upstream sync.",
+    "- If T3_SYNC_AGENT_CAN_EDIT is 0, do not edit files.",
+    "- If T3_SYNC_AGENT_CAN_EDIT is 1, you may edit files to resolve conflicts or fix checks.",
+    "- Return strict JSON at the end, preferably by writing it to T3_SYNC_AGENT_RESPONSE_FILE.",
+    "",
+    "Required JSON shape:",
+    JSON.stringify({
+      auto_merge: false,
+      reason: "short-machine-readable-reason",
+      summary: "human summary",
+      risks: ["risk or follow-up"],
+    }, null, 2),
+    "",
+    "Context:",
+    "```json",
+    truncate(JSON.stringify(context, null, 2), 60000),
+    "```",
+  ].join("\n");
+}
+
 async function reviewWithLiteLlm(context) {
   if (options.noLlm) {
     return {
@@ -344,7 +506,99 @@ function parseJsonObject(content) {
   try {
     return JSON.parse(trimmed);
   } catch {
-    return {};
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) return {};
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return {};
+    }
+  }
+}
+
+function commitAgentChangesIfNeeded(cwd) {
+  const status = gitStdout(["status", "--short"], { cwd, allowFailure: true });
+  if (!status) {
+    return { committed: false, reason: "no-agent-changes" };
+  }
+
+  const conflicts = gitStdout(["diff", "--name-only", "--diff-filter=U"], {
+    cwd,
+    allowFailure: true,
+  }).split("\n").filter(Boolean);
+  if (conflicts.length > 0) {
+    return { committed: false, reason: "unresolved-conflicts", conflicts, status };
+  }
+
+  runGit(["add", "-A"], { cwd });
+  const commit = spawnGit(["commit", "-m", "Apply agent fixes for upstream sync"], {
+    cwd,
+    allowFailure: true,
+  });
+  return {
+    committed: commit.status === 0,
+    reason: commit.status === 0 ? "agent-changes-committed" : "agent-commit-failed",
+    status,
+    output: truncate(`${commit.stdout || ""}\n${commit.stderr || ""}`, 4000),
+  };
+}
+
+function buildReport({
+  canAutoMerge,
+  reason,
+  syncBranch,
+  upstreamRef,
+  upstreamSha,
+  brandRef,
+  brandSha,
+  mergedSha,
+  checkResult,
+  review,
+  changeSummary,
+}) {
+  return {
+    status: canAutoMerge ? "auto-merge-ready" : "needs-human-review",
+    reason,
+    syncBranch,
+    upstreamRef,
+    upstreamSha,
+    brandRef,
+    brandSha,
+    mergedSha,
+    checks: {
+      ok: checkResult.ok,
+      skipped: checkResult.skipped === true,
+    },
+    review,
+    changeSummary,
+  };
+}
+
+function handlePublishOptions({ worktree, syncBranch, reportPath, report, canAutoMerge }) {
+  if (options.push) {
+    runGit(["push", config.originRemote, `${syncBranch}:${syncBranch}`], { cwd: worktree });
+    console.log(`Pushed ${syncBranch} to ${config.originRemote}.`);
+  }
+
+  if (options.createPr) {
+    createPullRequest({ cwd: worktree, syncBranch, reportPath, report });
+  }
+
+  if (options.autoMerge) {
+    if (!canAutoMerge) {
+      console.error("Refusing --auto-merge because the report is not auto-merge-ready.");
+      process.exitCode = 3;
+      return;
+    }
+
+    if (!options.push) {
+      console.error("Refusing --auto-merge without --push.");
+      process.exitCode = 3;
+      return;
+    }
+
+    runGit(["push", config.originRemote, `HEAD:refs/heads/${config.brandBranch}`], { cwd: worktree });
+    console.log(`Updated ${config.originRemote}/${config.brandBranch}.`);
   }
 }
 

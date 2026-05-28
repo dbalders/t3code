@@ -62,6 +62,9 @@ if [[ ! -f "$env_file" ]]; then
 export LITELLM_BASE_URL="https://your-litellm.example.edu"
 export LITELLM_API_KEY="replace-me"
 export T3_SYNC_LITELLM_MODEL="api-gemma-4-26b"
+export T3_SYNC_REVIEW_MODE="agent"
+export T3_SYNC_AGENT_COMMAND='opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
+export T3_SYNC_AGENT_CAN_EDIT="0"
 export T3_SYNC_BRAND_BRANCH="tritongpt"
 export T3_SYNC_CHECKS="bun run lint && bun run typecheck && bun run test && bun run release:smoke"
 ENVEOF
