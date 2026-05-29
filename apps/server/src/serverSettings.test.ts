@@ -80,6 +80,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       yield* serverSettings.updateSettings({
         providers: {
           codex: {
+            enabled: true,
             binaryPath: "/usr/local/bin/codex",
             homePath: "/Users/julius/.codex",
           },
@@ -161,6 +162,11 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       // Switch to Codex — the stale Claude "effort" in options must not
       // cause the update to lose the selected model.
       const next = yield* serverSettings.updateSettings({
+        providers: {
+          codex: {
+            enabled: true,
+          },
+        },
         textGenerationModelSelection: {
           instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5.4",
@@ -355,7 +361,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       });
 
       assert.deepEqual(next.providers.codex, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/opt/homebrew/bin/codex",
         homePath: "",
         shadowHomePath: "",

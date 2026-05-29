@@ -24,9 +24,9 @@ import {
   ServerRuntimeStartupError,
 } from "./serverRuntimeStartup.ts";
 
-it("uses the canonical Codex default for auto-bootstrapped model selection", () => {
+it("uses the OpenCode default for auto-bootstrapped model selection", () => {
   assert.deepStrictEqual(getAutoBootstrapDefaultModelSelection(), {
-    instanceId: ProviderInstanceId.make("codex"),
+    instanceId: ProviderInstanceId.make("opencode"),
     model: DEFAULT_MODEL,
   });
 });

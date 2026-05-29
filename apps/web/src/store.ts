@@ -1010,7 +1010,7 @@ function toLegacyProvider(providerName: string | null): ProviderDriverKind {
   if (isProviderDriverKindValue(providerName)) {
     return providerName;
   }
-  return ProviderDriverKind.make("codex");
+  return ProviderDriverKind.make("opencode");
 }
 
 function attachmentPreviewRoutePath(attachmentId: string): string {

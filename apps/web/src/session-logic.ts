@@ -31,14 +31,14 @@ export const PROVIDER_OPTIONS: Array<{
   /** Shown on the model picker sidebar when relevant */
   pickerSidebarBadge?: "new" | "soon";
 }> = [
-  { value: ProviderDriverKind.make("codex"), label: "Codex", available: true },
-  { value: ProviderDriverKind.make("claudeAgent"), label: "Claude", available: true },
   {
     value: ProviderDriverKind.make("opencode"),
     label: "OpenCode",
     available: true,
     pickerSidebarBadge: "new",
   },
+  { value: ProviderDriverKind.make("codex"), label: "Codex", available: true },
+  { value: ProviderDriverKind.make("claudeAgent"), label: "Claude", available: true },
   {
     value: ProviderDriverKind.make("cursor"),
     label: "Cursor",

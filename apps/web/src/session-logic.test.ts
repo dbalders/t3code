@@ -20,6 +20,7 @@ import {
   hasActionableProposedPlan,
   hasToolActivityForTurn,
   isLatestTurnSettled,
+  PROVIDER_OPTIONS,
 } from "./session-logic";
 
 function makeActivity(overrides: {
@@ -44,6 +45,12 @@ function makeActivity(overrides: {
     ...(overrides.sequence !== undefined ? { sequence: overrides.sequence } : {}),
   };
 }
+
+describe("PROVIDER_OPTIONS", () => {
+  it("presents OpenCode before other built-in providers", () => {
+    expect(PROVIDER_OPTIONS[0]?.value).toBe("opencode");
+  });
+});
 
 describe("derivePendingApprovals", () => {
   it("tracks open approvals and removes resolved ones", () => {

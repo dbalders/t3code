@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ProviderDriverKind } from "@t3tools/contracts";
 
-import { DRIVER_OPTION_BY_VALUE } from "./providerDriverMeta";
+import { DRIVER_OPTION_BY_VALUE, DRIVER_OPTIONS } from "./providerDriverMeta";
 import {
   deriveProviderSettingsFields,
   nextProviderConfigWithFieldValue,
@@ -10,6 +10,10 @@ import {
 } from "./ProviderSettingsForm";
 
 describe("ProviderSettingsForm helpers", () => {
+  it("presents OpenCode as the first built-in provider option", () => {
+    expect(DRIVER_OPTIONS[0]?.value).toBe(ProviderDriverKind.make("opencode"));
+  });
+
   it("derives visible provider config fields from the client definition schema", () => {
     const codex = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("codex")];
 

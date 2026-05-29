@@ -35,6 +35,12 @@ export interface ProviderClientDefinition {
 
 export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
   {
+    value: ProviderDriverKind.make("opencode"),
+    label: "OpenCode",
+    icon: OpenCodeIcon,
+    settingsSchema: OpenCodeSettings,
+  },
+  {
     value: ProviderDriverKind.make("codex"),
     label: "Codex",
     icon: OpenAI,
@@ -52,12 +58,6 @@ export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = 
     icon: CursorIcon,
     badgeLabel: "Early Access",
     settingsSchema: CursorSettings,
-  },
-  {
-    value: ProviderDriverKind.make("opencode"),
-    label: "OpenCode",
-    icon: OpenCodeIcon,
-    settingsSchema: OpenCodeSettings,
   },
 ];
 
