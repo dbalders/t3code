@@ -1,6 +1,6 @@
 import {
-  DEFAULT_MODEL,
-  DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER_DRIVER_KIND,
+  getDefaultModelForProvider,
   MODEL_SLUG_ALIASES_BY_PROVIDER,
   type ModelCapabilities,
   type ModelSelection,
@@ -9,8 +9,6 @@ import {
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
 } from "@t3tools/contracts";
-
-const DEFAULT_PROVIDER_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
 export interface SelectableModelOption {
   slug: string;
@@ -288,7 +286,7 @@ export function resolveSelectableModel(
 function resolveModelSlug(model: string | null | undefined, provider: ProviderDriverKind): string {
   const normalized = normalizeModelSlug(model, provider);
   if (!normalized) {
-    return DEFAULT_MODEL_BY_PROVIDER[provider] ?? DEFAULT_MODEL;
+    return getDefaultModelForProvider(provider);
   }
   return normalized;
 }

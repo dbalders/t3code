@@ -1,10 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
-  DEFAULT_MODEL,
-  DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER_DRIVER_KIND,
+  DEFAULT_PROVIDER_INSTANCE_ID,
   ProjectId,
-  ProviderDriverKind,
-  ProviderInstanceId,
+  getDefaultModelForProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
@@ -33,8 +32,8 @@ import {
 
 it("uses the OpenCode default for auto-bootstrapped model selection", () => {
   assert.deepStrictEqual(getAutoBootstrapDefaultModelSelection(), {
-    instanceId: ProviderInstanceId.make("opencode"),
-    model: DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("opencode")] ?? DEFAULT_MODEL,
+    instanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+    model: getDefaultModelForProvider(DEFAULT_PROVIDER_DRIVER_KIND),
   });
 });
 

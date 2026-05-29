@@ -1,7 +1,8 @@
 import {
-  DEFAULT_GIT_TEXT_GENERATION_MODEL,
-  DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER_DRIVER_KIND,
+  DEFAULT_PROVIDER_INSTANCE_ID,
   defaultInstanceIdForDriver,
+  getDefaultGitTextGenerationModelForProvider,
   type ModelSelection,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -25,8 +26,6 @@ import { sortModelsForProviderInstance } from "./modelOrdering";
 
 const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
-const DEFAULT_TEXT_GENERATION_INSTANCE_ID = ProviderInstanceId.make("opencode");
-const DEFAULT_TEXT_GENERATION_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
 /**
  * Resolve the custom-model list for a given instance, preferring the
@@ -116,7 +115,7 @@ function applyInstanceModelPreferences(
 export function normalizeCustomModelSlugs(
   models: Iterable<string | null | undefined>,
   builtInModelSlugs: ReadonlySet<string>,
-  provider: ProviderDriverKind = ProviderDriverKind.make("opencode"),
+  provider: ProviderDriverKind = DEFAULT_PROVIDER_DRIVER_KIND,
 ): string[] {
   const normalizedModels: string[] = [];
   const seen = new Set<string>();
@@ -275,10 +274,8 @@ export function resolveAppModelSelectionState(
   providers: ReadonlyArray<ServerProvider>,
 ): ModelSelection {
   const selection = settings.textGenerationModelSelection ?? {
-    instanceId: DEFAULT_TEXT_GENERATION_INSTANCE_ID,
-    model:
-      DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[DEFAULT_TEXT_GENERATION_DRIVER_KIND] ??
-      DEFAULT_GIT_TEXT_GENERATION_MODEL,
+    instanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+    model: getDefaultGitTextGenerationModelForProvider(DEFAULT_PROVIDER_DRIVER_KIND),
   };
   const entries = deriveProviderInstanceEntries(providers);
   const selectedEntry = entries.find(
@@ -293,7 +290,7 @@ export function resolveAppModelSelectionState(
     const model =
       resolveAppModelSelectionForInstance(entry.instanceId, settings, providers, selectedModel) ??
       entry.models[0]?.slug ??
-      DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[entry.driverKind];
+      getDefaultGitTextGenerationModelForProvider(entry.driverKind);
     if (!model) {
       return createModelSelection(entry.instanceId, "", []);
     }

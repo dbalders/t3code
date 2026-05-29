@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { ProviderDriverKind } from "./providerInstance.ts";
+import { defaultInstanceIdForDriver, ProviderDriverKind } from "./providerInstance.ts";
 
 export const ProviderOptionDescriptorType = Schema.Literals(["select", "boolean"]);
 export type ProviderOptionDescriptorType = typeof ProviderOptionDescriptorType.Type;
@@ -132,6 +132,10 @@ const CLAUDE_DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
 const CURSOR_DRIVER_KIND = ProviderDriverKind.make("cursor");
 const OPENCODE_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
+export const DEFAULT_PROVIDER_DRIVER_KIND = OPENCODE_DRIVER_KIND;
+export const DEFAULT_PROVIDER_INSTANCE_ID = defaultInstanceIdForDriver(
+  DEFAULT_PROVIDER_DRIVER_KIND,
+);
 export const DEFAULT_MODEL = "gpt-5.4";
 export const DEFAULT_GIT_TEXT_GENERATION_MODEL = "gpt-5.4-mini";
 
@@ -151,6 +155,16 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Partial<
   [CURSOR_DRIVER_KIND]: "composer-2",
   [OPENCODE_DRIVER_KIND]: "openai/gpt-5",
 };
+
+export function getDefaultModelForProvider(provider: ProviderDriverKind): string {
+  return DEFAULT_MODEL_BY_PROVIDER[provider] ?? DEFAULT_MODEL;
+}
+
+export function getDefaultGitTextGenerationModelForProvider(provider: ProviderDriverKind): string {
+  return (
+    DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[provider] ?? DEFAULT_GIT_TEXT_GENERATION_MODEL
+  );
+}
 
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Partial<
   Record<ProviderDriverKind, Record<string, string>>

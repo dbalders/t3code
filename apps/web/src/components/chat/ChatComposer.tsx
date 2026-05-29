@@ -5,6 +5,7 @@ import type {
   ProjectEntry,
   ProviderApprovalDecision,
   ProviderInteractionMode,
+  ProviderInstanceId,
   ResolvedKeybindingsConfig,
   RuntimeMode,
   ScopedThreadRef,
@@ -13,8 +14,9 @@ import type {
   TurnId,
 } from "@t3tools/contracts";
 import {
+  DEFAULT_PROVIDER_DRIVER_KIND,
+  DEFAULT_PROVIDER_INSTANCE_ID,
   ProviderDriverKind,
-  ProviderInstanceId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
@@ -607,7 +609,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const unlockedSelectedProvider = resolveSelectableProvider(
     providerStatuses,
-    explicitSelectedInstanceId ?? ProviderDriverKind.make("opencode"),
+    explicitSelectedInstanceId ?? DEFAULT_PROVIDER_DRIVER_KIND,
   );
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
   const lockedContinuationGroupKey = useMemo((): string | null => {
@@ -675,7 +677,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       providerInstanceEntries[0]?.instanceId ??
       activeThreadModelSelection?.instanceId ??
       activeProjectDefaultModelSelection?.instanceId ??
-      ProviderInstanceId.make("opencode")
+      DEFAULT_PROVIDER_INSTANCE_ID
     );
   }, [
     activeProjectDefaultModelSelection?.instanceId,

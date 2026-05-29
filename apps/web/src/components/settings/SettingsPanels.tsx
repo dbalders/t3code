@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
+  DEFAULT_PROVIDER_DRIVER_KIND,
   defaultInstanceIdForDriver,
   type DesktopUpdateChannel,
   PROVIDER_DISPLAY_NAMES,
@@ -98,8 +99,6 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
-
-const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
 function withoutProviderInstanceKey<V>(
   record: Readonly<Record<ProviderInstanceId, V>> | undefined,
@@ -502,7 +501,7 @@ export function GeneralSettingsPanel() {
     (entry) => entry.instanceId === textGenInstanceId,
   );
   const textGenProvider: ProviderDriverKind =
-    textGenInstanceEntry?.driverKind ?? DEFAULT_DRIVER_KIND;
+    textGenInstanceEntry?.driverKind ?? DEFAULT_PROVIDER_DRIVER_KIND;
   const gitModelOptionsByInstance = getCustomModelOptionsByInstance(
     settings,
     serverProviders,

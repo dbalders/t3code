@@ -1,12 +1,11 @@
 import {
   CommandId,
-  DEFAULT_MODEL,
-  DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER_DRIVER_KIND,
+  DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_PROVIDER_INTERACTION_MODE,
+  getDefaultModelForProvider,
   type ModelSelection,
-  ProviderDriverKind,
   ProjectId,
-  ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Data from "effect/Data";
@@ -156,8 +155,8 @@ export const launchStartupHeartbeat = recordStartupHeartbeat.pipe(
 );
 
 export const getAutoBootstrapDefaultModelSelection = (): ModelSelection => ({
-  instanceId: ProviderInstanceId.make("opencode"),
-  model: DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("opencode")] ?? DEFAULT_MODEL,
+  instanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+  model: getDefaultModelForProvider(DEFAULT_PROVIDER_DRIVER_KIND),
 });
 
 export const resolveWelcomeBase = Effect.gen(function* () {

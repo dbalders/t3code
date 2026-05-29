@@ -1,7 +1,7 @@
 import {
-  DEFAULT_MODEL,
-  DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER_DRIVER_KIND,
   defaultInstanceIdForDriver,
+  getDefaultModelForProvider,
   ProviderDriverKind,
   type ModelCapabilities,
   type ProviderInstanceId,
@@ -13,7 +13,6 @@ import { createModelCapabilities, normalizeModelSlug } from "@t3tools/shared/mod
 const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
 });
-const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("opencode");
 export function formatProviderDriverKindLabel(provider: ProviderDriverKind): string {
   return provider
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -75,7 +74,7 @@ export function resolveSelectableProvider(
   }
   return (
     providers.find((candidate) => candidate.enabled && candidate.availability !== "unavailable")
-      ?.driver ?? DEFAULT_DRIVER_KIND
+      ?.driver ?? DEFAULT_PROVIDER_DRIVER_KIND
   );
 }
 
@@ -96,7 +95,6 @@ export function getDefaultServerModel(
   return (
     models.find((model) => !model.isCustom)?.slug ??
     models[0]?.slug ??
-    DEFAULT_MODEL_BY_PROVIDER[provider] ??
-    DEFAULT_MODEL
+    getDefaultModelForProvider(provider)
   );
 }

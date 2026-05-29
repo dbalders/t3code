@@ -11,9 +11,8 @@
  * @module ServerSettings
  */
 import {
-  DEFAULT_GIT_TEXT_GENERATION_MODEL,
-  DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
+  getDefaultGitTextGenerationModelForProvider,
   isProviderDriverKind,
   type ModelSelection,
   type ProviderInstanceConfig,
@@ -206,9 +205,7 @@ function fallbackTextGenerationProvider(settings: ServerSettings): ServerSetting
     ...settings,
     textGenerationModelSelection: {
       instanceId: ProviderInstanceId.make(fallback),
-      model:
-        DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[fallback] ??
-        DEFAULT_GIT_TEXT_GENERATION_MODEL,
+      model: getDefaultGitTextGenerationModelForProvider(fallback),
     } satisfies ModelSelection,
   };
 }

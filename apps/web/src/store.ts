@@ -18,7 +18,11 @@ import type {
   ScopedProjectRef,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { isProviderDriverKind, ProviderDriverKind } from "@t3tools/contracts";
+import {
+  DEFAULT_PROVIDER_DRIVER_KIND,
+  isProviderDriverKind,
+  ProviderDriverKind,
+} from "@t3tools/contracts";
 import type { ThreadId, TurnId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { resolveModelSlugForProvider } from "@t3tools/shared/model";
@@ -1010,7 +1014,7 @@ function toLegacyProvider(providerName: string | null): ProviderDriverKind {
   if (isProviderDriverKindValue(providerName)) {
     return providerName;
   }
-  return ProviderDriverKind.make("opencode");
+  return DEFAULT_PROVIDER_DRIVER_KIND;
 }
 
 function attachmentPreviewRoutePath(attachmentId: string): string {
