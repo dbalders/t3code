@@ -2,11 +2,9 @@
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
 import {
-  DEFAULT_MODEL,
   type EnvironmentId,
   type FilesystemBrowseResult,
   type ProjectId,
-  ProviderInstanceId,
   type SourceControlDiscoveryResult,
   type SourceControlProviderKind,
   type SourceControlRepositoryInfo,
@@ -1138,10 +1136,7 @@ function OpenCommandPaletteDialog() {
           title: inferProjectTitleFromPath(cwd),
           workspaceRoot: cwd,
           createWorkspaceRootIfMissing: true,
-          defaultModelSelection: {
-            instanceId: ProviderInstanceId.make("codex"),
-            model: DEFAULT_MODEL,
-          },
+          defaultModelSelection: settings.textGenerationModelSelection,
           createdAt: new Date().toISOString(),
         });
         await handleNewThread(scopeProjectRef(browseEnvironmentId, projectId), {
@@ -1167,6 +1162,7 @@ function OpenCommandPaletteDialog() {
       projects,
       setOpen,
       settings.defaultThreadEnvMode,
+      settings.textGenerationModelSelection,
       settings.sidebarThreadSortOrder,
       threads,
     ],

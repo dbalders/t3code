@@ -95,10 +95,9 @@ import {
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
-import { getProviderInteractionModeToggle } from "../../providerModels";
+import { getProviderInteractionModeToggle, resolveSelectableProvider } from "../../providerModels";
 import {
   deriveProviderInstanceEntries,
-  resolveProviderDriverKindForInstanceSelection,
   sortProviderInstanceEntries,
   type ProviderInstanceEntry,
 } from "../../providerInstances";
@@ -606,12 +605,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     null;
   const explicitSelectedInstanceId = selectedProviderByThreadId ?? threadProvider;
 
-  const unlockedSelectedProvider =
-    resolveProviderDriverKindForInstanceSelection(
-      providerInstanceEntries,
-      providerStatuses,
-      explicitSelectedInstanceId,
-    ) ?? ProviderDriverKind.make("opencode");
+  const unlockedSelectedProvider = resolveSelectableProvider(
+    providerStatuses,
+    explicitSelectedInstanceId ?? ProviderDriverKind.make("opencode"),
+  );
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
   const lockedContinuationGroupKey = useMemo((): string | null => {
     if (!lockedProvider || !activeThread) return null;
@@ -649,7 +646,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     for (const candidate of candidates) {
       if (!candidate) continue;
       const match = providerInstanceEntries.find(
-        (entry) => entry.instanceId === candidate && entry.enabled,
+        (entry) => entry.instanceId === candidate && entry.enabled && entry.isAvailable,
       );
       if (match) {
         // When locked to a specific driver kind, ignore persisted instance
@@ -664,17 +661,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return match.instanceId;
       }
     }
-    if (explicitSelectedInstanceId) {
-      return ProviderInstanceId.make(explicitSelectedInstanceId);
-    }
     const byKind = providerInstanceEntries.find(
       (entry) =>
         entry.enabled &&
+        entry.isAvailable &&
         entry.driverKind === selectedProvider &&
         (!lockedContinuationGroupKey || entry.continuationGroupKey === lockedContinuationGroupKey),
     );
     if (byKind) return byKind.instanceId;
-    const anyEnabled = providerInstanceEntries.find((entry) => entry.enabled);
+    const anyEnabled = providerInstanceEntries.find((entry) => entry.enabled && entry.isAvailable);
     return (
       anyEnabled?.instanceId ??
       providerInstanceEntries[0]?.instanceId ??
@@ -687,7 +682,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThread?.session?.providerInstanceId,
     activeThreadModelSelection?.instanceId,
     composerDraft.activeProvider,
-    explicitSelectedInstanceId,
     lockedContinuationGroupKey,
     lockedProvider,
     providerInstanceEntries,

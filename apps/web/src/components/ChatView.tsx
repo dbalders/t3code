@@ -1,6 +1,7 @@
 import {
   type ApprovalRequestId,
   DEFAULT_MODEL,
+  DEFAULT_MODEL_BY_PROVIDER,
   defaultInstanceIdForDriver,
   type EnvironmentId,
   type MessageId,
@@ -798,7 +799,8 @@ export default function ChatView(props: ChatViewProps) {
             draftThread,
             fallbackDraftProject?.defaultModelSelection ?? {
               instanceId: ProviderInstanceId.make("opencode"),
-              model: DEFAULT_MODEL,
+              model:
+                DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("opencode")] ?? DEFAULT_MODEL,
             },
             localDraftError,
           )
@@ -2799,7 +2801,10 @@ export default function ChatView(props: ChatViewProps) {
       const title = truncate(titleSeed);
       const threadCreateModelSelection = createModelSelection(
         ctxSelectedModelSelection.instanceId,
-        ctxSelectedModel || activeProject.defaultModelSelection?.model || DEFAULT_MODEL,
+        ctxSelectedModel ||
+          activeProject.defaultModelSelection?.model ||
+          DEFAULT_MODEL_BY_PROVIDER[ctxSelectedProvider] ||
+          DEFAULT_MODEL,
         ctxSelectedModelSelection.options,
       );
 

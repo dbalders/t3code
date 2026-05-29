@@ -1,8 +1,10 @@
 import {
   CommandId,
   DEFAULT_MODEL,
+  DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   type ModelSelection,
+  ProviderDriverKind,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
@@ -155,7 +157,7 @@ export const launchStartupHeartbeat = recordStartupHeartbeat.pipe(
 
 export const getAutoBootstrapDefaultModelSelection = (): ModelSelection => ({
   instanceId: ProviderInstanceId.make("opencode"),
-  model: DEFAULT_MODEL,
+  model: DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("opencode")] ?? DEFAULT_MODEL,
 });
 
 export const resolveWelcomeBase = Effect.gen(function* () {

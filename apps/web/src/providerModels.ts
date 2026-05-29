@@ -70,10 +70,13 @@ export function resolveSelectableProvider(
   provider: ProviderDriverKind | ProviderInstanceId | null | undefined,
 ): ProviderDriverKind {
   const requestedEntry = providers.find((candidate) => candidate.instanceId === provider);
-  if (requestedEntry?.enabled) {
+  if (requestedEntry?.enabled && requestedEntry.availability !== "unavailable") {
     return requestedEntry.driver;
   }
-  return providers.find((candidate) => candidate.enabled)?.driver ?? DEFAULT_DRIVER_KIND;
+  return (
+    providers.find((candidate) => candidate.enabled && candidate.availability !== "unavailable")
+      ?.driver ?? DEFAULT_DRIVER_KIND
+  );
 }
 
 export function getProviderModelCapabilities(
