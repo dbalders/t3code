@@ -502,7 +502,13 @@ export function resolveDesktopRuntimeDependencies(
   return resolveCatalogDependencies(runtimeDependencies, catalog, "apps/desktop");
 }
 
-function resolveGitHubPublishConfig(updateChannel: "latest" | "nightly"):
+export const DEFAULT_DESKTOP_UPDATE_REPOSITORY = "dbalders/t3code";
+
+export function resolveDesktopUpdateRepository(): string {
+  return process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY?.trim() || DEFAULT_DESKTOP_UPDATE_REPOSITORY;
+}
+
+export function resolveGitHubPublishConfig(updateChannel: "latest" | "nightly"):
   | {
       readonly provider: "github";
       readonly owner: string;
@@ -511,10 +517,7 @@ function resolveGitHubPublishConfig(updateChannel: "latest" | "nightly"):
       readonly channel?: "nightly";
     }
   | undefined {
-  const rawRepo =
-    process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY?.trim() ||
-    process.env.GITHUB_REPOSITORY?.trim() ||
-    "";
+  const rawRepo = resolveDesktopUpdateRepository();
   if (!rawRepo) return undefined;
 
   const [owner, repo, ...rest] = rawRepo.split("/");
@@ -553,6 +556,24 @@ export function resolveMockUpdateServerUrl(mockUpdateServerPort: number | undefi
   return `http://localhost:${mockUpdateServerPort ?? 3000}`;
 }
 
+export function resolveDesktopPublishConfig(
+  updateChannel: "latest" | "nightly",
+  mockUpdates: boolean,
+  mockUpdateServerPort: number | undefined,
+) {
+  if (mockUpdates) {
+    return [
+      {
+        provider: "generic",
+        url: resolveMockUpdateServerUrl(mockUpdateServerPort),
+      },
+    ];
+  }
+
+  const publishConfig = resolveGitHubPublishConfig(updateChannel);
+  return publishConfig ? [publishConfig] : undefined;
+}
+
 export function resolveDesktopProductName(version: string): string {
   return resolveDesktopUpdateChannel(version) === "nightly"
     ? "TritonAI Code (Nightly)"
@@ -576,16 +597,13 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     },
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
-  const publishConfig = resolveGitHubPublishConfig(updateChannel);
+  const publishConfig = resolveDesktopPublishConfig(
+    updateChannel,
+    mockUpdates,
+    mockUpdateServerPort,
+  );
   if (publishConfig) {
-    buildConfig.publish = [publishConfig];
-  } else if (mockUpdates) {
-    buildConfig.publish = [
-      {
-        provider: "generic",
-        url: resolveMockUpdateServerUrl(mockUpdateServerPort),
-      },
-    ];
+    buildConfig.publish = publishConfig;
   }
 
   if (platform === "mac") {

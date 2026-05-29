@@ -8,12 +8,33 @@ import {
   resolveDesktopRuntimeDependencies,
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
+  resolveDesktopPublishConfig,
+  resolveDesktopUpdateRepository,
   resolveDesktopProductName,
   resolveDesktopUpdateChannel,
+  resolveGitHubPublishConfig,
   resolveMockUpdateServerPort,
   resolveMockUpdateServerUrl,
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
+
+function withDesktopUpdateRepositoryEnv(value: string | undefined, fn: () => void) {
+  const previous = process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY;
+  try {
+    if (value === undefined) {
+      delete process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY;
+    } else {
+      process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY = value;
+    }
+    fn();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY;
+    } else {
+      process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY = previous;
+    }
+  }
+}
 
 it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("resolves the dedicated nightly updater channel from nightly versions", () => {
@@ -40,6 +61,42 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       macIconPng: BRAND_ASSET_PATHS.nightlyMacIconPng,
       linuxIconPng: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
       windowsIconIco: BRAND_ASSET_PATHS.nightlyWindowsIconIco,
+    });
+  });
+
+  it("defaults desktop updater releases to the controlled downstream repository", () => {
+    withDesktopUpdateRepositoryEnv(undefined, () => {
+      assert.equal(resolveDesktopUpdateRepository(), "dbalders/t3code");
+      assert.deepStrictEqual(resolveGitHubPublishConfig("latest"), {
+        provider: "github",
+        owner: "dbalders",
+        repo: "t3code",
+        releaseType: "release",
+      });
+    });
+  });
+
+  it("keeps the explicit desktop updater repository override for test feeds", () => {
+    withDesktopUpdateRepositoryEnv("example/custom-updates", () => {
+      assert.equal(resolveDesktopUpdateRepository(), "example/custom-updates");
+      assert.deepStrictEqual(resolveGitHubPublishConfig("nightly"), {
+        provider: "github",
+        owner: "example",
+        repo: "custom-updates",
+        releaseType: "prerelease",
+        channel: "nightly",
+      });
+    });
+  });
+
+  it("uses the generic mock update server when mock updates are enabled", () => {
+    withDesktopUpdateRepositoryEnv(undefined, () => {
+      assert.deepStrictEqual(resolveDesktopPublishConfig("latest", true, 4123), [
+        {
+          provider: "generic",
+          url: "http://localhost:4123",
+        },
+      ]);
     });
   });
 

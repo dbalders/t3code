@@ -107,7 +107,7 @@ One-time Vercel dashboard setup:
 - Provider: GitHub Releases (`provider: github`) configured at build time.
 - Repository slug source:
   - `T3CODE_DESKTOP_UPDATE_REPOSITORY` (format `owner/repo`), if set.
-  - otherwise `GITHUB_REPOSITORY` from GitHub Actions.
+  - otherwise `dbalders/t3code`, the controlled downstream release repository.
 - Temporary private-repo auth workaround:
   - set `T3CODE_DESKTOP_UPDATE_GITHUB_TOKEN` (or `GH_TOKEN`) in the desktop app runtime environment.
   - the app forwards it as an `Authorization: Bearer <token>` request header for updater HTTP calls.
