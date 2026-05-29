@@ -1,8 +1,9 @@
 import {
   type ApprovalRequestId,
-  DEFAULT_MODEL,
-  DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER_DRIVER_KIND,
+  DEFAULT_PROVIDER_INSTANCE_ID,
   defaultInstanceIdForDriver,
+  getDefaultModelForProvider,
   type EnvironmentId,
   type MessageId,
   type ModelSelection,
@@ -798,9 +799,8 @@ export default function ChatView(props: ChatViewProps) {
             threadId,
             draftThread,
             fallbackDraftProject?.defaultModelSelection ?? {
-              instanceId: ProviderInstanceId.make("opencode"),
-              model:
-                DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("opencode")] ?? DEFAULT_MODEL,
+              instanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+              model: getDefaultModelForProvider(DEFAULT_PROVIDER_DRIVER_KIND),
             },
             localDraftError,
           )
@@ -1261,7 +1261,7 @@ export default function ChatView(props: ChatViewProps) {
   const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
   const unlockedSelectedProvider = resolveSelectableProvider(
     providerStatuses,
-    selectedProviderByThreadId ?? threadProvider ?? ProviderDriverKind.make("opencode"),
+    selectedProviderByThreadId ?? threadProvider ?? DEFAULT_PROVIDER_DRIVER_KIND,
   );
   const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
   const phase = derivePhase(activeThread?.session ?? null);
@@ -2803,8 +2803,7 @@ export default function ChatView(props: ChatViewProps) {
         ctxSelectedModelSelection.instanceId,
         ctxSelectedModel ||
           activeProject.defaultModelSelection?.model ||
-          DEFAULT_MODEL_BY_PROVIDER[ctxSelectedProvider] ||
-          DEFAULT_MODEL,
+          getDefaultModelForProvider(ctxSelectedProvider),
         ctxSelectedModelSelection.options,
       );
 

@@ -1,7 +1,7 @@
 import {
-  DEFAULT_MODEL,
-  DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER_DRIVER_KIND,
   defaultInstanceIdForDriver,
+  getDefaultModelForProvider,
   type EnvironmentId,
   ModelSelection,
   ProjectId,
@@ -723,7 +723,7 @@ function normalizeModelSelection(
   // into a driver kind here; they get generic default normalization.
   const driverKindHint =
     normalizeProviderDriverKind(candidate?.provider ?? legacy?.provider) ??
-    ProviderDriverKind.make("opencode");
+    DEFAULT_PROVIDER_DRIVER_KIND;
   const model = normalizeModelSlug(rawModel, driverKindHint);
   if (!model) {
     return null;
@@ -823,7 +823,7 @@ function legacyToModelSelectionByProvider(
           instanceKey,
           modelSelection?.instanceId === instanceKey
             ? modelSelection.model
-            : (DEFAULT_MODEL_BY_PROVIDER[driverKind] ?? DEFAULT_MODEL),
+            : getDefaultModelForProvider(driverKind),
           options,
         );
       }
@@ -2424,7 +2424,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               if (opts && opts.length > 0) {
                 nextMap[instanceKey] = createModelSelection(
                   instanceKey,
-                  current?.model ?? DEFAULT_MODEL_BY_PROVIDER[driverKind] ?? DEFAULT_MODEL,
+                  current?.model ?? getDefaultModelForProvider(driverKind),
                   opts,
                 );
               } else if (current?.options) {
@@ -2460,8 +2460,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           const instanceKey = options?.instanceId ?? defaultInstanceIdForDriver(normalizedProvider);
           const fallbackModel =
             normalizeModelSlug(options?.model, normalizedProvider) ??
-            DEFAULT_MODEL_BY_PROVIDER[normalizedProvider] ??
-            DEFAULT_MODEL;
+            getDefaultModelForProvider(normalizedProvider);
           const providerOpts =
             nextProviderOptions && nextProviderOptions.length > 0 ? nextProviderOptions : undefined;
 

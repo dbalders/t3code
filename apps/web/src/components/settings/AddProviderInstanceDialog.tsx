@@ -4,6 +4,7 @@ import { CheckIcon } from "lucide-react";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  DEFAULT_PROVIDER_DRIVER_KIND,
   ProviderInstanceId,
   ProviderDriverKind,
   type ProviderInstanceConfig,
@@ -61,7 +62,6 @@ function deriveInstanceId(driver: ProviderDriverKind, label: string): string {
 }
 
 const INSTANCE_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
-const DEFAULT_DRIVER_KIND = ProviderDriverKind.make("opencode");
 const DEFAULT_DRIVER_OPTION = DRIVER_OPTIONS[0]!;
 const EMPTY_CONFIG_DRAFT: Record<string, unknown> = {};
 interface ComingSoonDriverOption {
@@ -118,7 +118,7 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
   const { updateSettings } = useUpdateSettings();
 
   const [wizardStep, setWizardStep] = useState(0);
-  const [driver, setDriver] = useState<ProviderDriverKind>(DEFAULT_DRIVER_KIND);
+  const [driver, setDriver] = useState<ProviderDriverKind>(DEFAULT_PROVIDER_DRIVER_KIND);
   const [label, setLabel] = useState("");
   const [accentColor, setAccentColor] = useState<string>("");
   const [instanceId, setInstanceId] = useState("");
@@ -139,7 +139,7 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
   // from a clean slate.
   useEffect(() => {
     if (!open) return;
-    setDriver(DEFAULT_DRIVER_KIND);
+    setDriver(DEFAULT_PROVIDER_DRIVER_KIND);
     setLabel("");
     setAccentColor("");
     setInstanceId("");
