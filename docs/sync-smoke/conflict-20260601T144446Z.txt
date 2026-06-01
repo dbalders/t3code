@@ -1,3 +1,4 @@
 shared header 20260601T144446Z
 brand value
+upstream value
 shared footer
