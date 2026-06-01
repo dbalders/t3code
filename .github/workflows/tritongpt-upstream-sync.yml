@@ -1,6 +1,9 @@
 name: TritonGPT Upstream Sync
 
 on:
+  schedule:
+    # Daily at 11:17 UTC. The runner can be DSMLP or any self-hosted Linux box.
+    - cron: "17 11 * * *"
   workflow_dispatch:
     inputs:
       brand_branch:
@@ -13,6 +16,11 @@ on:
         required: true
         default: true
         type: boolean
+      auto_merge_pr:
+        description: "Merge auto-merge-ready PRs after local checks and AI review"
+        required: true
+        default: true
+        type: boolean
       skip_checks:
         description: "Skip local quality checks"
         required: true
@@ -21,7 +29,12 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
+
+concurrency:
+  group: tritongpt-upstream-sync
+  cancel-in-progress: false
 
 jobs:
   sync:
@@ -60,16 +73,49 @@ jobs:
           T3_SYNC_LITELLM_MODEL: ${{ secrets.T3_SYNC_LITELLM_MODEL }}
           T3_SYNC_REVIEW_MODE: ${{ vars.T3_SYNC_REVIEW_MODE || 'agent' }}
           T3_SYNC_AGENT_COMMAND: ${{ secrets.T3_SYNC_AGENT_COMMAND }}
+          T3_SYNC_AGENT_MODEL: ${{ vars.T3_SYNC_AGENT_MODEL || 'ucsd/deepseek-v4-flash-max' }}
           T3_SYNC_AGENT_CAN_EDIT: ${{ vars.T3_SYNC_AGENT_CAN_EDIT || '1' }}
-          T3_SYNC_BRAND_BRANCH: ${{ inputs.brand_branch }}
+          T3_SYNC_AGENT_SECRET_ENV_ALLOWLIST: ${{ vars.T3_SYNC_AGENT_SECRET_ENV_ALLOWLIST || 'TRITONAI_API_KEY' }}
+          TRITONAI_API_KEY: ${{ secrets.TRITONAI_API_KEY }}
+          T3_SYNC_BRAND_BRANCH: ${{ vars.T3_SYNC_BRAND_BRANCH || 'tritongpt' }}
+          T3_SYNC_AUTO_MERGE_PR: ${{ vars.T3_SYNC_AUTO_MERGE_PR || 'true' }}
+          T3_SYNC_PR_MERGE_METHOD: ${{ vars.T3_SYNC_PR_MERGE_METHOD || 'merge' }}
+          T3_SYNC_PR_MERGE_MODE: ${{ vars.T3_SYNC_PR_MERGE_MODE || 'now' }}
+          T3_SYNC_GITHUB_REPO: ${{ github.repository }}
+          GH_REPO: ${{ github.repository }}
         run: |
+          brand_branch="${{ github.event.inputs.brand_branch }}"
+          if [[ -z "$brand_branch" ]]; then
+            brand_branch="${T3_SYNC_BRAND_BRANCH:-tritongpt}"
+          fi
+          export T3_SYNC_BRAND_BRANCH="$brand_branch"
+
+          create_pr="${{ github.event.inputs.create_pr }}"
+          if [[ -z "$create_pr" ]]; then
+            create_pr="true"
+          fi
+
+          auto_merge_pr="${{ github.event.inputs.auto_merge_pr }}"
+          if [[ -z "$auto_merge_pr" ]]; then
+            auto_merge_pr="${T3_SYNC_AUTO_MERGE_PR:-true}"
+          fi
+
+          skip_checks="${{ github.event.inputs.skip_checks }}"
+          if [[ -z "$skip_checks" ]]; then
+            skip_checks="false"
+          fi
+
           args=(--push)
 
-          if [[ "${{ inputs.create_pr }}" == "true" ]]; then
+          if [[ "$create_pr" == "true" ]]; then
             args+=(--create-pr)
           fi
 
-          if [[ "${{ inputs.skip_checks }}" == "true" ]]; then
+          if [[ "$auto_merge_pr" == "true" ]]; then
+            args+=(--auto-merge-pr)
+          fi
+
+          if [[ "$skip_checks" == "true" ]]; then
             args+=(--skip-checks)
           fi
 

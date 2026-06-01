@@ -44,39 +44,49 @@ Open a PR when the merge is clean enough to review:
 bun run tritongpt:sync:pr
 ```
 
+Fully automated PR-and-merge run:
+
+```sh
+bun run tritongpt:sync:auto
+```
+
 Preferred DSMLP mode uses OpenCode as the repair/review agent:
 
 ```sh
 export OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
 export T3_SYNC_REVIEW_MODE="agent"
-export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
+export T3_SYNC_AGENT_MODEL="ucsd/deepseek-v4-flash-max"
+export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run --model "${T3_SYNC_AGENT_MODEL:-ucsd/deepseek-v4-flash-max}" "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
 export T3_SYNC_AGENT_CAN_EDIT="1"
+export T3_SYNC_AGENT_SECRET_ENV_ALLOWLIST="TRITONAI_API_KEY"
 ```
 
-In this mode OpenCode may fix conflicts or failed checks inside the temporary sync worktree. The script still owns pushing the generated `sync/upstream-*` branch and opening the PR, and it does not merge `tritongpt` unless `--auto-merge` is explicitly added.
+In this mode OpenCode may fix conflicts or failed checks inside the temporary sync worktree. The script still owns the single squashed sync commit, pushing the generated `sync/upstream-*` branch, and opening the PR. `tritongpt:sync:auto` merges the PR only when checks pass and the AI review returns `auto_merge=true`.
 
 The script exits with:
 
 - `0`: already current or auto-merge-ready.
 - `2`: human review needed.
-- `3`: auto-merge was requested but refused.
+- `3`: PR merge was requested without the required publish setup.
 
 Useful environment overrides:
 
 - `T3_SYNC_BRAND_BRANCH=tritongpt` for the clean downstream branch.
-- `T3_SYNC_CHECKS="bun run lint && bun run typecheck"` for a faster first pass.
+- `T3_SYNC_CHECKS="bun run fmt:check && bun run lint && bun run typecheck"` for a faster first pass.
 - `T3_SYNC_UPSTREAM_REMOTE=upstream`
 - `T3_SYNC_UPSTREAM_BRANCH=main`
 
-Do not use `--auto-merge` until the job has run several times and the release branch is protected.
+Use `tritongpt:sync:pr` for PR creation only. Use `tritongpt:sync:auto` after the job has run successfully several times and the release branch protections are configured.
 
 ## Optional Self-Hosted GitHub Workflow
 
-`.github/workflows/tritongpt-upstream-sync.yml` wraps the same script for a self-hosted runner. It is manual-dispatch only, uses `runs-on: self-hosted`, and expects these repository secrets if you want AI review:
+`.github/workflows/tritongpt-upstream-sync.yml` wraps the same script for a self-hosted runner. It runs daily and supports manual dispatch. It expects these repository secrets/vars if you want AI review:
 
 - `LITELLM_BASE_URL`
 - `LITELLM_API_KEY`
 - `T3_SYNC_LITELLM_MODEL`
+- `T3_SYNC_AGENT_COMMAND`
+- `TRITONAI_API_KEY`
 
 Use DSMLP cron first. The workflow is mainly useful later if you register a self-hosted runner and want GitHub's PR/check UI around the same local automation.
 
@@ -171,10 +181,12 @@ export LITELLM_API_KEY="replace-me"
 export T3_SYNC_LITELLM_MODEL="api-gemma-4-26b"
 export OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
 export T3_SYNC_REVIEW_MODE="agent"
-export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
+export T3_SYNC_AGENT_MODEL="ucsd/deepseek-v4-flash-max"
+export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run --model "${T3_SYNC_AGENT_MODEL:-ucsd/deepseek-v4-flash-max}" "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
 export T3_SYNC_AGENT_CAN_EDIT="1"
+export T3_SYNC_AGENT_SECRET_ENV_ALLOWLIST="TRITONAI_API_KEY"
 export T3_SYNC_BRAND_BRANCH="tritongpt"
-export T3_SYNC_CHECKS="bun run lint && bun run typecheck && bun run test && bun run release:smoke"
+export T3_SYNC_CHECKS="bun run fmt:check && bun run lint && bun run typecheck && bun run test && bun run release:smoke"
 EOF
 chmod 600 ~/.tritongpt-sync.env
 ```
@@ -187,6 +199,13 @@ bun install --frozen-lockfile
 bun run tritongpt:sync:review 2>&1 | tee ~/logs/tritongpt-sync-$(date +%F-%H%M).log
 ```
 
+Run a fully automated sync after manual validation:
+
+```sh
+source ~/.tritongpt-sync.env
+bun run tritongpt:sync:auto 2>&1 | tee ~/logs/tritongpt-sync-auto-$(date +%F-%H%M).log
+```
+
 If that works, add a simple cron entry:
 
 ```sh
@@ -196,7 +215,7 @@ crontab -e
 Add:
 
 ```cron
-17 */6 * * * bash -lc 'source ~/.tritongpt-sync.env && cd ~/t3code-server/t3code && git fetch --all --prune && bun run tritongpt:sync:pr >> ~/logs/tritongpt-sync-cron.log 2>&1'
+17 11 * * * bash -lc 'source ~/.tritongpt-sync.env && cd ~/t3code-server/t3code && git fetch --all --prune && bun run tritongpt:sync:auto >> ~/logs/tritongpt-sync-cron.log 2>&1'
 ```
 
 Operational rules:

@@ -57,9 +57,10 @@
     "dist:desktop:win:arm64": "node scripts/build-desktop-artifact.ts --platform win --target nsis --arch arm64",
     "dist:desktop:win:x64": "node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64",
     "release:smoke": "node scripts/release-smoke.ts",
-    "tritongpt:sync:check": "node scripts/tritongpt-sync-upstream.mjs --no-llm --skip-checks",
+    "tritongpt:sync:check": "node scripts/tritongpt-sync-upstream.mjs --no-llm --skip-checks --allow-needs-review",
     "tritongpt:sync:review": "node scripts/tritongpt-sync-upstream.mjs",
     "tritongpt:sync:pr": "node scripts/tritongpt-sync-upstream.mjs --push --create-pr",
+    "tritongpt:sync:auto": "node scripts/tritongpt-sync-upstream.mjs --push --create-pr --auto-merge-pr",
     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron packages/*/dist .turbo apps/*/.turbo packages/*/.turbo",
     "sync:vscode-icons": "node scripts/sync-vscode-icons.mjs"
   },

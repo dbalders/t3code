@@ -11,7 +11,9 @@ packages/*/dist
 .env.local
 build/
 .logs/
+.agent/
 release/
+release-v*/
 release-mock/
 .t3
 .idea/
