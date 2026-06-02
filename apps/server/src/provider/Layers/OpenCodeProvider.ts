@@ -136,6 +136,29 @@ function formatOpenCodeProbeError(input: {
   };
 }
 
+function makeOpenCodeProviderCacheKey(
+  openCodeSettings: OpenCodeSettings,
+  environment: NodeJS.ProcessEnv,
+): string {
+  return `opencode:v1:${JSON.stringify({
+    binaryPath: openCodeSettings.binaryPath,
+    serverUrl: openCodeSettings.serverUrl,
+    opencodeConfig: environment.OPENCODE_CONFIG ?? "",
+    customModels: [...openCodeSettings.customModels],
+  })}`;
+}
+
+function withOpenCodeCacheKey(
+  provider: ServerProviderDraft,
+  openCodeSettings: OpenCodeSettings,
+  environment: NodeJS.ProcessEnv,
+): ServerProviderDraft {
+  return {
+    ...provider,
+    cacheKey: makeOpenCodeProviderCacheKey(openCodeSettings, environment),
+  };
+}
+
 function titleCaseSlug(value: string): string {
   return value
     .split(/[-_/]+/)
@@ -252,6 +275,7 @@ function flattenOpenCodeModels(input: OpenCodeInventory): ReadonlyArray<ServerPr
 
 export const makePendingOpenCodeProvider = (
   openCodeSettings: OpenCodeSettings,
+  environment: NodeJS.ProcessEnv = process.env,
 ): Effect.Effect<ServerProviderDraft> =>
   Effect.gen(function* () {
     const checkedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
@@ -263,9 +287,32 @@ export const makePendingOpenCodeProvider = (
     );
 
     if (!openCodeSettings.enabled) {
-      return buildServerProvider({
+      return withOpenCodeCacheKey(
+        buildServerProvider({
+          presentation: OPENCODE_PRESENTATION,
+          enabled: false,
+          checkedAt,
+          models,
+          probe: {
+            installed: false,
+            version: null,
+            status: "warning",
+            auth: { status: "unknown" },
+            message:
+              openCodeSettings.serverUrl.trim().length > 0
+                ? "OpenCode is disabled in TritonAI Code settings. A server URL is configured."
+                : "OpenCode is disabled in TritonAI Code settings.",
+          },
+        }),
+        openCodeSettings,
+        environment,
+      );
+    }
+
+    return withOpenCodeCacheKey(
+      buildServerProvider({
         presentation: OPENCODE_PRESENTATION,
-        enabled: false,
+        enabled: true,
         checkedAt,
         models,
         probe: {
@@ -273,27 +320,12 @@ export const makePendingOpenCodeProvider = (
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message:
-            openCodeSettings.serverUrl.trim().length > 0
-              ? "OpenCode is disabled in TritonAI Code settings. A server URL is configured."
-              : "OpenCode is disabled in TritonAI Code settings.",
+          message: "OpenCode provider status has not been checked in this session yet.",
         },
-      });
-    }
-
-    return buildServerProvider({
-      presentation: OPENCODE_PRESENTATION,
-      enabled: true,
-      checkedAt,
-      models,
-      probe: {
-        installed: false,
-        version: null,
-        status: "warning",
-        auth: { status: "unknown" },
-        message: "OpenCode provider status has not been checked in this session yet.",
-      },
-    });
+      }),
+      openCodeSettings,
+      environment,
+    );
   });
 
 export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatus")(function* (
@@ -312,47 +344,55 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
       isExternalServer,
       serverUrl: openCodeSettings.serverUrl,
     });
-    return buildServerProvider({
-      presentation: OPENCODE_PRESENTATION,
-      enabled: openCodeSettings.enabled,
-      checkedAt,
-      models: providerModelsFromSettings(
-        [],
-        PROVIDER,
-        customModels,
-        DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-      ),
-      probe: {
-        installed: failure.installed,
-        version,
-        status: "error",
-        auth: { status: "unknown" },
-        message: failure.message,
-      },
-    });
+    return withOpenCodeCacheKey(
+      buildServerProvider({
+        presentation: OPENCODE_PRESENTATION,
+        enabled: openCodeSettings.enabled,
+        checkedAt,
+        models: providerModelsFromSettings(
+          [],
+          PROVIDER,
+          customModels,
+          DEFAULT_OPENCODE_MODEL_CAPABILITIES,
+        ),
+        probe: {
+          installed: failure.installed,
+          version,
+          status: "error",
+          auth: { status: "unknown" },
+          message: failure.message,
+        },
+      }),
+      openCodeSettings,
+      environment,
+    );
   };
 
   if (!openCodeSettings.enabled) {
-    return buildServerProvider({
-      presentation: OPENCODE_PRESENTATION,
-      enabled: false,
-      checkedAt,
-      models: providerModelsFromSettings(
-        [],
-        PROVIDER,
-        customModels,
-        DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-      ),
-      probe: {
-        installed: false,
-        version: null,
-        status: "warning",
-        auth: { status: "unknown" },
-        message: isExternalServer
-          ? "OpenCode is disabled in TritonAI Code settings. A server URL is configured."
-          : "OpenCode is disabled in TritonAI Code settings.",
-      },
-    });
+    return withOpenCodeCacheKey(
+      buildServerProvider({
+        presentation: OPENCODE_PRESENTATION,
+        enabled: false,
+        checkedAt,
+        models: providerModelsFromSettings(
+          [],
+          PROVIDER,
+          customModels,
+          DEFAULT_OPENCODE_MODEL_CAPABILITIES,
+        ),
+        probe: {
+          installed: false,
+          version: null,
+          status: "warning",
+          auth: { status: "unknown" },
+          message: isExternalServer
+            ? "OpenCode is disabled in TritonAI Code settings. A server URL is configured."
+            : "OpenCode is disabled in TritonAI Code settings.",
+        },
+      }),
+      openCodeSettings,
+      environment,
+    );
   }
 
   let version: string | null = null;
@@ -384,24 +424,28 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
       );
     }
     if (compareSemverVersions(version, MINIMUM_OPENCODE_VERSION) < 0) {
-      return buildServerProvider({
-        presentation: OPENCODE_PRESENTATION,
-        enabled: openCodeSettings.enabled,
-        checkedAt,
-        models: providerModelsFromSettings(
-          [],
-          PROVIDER,
-          customModels,
-          DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-        ),
-        probe: {
-          installed: true,
-          version,
-          status: "error",
-          auth: { status: "unknown" },
-          message: `OpenCode v${version} is too old. Upgrade to v${MINIMUM_OPENCODE_VERSION} or newer.`,
-        },
-      });
+      return withOpenCodeCacheKey(
+        buildServerProvider({
+          presentation: OPENCODE_PRESENTATION,
+          enabled: openCodeSettings.enabled,
+          checkedAt,
+          models: providerModelsFromSettings(
+            [],
+            PROVIDER,
+            customModels,
+            DEFAULT_OPENCODE_MODEL_CAPABILITIES,
+          ),
+          probe: {
+            installed: true,
+            version,
+            status: "error",
+            auth: { status: "unknown" },
+            message: `OpenCode v${version} is too old. Upgrade to v${MINIMUM_OPENCODE_VERSION} or newer.`,
+          },
+        }),
+        openCodeSettings,
+        environment,
+      );
     }
   }
 
@@ -450,25 +494,29 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     DEFAULT_OPENCODE_MODEL_CAPABILITIES,
   );
   const connectedCount = inventoryExit.value.providerList.connected.length;
-  return buildServerProvider({
-    presentation: OPENCODE_PRESENTATION,
-    enabled: true,
-    checkedAt,
-    models,
-    probe: {
-      installed: true,
-      version,
-      status: connectedCount > 0 ? "ready" : "warning",
-      auth: {
-        status: connectedCount > 0 ? "authenticated" : "unknown",
-        type: "opencode",
+  return withOpenCodeCacheKey(
+    buildServerProvider({
+      presentation: OPENCODE_PRESENTATION,
+      enabled: true,
+      checkedAt,
+      models,
+      probe: {
+        installed: true,
+        version,
+        status: connectedCount > 0 ? "ready" : "warning",
+        auth: {
+          status: connectedCount > 0 ? "authenticated" : "unknown",
+          type: "opencode",
+        },
+        message:
+          connectedCount > 0
+            ? `${connectedCount} upstream provider${connectedCount === 1 ? "" : "s"} connected through ${isExternalServer ? "the configured OpenCode server" : "OpenCode"}.`
+            : isExternalServer
+              ? "Connected to the configured OpenCode server, but it did not report any connected upstream providers."
+              : "OpenCode is available, but it did not report any connected upstream providers.",
       },
-      message:
-        connectedCount > 0
-          ? `${connectedCount} upstream provider${connectedCount === 1 ? "" : "s"} connected through ${isExternalServer ? "the configured OpenCode server" : "OpenCode"}.`
-          : isExternalServer
-            ? "Connected to the configured OpenCode server, but it did not report any connected upstream providers."
-            : "OpenCode is available, but it did not report any connected upstream providers.",
-    },
-  });
+    }),
+    openCodeSettings,
+    environment,
+  );
 });

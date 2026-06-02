@@ -120,6 +120,19 @@ function makeNpmGlobalProviderMaintenanceCapabilities(
   });
 }
 
+function makeNpmPrefixProviderMaintenanceCapabilities(
+  definition: PackageManagedProviderMaintenanceDefinition,
+  prefix: string,
+): ProviderMaintenanceCapabilities {
+  return makeProviderMaintenanceCapabilities({
+    provider: definition.provider,
+    packageName: definition.npmPackageName,
+    updateExecutable: "npm",
+    updateArgs: ["install", "-g", "--prefix", prefix, `${definition.npmPackageName}@latest`],
+    updateLockKey: `npm-prefix:${prefix}`,
+  });
+}
+
 function makeBunGlobalProviderMaintenanceCapabilities(
   definition: PackageManagedProviderMaintenanceDefinition,
 ): ProviderMaintenanceCapabilities {
@@ -227,6 +240,17 @@ function isNpmGlobalCommandPath(commandPath: string): boolean {
   );
 }
 
+function npmPrefixFromCommandPath(commandPath: string): string | null {
+  const commandPathWithSlashes = commandPath.replaceAll("\\", "/");
+  for (const marker of ["/lib/node_modules/", "/npm/node_modules/"]) {
+    const index = commandPathWithSlashes.toLowerCase().indexOf(marker);
+    if (index > 0) {
+      return commandPathWithSlashes.slice(0, marker === "/npm/node_modules/" ? index + 4 : index);
+    }
+  }
+  return null;
+}
+
 function isHomebrewCommandPath(commandPath: string): boolean {
   const normalized = normalizeCommandPath(commandPath);
   return (
@@ -280,6 +304,10 @@ export function resolvePackageManagedProviderMaintenance(
     }
     if (commandPaths.some(isPnpmGlobalCommandPath)) {
       return makePnpmGlobalProviderMaintenanceCapabilities(definition);
+    }
+    const npmPrefix = commandPaths.map(npmPrefixFromCommandPath).find((prefix) => prefix !== null);
+    if (npmPrefix) {
+      return makeNpmPrefixProviderMaintenanceCapabilities(definition, npmPrefix);
     }
     if (commandPaths.some(isNpmGlobalCommandPath)) {
       return makeNpmGlobalProviderMaintenanceCapabilities(definition);

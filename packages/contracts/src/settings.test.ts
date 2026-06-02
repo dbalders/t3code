@@ -20,8 +20,9 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
     // so existing call sites keep working through the migration.
     expect(decoded.providers.codex.enabled).toBe(false);
     expect(decoded.providers.opencode.enabled).toBe(true);
+    expect(decoded.providers.opencode.customModels).toEqual(["ucsd/deepseek-v4-flash-max"]);
     expect(decoded.textGenerationModelSelection.instanceId).toBe("opencode");
-    expect(decoded.textGenerationModelSelection.model).toBe("openai/gpt-5");
+    expect(decoded.textGenerationModelSelection.model).toBe("ucsd/deepseek-v4-flash-max");
   });
 
   it("decodes a multi-instance map mixing first-party and fork drivers", () => {

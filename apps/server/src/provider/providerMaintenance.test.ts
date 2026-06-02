@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { afterEach, expect, it } from "@effect/vitest";
-import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import os from "node:os";
 import path from "node:path";
@@ -398,6 +398,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       writeFileSync(packageBinPath, "#!/usr/bin/env node\n");
       chmodSync(packageBinPath, 0o755);
       symlinkSync(packageBinPath, symlinkPath);
+      const resolvedPrefix = realpathSync(tempDir);
 
       const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(packageToolUpdate, {
         binaryPath: symlinkPath,
@@ -411,14 +412,58 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         provider: driver("packageTool"),
         packageName: "@example/package-tool",
         update: {
-          command: "npm install -g @example/package-tool@latest",
+          command: `npm install -g --prefix ${resolvedPrefix} @example/package-tool@latest`,
 
           executable: "npm",
 
-          args: ["install", "-g", "@example/package-tool@latest"],
+          args: ["install", "-g", "--prefix", resolvedPrefix, "@example/package-tool@latest"],
 
-          lockKey: "npm-global",
+          lockKey: `npm-prefix:${resolvedPrefix}`,
         },
+      });
+    }),
+  );
+
+  it.effect("preserves custom npm prefixes for installer-managed binaries", () =>
+    Effect.gen(function* () {
+      const tempDir = yield* makeTempDir("t3-managed-npm-prefix-capabilities");
+      const managedPrefix = path.join(tempDir, ".agents", "ucsd", "runtime", "node-global");
+      const binDir = path.join(managedPrefix, "bin");
+      const packageBinDir = path.join(managedPrefix, "lib", "node_modules", "opencode-ai", "bin");
+      mkdirSync(binDir, { recursive: true });
+      mkdirSync(packageBinDir, { recursive: true });
+      const packageBinPath = path.join(packageBinDir, "opencode");
+      const symlinkPath = path.join(binDir, "opencode");
+      writeFileSync(packageBinPath, "#!/usr/bin/env node\n");
+      chmodSync(packageBinPath, 0o755);
+      symlinkSync(packageBinPath, symlinkPath);
+      const resolvedManagedPrefix = path.join(
+        realpathSync(tempDir),
+        ".agents",
+        "ucsd",
+        "runtime",
+        "node-global",
+      );
+
+      const opencodeUpdate = makePackageManagedProviderMaintenanceResolver({
+        provider: driver("opencode"),
+        npmPackageName: "opencode-ai",
+        homebrewFormula: "anomalyco/tap/opencode",
+        nativeUpdate: null,
+      });
+      const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(opencodeUpdate, {
+        binaryPath: symlinkPath,
+        platform: "darwin",
+        env: {
+          PATH: "",
+        },
+      });
+
+      expect(capabilities.update).toMatchObject({
+        command: `npm install -g --prefix ${resolvedManagedPrefix} opencode-ai@latest`,
+        executable: "npm",
+        args: ["install", "-g", "--prefix", resolvedManagedPrefix, "opencode-ai@latest"],
+        lockKey: `npm-prefix:${resolvedManagedPrefix}`,
       });
     }),
   );

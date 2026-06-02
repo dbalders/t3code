@@ -37,9 +37,19 @@ export const orderProviderSnapshots = (
 export const isCachedProviderCorrelated = (input: {
   readonly cachedProvider: ServerProvider;
   readonly fallbackProvider: ServerProvider;
-}): boolean =>
-  input.cachedProvider.instanceId === input.fallbackProvider.instanceId &&
-  input.cachedProvider.driver === input.fallbackProvider.driver;
+}): boolean => {
+  if (
+    input.cachedProvider.instanceId !== input.fallbackProvider.instanceId ||
+    input.cachedProvider.driver !== input.fallbackProvider.driver
+  ) {
+    return false;
+  }
+
+  return (
+    input.fallbackProvider.cacheKey === undefined ||
+    input.cachedProvider.cacheKey === input.fallbackProvider.cacheKey
+  );
+};
 
 export const hydrateCachedProvider = (input: {
   readonly cachedProvider: ServerProvider;

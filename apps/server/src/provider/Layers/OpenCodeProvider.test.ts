@@ -201,6 +201,26 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
       assert.equal(runtimeMock.state.closeCalls, 1);
     }),
   );
+
+  it.effect("keys provider status cache to OpenCode runtime settings and config path", () =>
+    Effect.gen(function* () {
+      const snapshot = yield* checkOpenCodeProviderStatus(
+        makeOpenCodeSettings({
+          binaryPath: "/managed/opencode",
+          customModels: ["ucsd/deepseek-v4-flash-max"],
+        }),
+        process.cwd(),
+        {
+          OPENCODE_CONFIG: "/Users/test/.config/opencode/opencode.json",
+        },
+      );
+
+      assert.equal(
+        snapshot.cacheKey,
+        'opencode:v1:{"binaryPath":"/managed/opencode","serverUrl":"","opencodeConfig":"/Users/test/.config/opencode/opencode.json","customModels":["ucsd/deepseek-v4-flash-max"]}',
+      );
+    }),
+  );
 });
 
 it.layer(testLayer)("checkOpenCodeProviderStatus with configured server URL", (it) => {

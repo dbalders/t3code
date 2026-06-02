@@ -234,4 +234,43 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
       fallbackCodex,
     );
   });
+
+  it("rejects cached snapshots when the current provider cache key changed", () => {
+    const cachedOpenCode = makeProvider(OPENCODE_DRIVER, {
+      cacheKey: 'opencode:v1:{"binaryPath":"/old/opencode","opencodeConfig":"/old/config.json"}',
+      version: "1.4.3",
+      models: [
+        {
+          slug: "cached-stale-model",
+          name: "Cached Stale Model",
+          isCustom: false,
+          capabilities: emptyCapabilities,
+        },
+      ],
+      message: "OpenCode v1.4.3 is too old.",
+    });
+    const fallbackOpenCode = makeProvider(OPENCODE_DRIVER, {
+      cacheKey:
+        'opencode:v1:{"binaryPath":"/managed/opencode","opencodeConfig":"/new/config.json"}',
+      version: null,
+      status: "warning",
+      auth: { status: "unknown" },
+      message: "OpenCode provider status has not been checked in this session yet.",
+    });
+
+    assert.strictEqual(
+      isCachedProviderCorrelated({
+        cachedProvider: cachedOpenCode,
+        fallbackProvider: fallbackOpenCode,
+      }),
+      false,
+    );
+    assert.deepStrictEqual(
+      hydrateCachedProvider({
+        cachedProvider: cachedOpenCode,
+        fallbackProvider: fallbackOpenCode,
+      }),
+      fallbackOpenCode,
+    );
+  });
 });

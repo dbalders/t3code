@@ -273,6 +273,23 @@ function ensureRuntimeError(
     : new OpenCodeRuntimeError({ operation, detail, cause });
 }
 
+export function buildOpenCodeServerEnvironment(
+  environment: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  if (typeof environment.OPENCODE_CONFIG === "string" && environment.OPENCODE_CONFIG.trim()) {
+    const { OPENCODE_CONFIG_CONTENT: _content, ...withoutInlineConfig } = environment;
+    return withoutInlineConfig;
+  }
+
+  return {
+    ...environment,
+    OPENCODE_CONFIG_CONTENT:
+      typeof environment.OPENCODE_CONFIG_CONTENT === "string"
+        ? environment.OPENCODE_CONFIG_CONTENT
+        : OPENCODE_EMPTY_CONFIG_CONTENT,
+  };
+}
+
 const makeOpenCodeRuntime = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const netService = yield* NetService.NetService;
@@ -340,10 +357,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
           ChildProcess.make(input.binaryPath, args, {
             detached: process.platform !== "win32",
             shell: process.platform === "win32",
-            env: {
-              ...(input.environment ?? process.env),
-              OPENCODE_CONFIG_CONTENT: OPENCODE_EMPTY_CONFIG_CONTENT,
-            },
+            env: buildOpenCodeServerEnvironment(input.environment ?? process.env),
           }),
         )
         .pipe(
