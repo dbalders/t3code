@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import {
+  createBuildConfig,
   resolveDesktopRuntimeDependencies,
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
@@ -43,12 +44,30 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   });
 
   it("switches desktop packaging product names to nightly for nightly builds", () => {
-    assert.equal(resolveDesktopProductName("0.0.17"), "TritonAI Code (Alpha)");
+    assert.equal(resolveDesktopProductName("0.0.17"), "TritonAI Code");
     assert.equal(
       resolveDesktopProductName("0.0.17-nightly.20260413.42"),
       "TritonAI Code (Nightly)",
     );
   });
+
+  it.effect("keeps Windows resource editing enabled for unsigned local builds", () =>
+    Effect.gen(function* () {
+      const buildConfig = yield* createBuildConfig(
+        "win",
+        "nsis",
+        "0.0.17",
+        false,
+        false,
+        undefined,
+      );
+
+      const winConfig = buildConfig.win as Record<string, unknown>;
+      assert.equal(buildConfig.productName, "TritonAI Code");
+      assert.equal(winConfig.icon, "icon.ico");
+      assert.equal(winConfig.signAndEditExecutable, undefined);
+    }),
+  );
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
     assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.0.17"), {
