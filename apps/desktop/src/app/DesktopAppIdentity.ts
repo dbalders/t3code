@@ -81,6 +81,10 @@ const make = Effect.gen(function* () {
   });
 
   const resolveUserDataPath = Effect.gen(function* () {
+    if (environment.legacyUserDataDirName === null) {
+      return environment.path.join(environment.appDataDirectory, environment.userDataDirName);
+    }
+
     const legacyPath = environment.path.join(
       environment.appDataDirectory,
       environment.legacyUserDataDirName,

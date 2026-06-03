@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_DISPLAY_NAME = isDevelopment ? "TritonAI Code (Dev)" : "TritonAI Code";
-const APP_BUNDLE_ID = isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code";
+const APP_BUNDLE_ID = isDevelopment ? "edu.ucsd.ai.tritonai-code.dev" : "edu.ucsd.ai.tritonai-code";
 const LAUNCHER_VERSION = 2;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -162,7 +162,7 @@ function buildMacLauncher(electronBinaryPath) {
   return targetBinaryPath;
 }
 
-export function resolveElectronPath() {
+export function resolveElectronPath({ useMacAppLauncher = false } = {}) {
   const require = createRequire(import.meta.url);
   const electronBinaryPath = require("electron");
 
@@ -170,9 +170,9 @@ export function resolveElectronPath() {
     return electronBinaryPath;
   }
 
-  // Dev launches do not need a renamed app bundle badly enough to risk breaking
-  // Electron helper resource lookup on macOS.
-  if (isDevelopment) {
+  // Local launches do not need a renamed app bundle badly enough to risk
+  // breaking Electron helper resource lookup on macOS.
+  if (isDevelopment || !useMacAppLauncher) {
     return electronBinaryPath;
   }
 

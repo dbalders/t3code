@@ -16,6 +16,7 @@ import {
   resolveGitHubPublishConfig,
   resolveMockUpdateServerPort,
   resolveMockUpdateServerUrl,
+  TRITONAI_DESKTOP_APP_ID,
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 
@@ -63,6 +64,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       );
 
       const winConfig = buildConfig.win as Record<string, unknown>;
+      assert.equal(buildConfig.appId, TRITONAI_DESKTOP_APP_ID);
       assert.equal(buildConfig.productName, "TritonAI Code");
       assert.equal(winConfig.icon, "icon.ico");
       assert.equal(winConfig.signAndEditExecutable, undefined);

@@ -118,7 +118,7 @@ const withIdentity = <A, E, R>(
         Layer.provideMerge(
           FileSystem.layerNoop({
             exists: (path) =>
-              Effect.succeed(input.legacyPathExists === true && path.includes("T3 Code (Alpha)")),
+              Effect.succeed(input.legacyPathExists === true && path.includes("T3 Code")),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
           }),
@@ -132,15 +132,35 @@ const withIdentity = <A, E, R>(
 };
 
 describe("DesktopAppIdentity", () => {
-  it.effect("keeps using the legacy userData path when it already exists", () =>
+  it.effect("uses the downstream userData path for packaged builds", () =>
     withIdentity(
       Effect.gen(function* () {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         const userDataPath = yield* identity.resolveUserDataPath;
 
-        assert.equal(userDataPath, "/Users/alice/Library/Application Support/T3 Code (Alpha)");
+        assert.equal(userDataPath, "/Users/alice/Library/Application Support/TritonAI Code");
       }),
       { legacyPathExists: true },
+    ),
+  );
+
+  it.effect("keeps using the legacy dev userData path when it already exists", () =>
+    withIdentity(
+      Effect.gen(function* () {
+        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
+        const userDataPath = yield* identity.resolveUserDataPath;
+
+        assert.equal(userDataPath, "/Users/alice/Library/Application Support/T3 Code (Dev)");
+      }),
+      {
+        environment: {
+          isPackaged: false,
+          env: {
+            VITE_DEV_SERVER_URL: "http://localhost:5173",
+          },
+        },
+        legacyPathExists: true,
+      },
     ),
   );
 

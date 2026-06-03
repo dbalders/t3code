@@ -67,7 +67,7 @@ export interface DesktopEnvironmentShape {
   readonly linuxDesktopEntryName: string;
   readonly linuxWmClass: string;
   readonly userDataDirName: string;
-  readonly legacyUserDataDirName: string;
+  readonly legacyUserDataDirName: string | null;
   readonly defaultDesktopSettings: DesktopSettings;
   readonly runtimeInfo: DesktopRuntimeInfo;
   readonly resolvePickFolderDefaultPath: (rawOptions: unknown) => Option.Option<string>;
@@ -161,8 +161,8 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
   });
   const displayName = branding.displayName;
   const stateDir = path.join(baseDir, isDevelopment ? "dev" : "userdata");
-  const userDataDirName = isDevelopment ? "t3code-dev" : "t3code";
-  const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+  const userDataDirName = isDevelopment ? "tritonai-code-dev" : "TritonAI Code";
+  const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : null;
   const resourcesPath = input.resourcesPath;
 
   return DesktopEnvironment.of({
@@ -200,9 +200,9 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     otlpExportIntervalMs: config.otlpExportIntervalMs,
     branding,
     displayName,
-    appUserModelId: isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
-    linuxDesktopEntryName: isDevelopment ? "t3code-dev.desktop" : "t3code.desktop",
-    linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",
+    appUserModelId: isDevelopment ? "edu.ucsd.ai.tritonai-code.dev" : "edu.ucsd.ai.tritonai-code",
+    linuxDesktopEntryName: isDevelopment ? "tritonai-code-dev.desktop" : "tritonai-code.desktop",
+    linuxWmClass: isDevelopment ? "tritonai-code-dev" : "tritonai-code",
     userDataDirName,
     legacyUserDataDirName,
     defaultDesktopSettings: resolveDefaultDesktopSettings(input.appVersion),

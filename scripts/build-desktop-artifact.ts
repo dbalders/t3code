@@ -223,6 +223,9 @@ interface StagePackageJson {
   readonly overrides: Record<string, unknown>;
 }
 
+export const TRITONAI_DESKTOP_PACKAGE_NAME = "tritonai-code";
+export const TRITONAI_DESKTOP_APP_ID = "edu.ucsd.ai.tritonai-code";
+
 const AzureTrustedSigningOptionsConfig = Config.all({
   publisherName: Config.string("AZURE_TRUSTED_SIGNING_PUBLISHER_NAME"),
   endpoint: Config.string("AZURE_TRUSTED_SIGNING_ENDPOINT"),
@@ -589,7 +592,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   mockUpdateServerPort: number | undefined,
 ) {
   const buildConfig: Record<string, unknown> = {
-    appId: "com.t3tools.t3code",
+    appId: TRITONAI_DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
     artifactName: "T3-Code-${version}-${arch}.${ext}",
     directories: {
@@ -795,7 +798,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(stageResourcesDir, path.join(stageAppDir, "apps/desktop/prod-resources"));
 
   const stagePackageJson: StagePackageJson = {
-    name: "t3code",
+    name: TRITONAI_DESKTOP_PACKAGE_NAME,
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,
