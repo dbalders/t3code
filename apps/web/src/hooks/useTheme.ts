@@ -57,6 +57,15 @@ function ensureThemeColorMetaTag(): HTMLMetaElement {
   return element;
 }
 
+function hasBrowserDocument() {
+  return (
+    typeof document !== "undefined" &&
+    typeof document.querySelector === "function" &&
+    Boolean(document.documentElement) &&
+    Boolean(document.body)
+  );
+}
+
 function normalizeThemeColor(value: string | null | undefined): string | null {
   const normalizedValue = value?.trim().toLowerCase();
   if (
@@ -80,7 +89,7 @@ function resolveBrowserChromeSurface(): HTMLElement {
 }
 
 export function syncBrowserChromeTheme() {
-  if (typeof document === "undefined" || typeof getComputedStyle === "undefined") return;
+  if (!hasBrowserDocument() || typeof getComputedStyle === "undefined") return;
   const surfaceColor = normalizeThemeColor(
     getComputedStyle(resolveBrowserChromeSurface()).backgroundColor,
   );
@@ -95,21 +104,27 @@ export function syncBrowserChromeTheme() {
 
 function applyTheme(theme: Theme, suppressTransitions = false) {
   if (typeof document === "undefined" || typeof window === "undefined") return;
+  const root = document.documentElement;
+  if (!root) return;
   if (suppressTransitions) {
-    document.documentElement.classList.add("no-transitions");
+    root.classList.add("no-transitions");
   }
   const isDark =
     theme === "dark" || theme === "ucsd-dark" || (theme === "system" && getSystemDark());
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.classList.toggle("dark", isDark);
+  if (root.dataset) {
+    root.dataset.theme = theme;
+  } else {
+    root.setAttribute?.("data-theme", theme);
+  }
+  root.classList.toggle("dark", isDark);
   syncBrowserChromeTheme();
   syncDesktopTheme(theme);
   if (suppressTransitions) {
     // Force a reflow so the no-transitions class takes effect before removal
     // oxlint-disable-next-line no-unused-expressions
-    document.documentElement.offsetHeight;
+    root.offsetHeight;
     requestAnimationFrame(() => {
-      document.documentElement.classList.remove("no-transitions");
+      root.classList.remove("no-transitions");
     });
   }
 }
