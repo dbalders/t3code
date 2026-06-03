@@ -1951,6 +1951,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       data-chat-composer-form="true"
     >
       <div
+        data-slot="chat-composer-frame"
         className={cn(
           "group rounded-[22px] p-px transition-colors duration-200",
           composerProviderState.composerFrameClassName,
@@ -1962,6 +1963,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       >
         <div
           ref={composerSurfaceRef}
+          data-slot="chat-composer-surface"
           data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
           className={cn(
             "rounded-[20px] border bg-card transition-colors duration-200 has-focus-visible:border-ring/45",

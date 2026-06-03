@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import type { DesktopTheme } from "@t3tools/contracts";
 
-type Theme = "light" | "dark" | "system";
+export type Theme = "light" | "dark" | "system" | "ucsd-light" | "ucsd-dark";
 type ThemeSnapshot = {
   theme: Theme;
   systemDark: boolean;
@@ -8,6 +9,7 @@ type ThemeSnapshot = {
 
 const STORAGE_KEY = "t3code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
+const THEME_VALUES = ["light", "dark", "system", "ucsd-light", "ucsd-dark"] as const;
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
   theme: "system",
   systemDark: false,
@@ -17,7 +19,7 @@ const DYNAMIC_THEME_COLOR_SELECTOR = `meta[name="${THEME_COLOR_META_NAME}"][data
 
 let listeners: Array<() => void> = [];
 let lastSnapshot: ThemeSnapshot | null = null;
-let lastDesktopTheme: Theme | null = null;
+let lastDesktopTheme: DesktopTheme | null = null;
 
 function emitChange() {
   for (const listener of listeners) listener();
@@ -34,8 +36,12 @@ function getSystemDark() {
 function getStored(): Theme {
   if (!hasThemeStorage()) return DEFAULT_THEME_SNAPSHOT.theme;
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === "light" || raw === "dark" || raw === "system") return raw;
+  if (isTheme(raw)) return raw;
   return DEFAULT_THEME_SNAPSHOT.theme;
+}
+
+export function isTheme(value: unknown): value is Theme {
+  return typeof value === "string" && THEME_VALUES.includes(value as Theme);
 }
 
 function ensureThemeColorMetaTag(): HTMLMetaElement {
@@ -92,7 +98,9 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
   if (suppressTransitions) {
     document.documentElement.classList.add("no-transitions");
   }
-  const isDark = theme === "dark" || (theme === "system" && getSystemDark());
+  const isDark =
+    theme === "dark" || theme === "ucsd-dark" || (theme === "system" && getSystemDark());
+  document.documentElement.dataset.theme = theme;
   document.documentElement.classList.toggle("dark", isDark);
   syncBrowserChromeTheme();
   syncDesktopTheme(theme);
@@ -106,16 +114,28 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
   }
 }
 
+function resolveDesktopTheme(theme: Theme): DesktopTheme {
+  switch (theme) {
+    case "ucsd-light":
+      return "light";
+    case "ucsd-dark":
+      return "dark";
+    default:
+      return theme;
+  }
+}
+
 function syncDesktopTheme(theme: Theme) {
   if (typeof window === "undefined") return;
   const bridge = window.desktopBridge;
-  if (!bridge || lastDesktopTheme === theme) {
+  const desktopTheme = resolveDesktopTheme(theme);
+  if (!bridge || lastDesktopTheme === desktopTheme) {
     return;
   }
 
-  lastDesktopTheme = theme;
-  void bridge.setTheme(theme).catch(() => {
-    if (lastDesktopTheme === theme) {
+  lastDesktopTheme = desktopTheme;
+  void bridge.setTheme(desktopTheme).catch(() => {
+    if (lastDesktopTheme === desktopTheme) {
       lastDesktopTheme = null;
     }
   });
@@ -176,7 +196,13 @@ export function useTheme() {
   const theme = snapshot.theme;
 
   const resolvedTheme: "light" | "dark" =
-    theme === "system" ? (snapshot.systemDark ? "dark" : "light") : theme;
+    theme === "system"
+      ? snapshot.systemDark
+        ? "dark"
+        : "light"
+      : theme === "ucsd-dark"
+        ? "dark"
+        : "light";
 
   const setTheme = useCallback((next: Theme) => {
     if (!hasThemeStorage()) return;

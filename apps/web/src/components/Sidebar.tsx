@@ -2463,10 +2463,10 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
               <span className="hidden">
                 <T3Wordmark />
               </span>
-              <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
+              <span className="tritonai-wordmark-name truncate text-sm font-medium tracking-tight transition-colors">
                 TritonAI
               </span>
-              <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
+              <span className="tritonai-wordmark-badge rounded-full px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] transition-colors">
                 Code
               </span>
             </Link>

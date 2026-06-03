@@ -86,6 +86,10 @@
 :root {
   color-scheme: light;
   --radius: 0.625rem;
+  --ucsd-navy: #182b49;
+  --ucsd-blue: #00629b;
+  --ucsd-yellow: #ffcd00;
+  --ucsd-gold: #c69214;
   --background: var(--color-white);
   --app-chrome-background: var(--background);
   --foreground: var(--color-neutral-800);
@@ -144,6 +148,60 @@
   }
 }
 
+:root[data-theme="ucsd-light"] {
+  --primary: var(--ucsd-blue);
+  --primary-foreground: var(--color-white);
+  --secondary: color-mix(in srgb, var(--ucsd-blue) 6%, transparent);
+  --muted: color-mix(in srgb, var(--ucsd-blue) 5%, var(--color-black) 1%);
+  --accent: color-mix(in srgb, var(--ucsd-blue) 7%, transparent);
+  --border: color-mix(in srgb, var(--ucsd-blue) 14%, var(--color-black) 4%);
+  --input: color-mix(in srgb, var(--ucsd-blue) 18%, transparent);
+  --ring: var(--ucsd-blue);
+  --info: var(--ucsd-blue);
+  --info-foreground: var(--ucsd-navy);
+  --warning: var(--ucsd-yellow);
+  --warning-foreground: var(--ucsd-gold);
+  --app-wordmark-text: var(--ucsd-navy);
+  --app-wordmark-badge-background: color-mix(in srgb, var(--ucsd-yellow) 45%, var(--color-white));
+  --app-wordmark-badge-text: var(--ucsd-navy);
+  --ucsd-composer-frame: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ucsd-blue) 68%, transparent),
+    color-mix(in srgb, var(--ucsd-yellow) 64%, transparent)
+  );
+  --ucsd-composer-border: color-mix(in srgb, var(--ucsd-blue) 36%, var(--color-black) 4%);
+  --ucsd-composer-focus-border: var(--ucsd-blue);
+  --ucsd-composer-focus-shadow: color-mix(in srgb, var(--ucsd-blue) 14%, transparent);
+  --ucsd-composer-idle-shadow: color-mix(in srgb, var(--ucsd-blue) 8%, transparent);
+}
+
+:root[data-theme="ucsd-dark"] {
+  --primary: var(--ucsd-yellow);
+  --primary-foreground: var(--ucsd-navy);
+  --secondary: color-mix(in srgb, var(--ucsd-blue) 18%, transparent);
+  --muted: color-mix(in srgb, var(--ucsd-blue) 14%, transparent);
+  --accent: color-mix(in srgb, var(--ucsd-blue) 18%, transparent);
+  --border: color-mix(in srgb, var(--ucsd-blue) 22%, var(--color-white) 4%);
+  --input: color-mix(in srgb, var(--ucsd-blue) 24%, var(--color-white) 3%);
+  --ring: var(--ucsd-yellow);
+  --info: var(--ucsd-blue);
+  --info-foreground: color-mix(in srgb, var(--ucsd-yellow) 72%, var(--color-white));
+  --warning: var(--ucsd-yellow);
+  --warning-foreground: var(--ucsd-yellow);
+  --app-wordmark-text: color-mix(in srgb, var(--ucsd-yellow) 82%, var(--color-white));
+  --app-wordmark-badge-background: color-mix(in srgb, var(--ucsd-blue) 34%, transparent);
+  --app-wordmark-badge-text: color-mix(in srgb, var(--ucsd-yellow) 86%, var(--color-white));
+  --ucsd-composer-frame: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ucsd-blue) 76%, transparent),
+    color-mix(in srgb, var(--ucsd-yellow) 46%, transparent)
+  );
+  --ucsd-composer-border: color-mix(in srgb, var(--ucsd-blue) 42%, var(--color-white) 5%);
+  --ucsd-composer-focus-border: color-mix(in srgb, var(--ucsd-blue) 70%, var(--color-white) 8%);
+  --ucsd-composer-focus-shadow: color-mix(in srgb, var(--ucsd-blue) 18%, transparent);
+  --ucsd-composer-idle-shadow: color-mix(in srgb, var(--ucsd-blue) 14%, transparent);
+}
+
 body {
   font-family:
     "DM Sans",
@@ -192,6 +250,29 @@ body::after {
 pre,
 code {
   font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.tritonai-wordmark-name {
+  color: var(--app-wordmark-text, var(--muted-foreground));
+}
+
+.tritonai-wordmark-badge {
+  background-color: var(--app-wordmark-badge-background, var(--muted));
+  color: var(--app-wordmark-badge-text, var(--muted-foreground));
+}
+
+:root[data-theme^="ucsd"] [data-slot="chat-composer-frame"] {
+  background: var(--ucsd-composer-frame);
+}
+
+:root[data-theme^="ucsd"] [data-slot="chat-composer-surface"] {
+  border-color: var(--ucsd-composer-border);
+  box-shadow: 0 0 0 1px var(--ucsd-composer-idle-shadow);
+}
+
+:root[data-theme^="ucsd"] [data-slot="chat-composer-surface"]:focus-within {
+  border-color: var(--ucsd-composer-focus-border);
+  box-shadow: 0 0 0 2px var(--ucsd-composer-focus-shadow);
 }
 
 /* Window drag region (frameless titlebar) */

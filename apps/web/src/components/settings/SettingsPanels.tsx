@@ -29,7 +29,7 @@ import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
 import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
-import { useTheme } from "../../hooks/useTheme";
+import { isTheme, useTheme, type Theme } from "../../hooks/useTheme";
 import { useSettings, useUpdateSettings } from "../../hooks/useSettings";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import {
@@ -92,7 +92,15 @@ const THEME_OPTIONS = [
     value: "dark",
     label: "Dark",
   },
-] as const;
+  {
+    value: "ucsd-light",
+    label: "UCSD Light",
+  },
+  {
+    value: "ucsd-dark",
+    label: "UCSD Dark",
+  },
+] satisfies ReadonlyArray<{ readonly value: Theme; readonly label: string }>;
 
 const TIMESTAMP_FORMAT_LABELS = {
   locale: "System default",
@@ -528,12 +536,12 @@ export function GeneralSettingsPanel() {
             <Select
               value={theme}
               onValueChange={(value) => {
-                if (value === "system" || value === "light" || value === "dark") {
+                if (isTheme(value)) {
                   setTheme(value);
                 }
               }}
             >
-              <SelectTrigger className="w-full sm:w-40" aria-label="Theme preference">
+              <SelectTrigger className="w-full sm:w-44" aria-label="Theme preference">
                 <SelectValue>
                   {THEME_OPTIONS.find((option) => option.value === theme)?.label ?? "System"}
                 </SelectValue>
