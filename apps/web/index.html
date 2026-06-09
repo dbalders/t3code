@@ -15,23 +15,31 @@
       (() => {
         const LIGHT_BACKGROUND = "#ffffff";
         const DARK_BACKGROUND = "#161616";
+        const DEFAULT_THEME = "ucsd-light";
         const themeColorMeta = document.querySelector('meta[name="theme-color"]');
         try {
           const storedTheme = window.localStorage.getItem("t3code:theme");
           const theme =
-            storedTheme === "light" || storedTheme === "dark" || storedTheme === "system"
+            storedTheme === "light" ||
+            storedTheme === "dark" ||
+            storedTheme === "system" ||
+            storedTheme === "ucsd-light" ||
+            storedTheme === "ucsd-dark"
               ? storedTheme
-              : "system";
+              : DEFAULT_THEME;
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          const isDark = theme === "dark" || (theme === "system" && prefersDark);
+          const isDark =
+            theme === "dark" || theme === "ucsd-dark" || (theme === "system" && prefersDark);
+          document.documentElement.dataset.theme = theme;
           document.documentElement.classList.toggle("dark", isDark);
           const chromeColor = isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND;
           document.documentElement.style.backgroundColor = chromeColor;
           themeColorMeta?.setAttribute("content", chromeColor);
         } catch {
-          document.documentElement.classList.add("dark");
-          document.documentElement.style.backgroundColor = DARK_BACKGROUND;
-          themeColorMeta?.setAttribute("content", DARK_BACKGROUND);
+          document.documentElement.dataset.theme = DEFAULT_THEME;
+          document.documentElement.classList.remove("dark");
+          document.documentElement.style.backgroundColor = LIGHT_BACKGROUND;
+          themeColorMeta?.setAttribute("content", LIGHT_BACKGROUND);
         }
       })();
     </script>

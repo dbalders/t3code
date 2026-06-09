@@ -10,8 +10,9 @@ type ThemeSnapshot = {
 const STORAGE_KEY = "t3code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 const THEME_VALUES = ["light", "dark", "system", "ucsd-light", "ucsd-dark"] as const;
+export const DEFAULT_THEME: Theme = "ucsd-light";
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
-  theme: "system",
+  theme: DEFAULT_THEME,
   systemDark: false,
 };
 const THEME_COLOR_META_NAME = "theme-color";
