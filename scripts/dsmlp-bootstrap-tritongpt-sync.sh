@@ -64,8 +64,8 @@ export LITELLM_API_KEY="replace-me"
 export T3_SYNC_LITELLM_MODEL="api-gemma-4-26b"
 export OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json"
 export T3_SYNC_REVIEW_MODE="agent"
-export T3_SYNC_AGENT_MODEL="ucsd/deepseek-v4-flash-max"
-export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run --model "${T3_SYNC_AGENT_MODEL:-ucsd/deepseek-v4-flash-max}" "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
+export T3_SYNC_AGENT_MODEL="ucsd/deepseek-v4-flash"
+export T3_SYNC_AGENT_COMMAND='OPENCODE_CONFIG="$HOME/.config/opencode/opencode.json" opencode run --model "${T3_SYNC_AGENT_MODEL:-ucsd/deepseek-v4-flash}" "$(cat "$T3_SYNC_AGENT_PROMPT_FILE")" > "$T3_SYNC_AGENT_RESPONSE_FILE"'
 export T3_SYNC_AGENT_CAN_EDIT="1"
 export T3_SYNC_AGENT_SECRET_ENV_ALLOWLIST="TRITONAI_API_KEY"
 export T3_SYNC_BRAND_BRANCH="tritongpt"

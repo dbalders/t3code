@@ -207,7 +207,7 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
       const snapshot = yield* checkOpenCodeProviderStatus(
         makeOpenCodeSettings({
           binaryPath: "/managed/opencode",
-          customModels: ["ucsd/deepseek-v4-flash-max"],
+          customModels: ["ucsd/deepseek-v4-flash"],
         }),
         process.cwd(),
         {
@@ -217,7 +217,7 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
 
       assert.equal(
         snapshot.cacheKey,
-        'opencode:v1:{"binaryPath":"/managed/opencode","serverUrl":"","opencodeConfig":"/Users/test/.config/opencode/opencode.json","customModels":["ucsd/deepseek-v4-flash-max"]}',
+        'opencode:v1:{"binaryPath":"/managed/opencode","serverUrl":"","opencodeConfig":"/Users/test/.config/opencode/opencode.json","customModels":["ucsd/deepseek-v4-flash"]}',
       );
     }),
   );

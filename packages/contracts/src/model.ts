@@ -138,7 +138,7 @@ export const DEFAULT_PROVIDER_INSTANCE_ID = defaultInstanceIdForDriver(
 );
 export const DEFAULT_MODEL = "gpt-5.4";
 export const DEFAULT_GIT_TEXT_GENERATION_MODEL = "gpt-5.4-mini";
-export const DEFAULT_OPENCODE_MODEL = "ucsd/deepseek-v4-flash-max";
+export const DEFAULT_OPENCODE_MODEL = "ucsd/deepseek-v4-flash";
 
 export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, string>> = {
   [CODEX_DRIVER_KIND]: DEFAULT_MODEL,
