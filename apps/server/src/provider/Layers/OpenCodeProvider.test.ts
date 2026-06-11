@@ -38,6 +38,7 @@ const runtimeMock = {
     inventory: {
       providerList: { connected: [] as string[], all: [] as unknown[], default: {} },
       agents: [] as unknown[],
+      skills: [] as unknown[],
     } as unknown,
   },
   reset() {
@@ -48,6 +49,7 @@ const runtimeMock = {
     this.state.inventory = {
       providerList: { connected: [], all: [] as unknown[], default: {} },
       agents: [] as unknown[],
+      skills: [] as unknown[],
     };
   },
 };
@@ -279,6 +281,70 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
         ["low", "medium", "high"],
       );
       assert.equal(variantDescriptor.currentValue, "high");
+    }),
+  );
+
+  it.effect("includes OpenCode skills in the provider snapshot", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.inventory = {
+        providerList: {
+          connected: ["ucsd"],
+          all: [
+            {
+              id: "ucsd",
+              name: "ucsd",
+              models: {
+                "gpt-5.5": {
+                  id: "gpt-5.5",
+                  name: "GPT-5.5",
+                  variants: {},
+                },
+              },
+            },
+          ],
+          default: {},
+        },
+        agents: [],
+        skills: [
+          {
+            name: "tritonai-feedback",
+            description: "Send feedback to the TritonAI team.",
+            location: "/Users/test/.agents/ucsd/skills/tritonai-feedback/SKILL.md",
+            content: "---\nname: tritonai-feedback\n---\n",
+          },
+          {
+            name: "ucsd-data-classification",
+            description: "Classify UCSD data under IS-3 Protection Levels.",
+            location: "/Users/test/.agents/ucsd/skills/ucsd-data-classification/SKILL.md",
+            content: "---\nname: ucsd-data-classification\n---\n",
+          },
+        ],
+      };
+
+      const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
+
+      assert.deepEqual(
+        snapshot.skills.map((skill) => ({
+          name: skill.name,
+          path: skill.path,
+          enabled: skill.enabled,
+          shortDescription: skill.shortDescription,
+        })),
+        [
+          {
+            name: "tritonai-feedback",
+            path: "/Users/test/.agents/ucsd/skills/tritonai-feedback/SKILL.md",
+            enabled: true,
+            shortDescription: "Send feedback to the TritonAI team.",
+          },
+          {
+            name: "ucsd-data-classification",
+            path: "/Users/test/.agents/ucsd/skills/ucsd-data-classification/SKILL.md",
+            enabled: true,
+            shortDescription: "Classify UCSD data under IS-3 Protection Levels.",
+          },
+        ],
+      );
     }),
   );
 
