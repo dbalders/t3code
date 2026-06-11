@@ -162,7 +162,7 @@
   --warning: var(--ucsd-yellow);
   --warning-foreground: var(--ucsd-gold);
   --app-wordmark-text: var(--ucsd-navy);
-  --app-wordmark-badge-background: color-mix(in srgb, var(--ucsd-yellow) 45%, var(--color-white));
+  --app-wordmark-badge-background: color-mix(in srgb, var(--ucsd-blue) 16%, var(--color-white));
   --app-wordmark-badge-text: var(--ucsd-navy);
   --ucsd-composer-frame: linear-gradient(
     135deg,

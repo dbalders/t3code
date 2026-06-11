@@ -139,58 +139,209 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
     }),
   );
 
-  it.effect("emits OpenCode variant defaults so trait picker can resolve a visible selection", () =>
+  it.effect(
+    "emits OpenCode reasoning defaults so trait picker can resolve a visible selection",
+    () =>
+      Effect.gen(function* () {
+        runtimeMock.state.inventory = {
+          providerList: {
+            connected: ["openai"],
+            all: [
+              {
+                id: "openai",
+                name: "OpenAI",
+                models: {
+                  "gpt-5.4": {
+                    id: "gpt-5.4",
+                    name: "GPT-5.4",
+                    variants: {
+                      none: {},
+                      low: {},
+                      medium: {},
+                      high: {},
+                      xhigh: {},
+                    },
+                  },
+                },
+              },
+            ],
+            default: {},
+          },
+          agents: [
+            { name: "build", hidden: false, mode: "primary" },
+            { name: "plan", hidden: false, mode: "primary" },
+          ],
+        };
+
+        const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
+        const model = snapshot.models.find((entry) => entry.slug === "openai/gpt-5.4");
+
+        assert.ok(model);
+        const variantDescriptor = model.capabilities?.optionDescriptors?.find(
+          (descriptor) => descriptor.id === "variant" && descriptor.type === "select",
+        );
+        assert.ok(variantDescriptor && variantDescriptor.type === "select");
+        assert.equal(variantDescriptor.label, "Reasoning");
+        assert.equal(
+          variantDescriptor.options.find((option) => option.isDefault === true)?.id,
+          "medium",
+        );
+        const agentDescriptor = model.capabilities?.optionDescriptors?.find(
+          (descriptor) => descriptor.id === "agent" && descriptor.type === "select",
+        );
+        assert.ok(agentDescriptor && agentDescriptor.type === "select");
+        assert.equal(
+          agentDescriptor.options.find((option) => option.isDefault === true)?.id,
+          "build",
+        );
+      }),
+  );
+
+  it.effect("uses DeepSeek-specific reasoning fallbacks for UCSD DeepSeek models", () =>
     Effect.gen(function* () {
       runtimeMock.state.inventory = {
         providerList: {
-          connected: ["openai"],
+          connected: ["ucsd"],
           all: [
             {
-              id: "openai",
-              name: "OpenAI",
+              id: "ucsd",
+              name: "ucsd",
               models: {
-                "gpt-5.4": {
-                  id: "gpt-5.4",
-                  name: "GPT-5.4",
-                  variants: {
-                    none: {},
-                    low: {},
-                    medium: {},
-                    high: {},
-                    xhigh: {},
-                  },
+                "deepseek-v4-flash-max": {
+                  id: "deepseek-v4-flash-max",
+                  name: "DeepSeek v4 Flash Max",
+                  variants: {},
                 },
               },
             },
           ],
           default: {},
         },
-        agents: [
-          { name: "build", hidden: false, mode: "primary" },
-          { name: "plan", hidden: false, mode: "primary" },
-        ],
+        agents: [],
       };
 
       const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
-      const model = snapshot.models.find((entry) => entry.slug === "openai/gpt-5.4");
+      const model = snapshot.models.find((entry) => entry.slug === "ucsd/deepseek-v4-flash-max");
 
       assert.ok(model);
+      assert.equal(model.name, "DeepSeek v4 Flash Max");
+      assert.equal(model.subProvider, "UCSD");
       const variantDescriptor = model.capabilities?.optionDescriptors?.find(
         (descriptor) => descriptor.id === "variant" && descriptor.type === "select",
       );
       assert.ok(variantDescriptor && variantDescriptor.type === "select");
+      assert.equal(variantDescriptor.label, "Reasoning");
+      assert.deepEqual(
+        variantDescriptor.options.map((option) => option.id),
+        ["instant", "high", "xhigh"],
+      );
       assert.equal(
         variantDescriptor.options.find((option) => option.isDefault === true)?.id,
-        "medium",
+        "high",
       );
-      const agentDescriptor = model.capabilities?.optionDescriptors?.find(
-        (descriptor) => descriptor.id === "agent" && descriptor.type === "select",
+    }),
+  );
+
+  it.effect("uses standard reasoning fallbacks for other UCSD models", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.inventory = {
+        providerList: {
+          connected: ["ucsd"],
+          all: [
+            {
+              id: "ucsd",
+              name: "ucsd",
+              models: {
+                "gpt-5.5": {
+                  id: "gpt-5.5",
+                  name: "GPT-5.5",
+                  variants: {},
+                },
+              },
+            },
+          ],
+          default: {},
+        },
+        agents: [],
+      };
+
+      const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
+      const model = snapshot.models.find((entry) => entry.slug === "ucsd/gpt-5.5");
+
+      assert.ok(model);
+      assert.equal(model.subProvider, "UCSD");
+      const variantDescriptor = model.capabilities?.optionDescriptors?.find(
+        (descriptor) => descriptor.id === "variant" && descriptor.type === "select",
       );
-      assert.ok(agentDescriptor && agentDescriptor.type === "select");
-      assert.equal(
-        agentDescriptor.options.find((option) => option.isDefault === true)?.id,
-        "build",
+      assert.ok(variantDescriptor && variantDescriptor.type === "select");
+      assert.deepEqual(
+        variantDescriptor.options.map((option) => option.id),
+        ["low", "medium", "high"],
       );
+      assert.equal(variantDescriptor.currentValue, "high");
+    }),
+  );
+
+  it.effect("gives custom DeepSeek models a DeepSeek reasoning selector", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.inventory = {
+        providerList: {
+          connected: [],
+          all: [],
+          default: {},
+        },
+        agents: [],
+      };
+
+      const snapshot = yield* checkOpenCodeProviderStatus(
+        makeOpenCodeSettings({ customModels: ["ucsd/deepseek-v4-flash-max"] }),
+        process.cwd(),
+      );
+      const model = snapshot.models.find((entry) => entry.slug === "ucsd/deepseek-v4-flash-max");
+
+      assert.ok(model);
+      assert.equal(model.isCustom, true);
+      const variantDescriptor = model.capabilities?.optionDescriptors?.find(
+        (descriptor) => descriptor.id === "variant" && descriptor.type === "select",
+      );
+      assert.ok(variantDescriptor && variantDescriptor.type === "select");
+      assert.equal(variantDescriptor.label, "Reasoning");
+      assert.deepEqual(
+        variantDescriptor.options.map((option) => option.id),
+        ["instant", "high", "xhigh"],
+      );
+      assert.equal(variantDescriptor.currentValue, "high");
+    }),
+  );
+
+  it.effect("gives other custom OpenCode models the standard reasoning selector", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.inventory = {
+        providerList: {
+          connected: [],
+          all: [],
+          default: {},
+        },
+        agents: [],
+      };
+
+      const snapshot = yield* checkOpenCodeProviderStatus(
+        makeOpenCodeSettings({ customModels: ["ucsd/gpt-5.5"] }),
+        process.cwd(),
+      );
+      const model = snapshot.models.find((entry) => entry.slug === "ucsd/gpt-5.5");
+
+      assert.ok(model);
+      assert.equal(model.isCustom, true);
+      const variantDescriptor = model.capabilities?.optionDescriptors?.find(
+        (descriptor) => descriptor.id === "variant" && descriptor.type === "select",
+      );
+      assert.ok(variantDescriptor && variantDescriptor.type === "select");
+      assert.deepEqual(
+        variantDescriptor.options.map((option) => option.id),
+        ["low", "medium", "high"],
+      );
+      assert.equal(variantDescriptor.currentValue, "high");
     }),
   );
 
@@ -207,7 +358,7 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
       const snapshot = yield* checkOpenCodeProviderStatus(
         makeOpenCodeSettings({
           binaryPath: "/managed/opencode",
-          customModels: ["ucsd/deepseek-v4-flash"],
+          customModels: ["ucsd/api-deepseek-v4-flash"],
         }),
         process.cwd(),
         {
@@ -217,7 +368,7 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
 
       assert.equal(
         snapshot.cacheKey,
-        'opencode:v1:{"binaryPath":"/managed/opencode","serverUrl":"","opencodeConfig":"/Users/test/.config/opencode/opencode.json","customModels":["ucsd/deepseek-v4-flash"]}',
+        'opencode:v1:{"binaryPath":"/managed/opencode","serverUrl":"","opencodeConfig":"/Users/test/.config/opencode/opencode.json","customModels":["ucsd/api-deepseek-v4-flash"]}',
       );
     }),
   );

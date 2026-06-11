@@ -9,13 +9,12 @@ import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
-import { createModelCapabilities } from "@t3tools/shared/model";
+import { createModelCapabilities, normalizeModelSlug } from "@t3tools/shared/model";
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import {
   buildServerProvider,
   nonEmptyTrimmed,
   parseGenericCliVersion,
-  providerModelsFromSettings,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import {
@@ -167,6 +166,28 @@ function titleCaseSlug(value: string): string {
     .join(" ");
 }
 
+function formatOpenCodeSubProviderName(value: string): string | undefined {
+  const name = nonEmptyTrimmed(value);
+  if (!name) return undefined;
+  return name.toLowerCase() === "ucsd" ? "UCSD" : name;
+}
+
+const DEFAULT_REASONING_VARIANT_VALUES = ["low", "medium", "high"] as const;
+const DEEPSEEK_REASONING_VARIANT_VALUES = ["instant", "high", "xhigh"] as const;
+
+function isDeepSeekModelSlug(model: string): boolean {
+  return model.toLowerCase().includes("deepseek");
+}
+
+function fallbackVariantValuesForModel(providerID: string, modelID: string): ReadonlyArray<string> {
+  if (providerID !== "ucsd") {
+    return [];
+  }
+  return isDeepSeekModelSlug(modelID)
+    ? DEEPSEEK_REASONING_VARIANT_VALUES
+    : DEFAULT_REASONING_VARIANT_VALUES;
+}
+
 function inferDefaultVariant(
   providerID: string,
   variants: ReadonlyArray<string>,
@@ -180,6 +201,9 @@ function inferDefaultVariant(
   if (providerID === "openai" || providerID === "opencode") {
     return variants.includes("medium") ? "medium" : variants.includes("high") ? "high" : undefined;
   }
+  if (providerID === "ucsd") {
+    return variants.includes("high") ? "high" : undefined;
+  }
   return undefined;
 }
 
@@ -187,16 +211,41 @@ function inferDefaultAgent(agents: ReadonlyArray<Agent>): string | undefined {
   return agents.find((agent) => agent.name === "build")?.name ?? agents[0]?.name ?? undefined;
 }
 
-const DEFAULT_OPENCODE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
-  optionDescriptors: [],
-});
+function buildReasoningVariantCapabilities(
+  values: ReadonlyArray<string>,
+  defaultValue = "high",
+): ModelCapabilities {
+  return createModelCapabilities({
+    optionDescriptors: [
+      {
+        id: "variant",
+        label: "Reasoning",
+        type: "select",
+        options: values.map((value) =>
+          value === defaultValue
+            ? { id: value, label: titleCaseSlug(value), isDefault: true }
+            : { id: value, label: titleCaseSlug(value) },
+        ),
+        currentValue: defaultValue,
+      },
+    ],
+  });
+}
+
+const DEFAULT_OPENCODE_MODEL_CAPABILITIES = buildReasoningVariantCapabilities(
+  DEFAULT_REASONING_VARIANT_VALUES,
+);
 
 function openCodeCapabilitiesForModel(input: {
   readonly providerID: string;
   readonly model: ProviderListResponse["all"][number]["models"][string];
   readonly agents: ReadonlyArray<Agent>;
 }): ModelCapabilities {
-  const variantValues = Object.keys(input.model.variants ?? {});
+  const rawVariantValues = Object.keys(input.model.variants ?? {});
+  const variantValues =
+    rawVariantValues.length > 0
+      ? rawVariantValues
+      : fallbackVariantValuesForModel(input.providerID, input.model.id);
   const defaultVariant = inferDefaultVariant(input.providerID, variantValues);
   const variantOptions = variantValues.map((value) =>
     defaultVariant === value
@@ -218,7 +267,7 @@ function openCodeCapabilitiesForModel(input: {
         ? [
             {
               id: "variant",
-              label: "Variant",
+              label: "Reasoning",
               type: "select" as const,
               options: variantOptions,
               ...(defaultVariant ? { currentValue: defaultVariant } : {}),
@@ -255,7 +304,7 @@ function flattenOpenCodeModels(input: OpenCodeInventory): ReadonlyArray<ServerPr
         continue;
       }
 
-      const subProvider = nonEmptyTrimmed(provider.name);
+      const subProvider = formatOpenCodeSubProviderName(provider.name);
       models.push({
         slug: `${provider.id}/${model.id}`,
         name,
@@ -273,18 +322,44 @@ function flattenOpenCodeModels(input: OpenCodeInventory): ReadonlyArray<ServerPr
   return models.toSorted((left, right) => left.name.localeCompare(right.name));
 }
 
+function capabilitiesForCustomOpenCodeModel(model: string): ModelCapabilities {
+  return isDeepSeekModelSlug(model)
+    ? buildReasoningVariantCapabilities(DEEPSEEK_REASONING_VARIANT_VALUES)
+    : DEFAULT_OPENCODE_MODEL_CAPABILITIES;
+}
+
+function openCodeModelsFromSettings(
+  builtInModels: ReadonlyArray<ServerProviderModel>,
+  customModels: ReadonlyArray<string>,
+): ReadonlyArray<ServerProviderModel> {
+  const resolvedBuiltInModels = [...builtInModels];
+  const seen = new Set(resolvedBuiltInModels.map((model) => model.slug));
+  const customEntries: ServerProviderModel[] = [];
+
+  for (const candidate of customModels) {
+    const normalized = normalizeModelSlug(candidate, PROVIDER);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    customEntries.push({
+      slug: normalized,
+      name: normalized,
+      isCustom: true,
+      capabilities: capabilitiesForCustomOpenCodeModel(normalized),
+    });
+  }
+
+  return [...resolvedBuiltInModels, ...customEntries];
+}
+
 export const makePendingOpenCodeProvider = (
   openCodeSettings: OpenCodeSettings,
   environment: NodeJS.ProcessEnv = process.env,
 ): Effect.Effect<ServerProviderDraft> =>
   Effect.gen(function* () {
     const checkedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
-    const models = providerModelsFromSettings(
-      [],
-      PROVIDER,
-      openCodeSettings.customModels,
-      DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-    );
+    const models = openCodeModelsFromSettings([], openCodeSettings.customModels);
 
     if (!openCodeSettings.enabled) {
       return withOpenCodeCacheKey(
@@ -349,12 +424,7 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
         presentation: OPENCODE_PRESENTATION,
         enabled: openCodeSettings.enabled,
         checkedAt,
-        models: providerModelsFromSettings(
-          [],
-          PROVIDER,
-          customModels,
-          DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-        ),
+        models: openCodeModelsFromSettings([], customModels),
         probe: {
           installed: failure.installed,
           version,
@@ -374,12 +444,7 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
         presentation: OPENCODE_PRESENTATION,
         enabled: false,
         checkedAt,
-        models: providerModelsFromSettings(
-          [],
-          PROVIDER,
-          customModels,
-          DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-        ),
+        models: openCodeModelsFromSettings([], customModels),
         probe: {
           installed: false,
           version: null,
@@ -429,12 +494,7 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
           presentation: OPENCODE_PRESENTATION,
           enabled: openCodeSettings.enabled,
           checkedAt,
-          models: providerModelsFromSettings(
-            [],
-            PROVIDER,
-            customModels,
-            DEFAULT_OPENCODE_MODEL_CAPABILITIES,
-          ),
+          models: openCodeModelsFromSettings([], customModels),
           probe: {
             installed: true,
             version,
@@ -487,11 +547,9 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     return fallback(Cause.squash(inventoryExit.cause), version);
   }
 
-  const models = providerModelsFromSettings(
+  const models = openCodeModelsFromSettings(
     flattenOpenCodeModels(inventoryExit.value),
-    PROVIDER,
     customModels,
-    DEFAULT_OPENCODE_MODEL_CAPABILITIES,
   );
   const connectedCount = inventoryExit.value.providerList.connected.length;
   return withOpenCodeCacheKey(
