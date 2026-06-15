@@ -21,6 +21,7 @@ import {
 import {
   OpenCodeRuntime,
   openCodeRuntimeErrorDetail,
+  type OpenCodeCommandResult,
   type OpenCodeInventory,
 } from "../opencodeRuntime.ts";
 import type { Agent, ProviderListResponse } from "@opencode-ai/sdk/v2";
@@ -61,6 +62,19 @@ function normalizedErrorMessage(cause: unknown): string | undefined {
   }
 
   return normalizeProbeMessage(cause.message);
+}
+
+function summarizeOpenCodeVersionCommand(result: OpenCodeCommandResult): string | undefined {
+  const output = nonEmptyTrimmed([result.stdout, result.stderr].filter(Boolean).join("\n"));
+  if (output) {
+    return output.length > 500 ? `${output.slice(0, 500)}...` : output;
+  }
+
+  if (result.code !== 0) {
+    return `Command exited with code ${result.code}.`;
+  }
+
+  return undefined;
 }
 
 function formatOpenCodeProbeError(input: {
@@ -505,12 +519,20 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     if (versionExit._tag === "Failure") {
       return fallback(Cause.squash(versionExit.cause));
     }
-    version = parseGenericCliVersion(versionExit.value.stdout) ?? null;
+    const versionOutput = [versionExit.value.stdout, versionExit.value.stderr].join("\n");
+    version = parseGenericCliVersion(versionOutput) ?? null;
 
     if (!version) {
+      const commandDetail = summarizeOpenCodeVersionCommand(versionExit.value);
       return fallback(
         new Error(
-          `Unable to determine OpenCode version from \`opencode --version\` output. TritonAI Code requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
+          [
+            "Unable to determine OpenCode version from `opencode --version` output.",
+            commandDetail ? `Output: ${commandDetail}` : null,
+            `TritonAI Code requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
+          ]
+            .filter(Boolean)
+            .join(" "),
         ),
         null,
       );

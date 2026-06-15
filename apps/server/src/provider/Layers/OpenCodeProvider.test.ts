@@ -33,6 +33,8 @@ const runtimeMock = {
   state: {
     runVersionError: null as Error | null,
     versionStdout: DEFAULT_VERSION_STDOUT,
+    versionStderr: "",
+    versionCode: 0,
     inventoryError: null as Error | null,
     closeCalls: 0,
     inventory: {
@@ -44,6 +46,8 @@ const runtimeMock = {
   reset() {
     this.state.runVersionError = null;
     this.state.versionStdout = DEFAULT_VERSION_STDOUT;
+    this.state.versionStderr = "";
+    this.state.versionCode = 0;
     this.state.inventoryError = null;
     this.state.closeCalls = 0;
     this.state.inventory = {
@@ -84,7 +88,11 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
             cause: runtimeMock.state.runVersionError,
           }),
         )
-      : Effect.succeed({ stdout: runtimeMock.state.versionStdout, stderr: "", code: 0 }),
+      : Effect.succeed({
+          stdout: runtimeMock.state.versionStdout,
+          stderr: runtimeMock.state.versionStderr,
+          code: runtimeMock.state.versionCode,
+        }),
   createOpenCodeSdkClient: () =>
     ({}) as unknown as ReturnType<OpenCodeRuntimeShape["createOpenCodeSdkClient"]>,
   loadOpenCodeInventory: () =>
@@ -138,6 +146,40 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
       assert.equal(snapshot.status, "error");
       assert.equal(snapshot.installed, true);
       assert.equal(snapshot.message, "Failed to execute OpenCode CLI health check.");
+    }),
+  );
+
+  it.effect("parses OpenCode version output from stderr", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.versionStdout = "";
+      runtimeMock.state.versionStderr = "opencode 1.14.19\n";
+
+      const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
+
+      assert.equal(snapshot.status, "warning");
+      assert.equal(snapshot.version, "1.14.19");
+      assert.equal(
+        snapshot.message,
+        "OpenCode is available, but it did not report any connected upstream providers.",
+      );
+    }),
+  );
+
+  it.effect("includes OpenCode version command output when parsing fails", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.versionStdout = "";
+      runtimeMock.state.versionStderr = "dyld: Library not loaded: /usr/local/lib/libexample.dylib";
+      runtimeMock.state.versionCode = 1;
+
+      const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
+
+      assert.equal(snapshot.status, "error");
+      assert.equal(snapshot.installed, true);
+      assert.match(
+        snapshot.message ?? "",
+        /Unable to determine OpenCode version from `opencode --version` output\./,
+      );
+      assert.match(snapshot.message ?? "", /dyld: Library not loaded/);
     }),
   );
 
