@@ -89,12 +89,13 @@ const resolveRepositoryIdentityCacheKey = Effect.fn("resolveRepositoryIdentityCa
   const processRunner = yield* ProcessRunner.ProcessRunner;
   let cacheKey = cwd;
 
+  // git is a real executable on every platform — no cmd.exe shell mode, which
+  // would split paths containing spaces during cmd's re-tokenization.
   const topLevelResult = yield* processRunner
     .run({
       command: "git",
       args: ["-C", cwd, "rev-parse", "--show-toplevel"],
       timeoutBehavior: "timedOutResult",
-      shell: process.platform === "win32",
     })
     .pipe(Effect.option);
   if (topLevelResult._tag === "None" || topLevelResult.value.code !== 0) {
@@ -119,7 +120,6 @@ const resolveRepositoryIdentityFromCacheKey = Effect.fn("resolveRepositoryIdenti
         command: "git",
         args: ["-C", cacheKey, "remote", "-v"],
         timeoutBehavior: "timedOutResult",
-        shell: process.platform === "win32",
       })
       .pipe(Effect.option);
     if (remoteResult._tag === "None" || remoteResult.value.code !== 0) {

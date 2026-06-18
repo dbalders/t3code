@@ -89,7 +89,7 @@ export interface DesktopAppSettingsShape {
 export class DesktopAppSettings extends Context.Service<
   DesktopAppSettings,
   DesktopAppSettingsShape
->()("t3/desktop/AppSettings") {}
+>()("@t3tools/desktop/settings/DesktopAppSettings") {}
 
 export function resolveDefaultDesktopSettings(appVersion: string): DesktopSettings {
   return {
@@ -209,7 +209,7 @@ function readSettings(
         onSome: (raw) =>
           decodeDesktopSettingsJson(raw).pipe(
             Effect.map((parsed) => normalizeDesktopSettingsDocument(parsed, appVersion)),
-            Effect.catch(() => Effect.succeed(defaultSettings)),
+            Effect.orElseSucceed(() => defaultSettings),
           ),
       }),
     ),

@@ -2,10 +2,13 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   DEFAULT_TERMINAL_ID,
+  type TerminalAttachStreamEvent,
   type TerminalEvent,
+  type TerminalMetadataStreamEvent,
   type TerminalOpenInput,
   type TerminalRestartInput,
 } from "@t3tools/contracts";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -21,7 +24,7 @@ import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import { TestClock } from "effect/testing";
-import { expect } from "vitest";
+import { expect } from "vite-plus/test";
 
 import * as ProcessRunner from "../../processRunner.ts";
 import type { TerminalManagerShape } from "../Services/Manager.ts";
@@ -197,9 +200,12 @@ const multiTerminalHistoryLogPath = (
 
 interface CreateManagerOptions {
   shellResolver?: () => string;
-  platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
-  subprocessChecker?: (terminalPid: number) => Effect.Effect<boolean>;
+  subprocessInspector?: (terminalPid: number) => Effect.Effect<{
+    readonly hasRunningSubprocess: boolean;
+    readonly childCommand: string | null;
+    readonly processIds: ReadonlyArray<number>;
+  }>;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
   maxRetainedInactiveSessions?: number;
@@ -234,10 +240,9 @@ const createManager = (
         historyLineLimit,
         ptyAdapter,
         ...(options.shellResolver !== undefined ? { shellResolver: options.shellResolver } : {}),
-        ...(options.platform !== undefined ? { platform: options.platform } : {}),
         ...(options.env !== undefined ? { env: options.env } : {}),
-        ...(options.subprocessChecker !== undefined
-          ? { subprocessChecker: options.subprocessChecker }
+        ...(options.subprocessInspector !== undefined
+          ? { subprocessInspector: options.subprocessInspector }
           : {}),
         ...(options.subprocessPollIntervalMs !== undefined
           ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
@@ -248,11 +253,10 @@ const createManager = (
           : {}),
       });
       const eventsRef = yield* Ref.make<ReadonlyArray<TerminalEvent>>([]);
-      const scope = yield* Effect.scope;
       const unsubscribe = yield* manager.subscribe((event) =>
         Ref.update(eventsRef, (events) => [...events, event]),
       );
-      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe));
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
 
       return {
         baseDir,
@@ -265,12 +269,13 @@ const createManager = (
     }),
   );
 
+const withHostPlatform = (platform: NodeJS.Platform) =>
+  Layer.succeed(HostProcessPlatform, platform);
+
 it.layer(
   Layer.merge(NodeServices.layer, ProcessRunner.layer.pipe(Layer.provide(NodeServices.layer))),
   { excludeTestServices: true },
 )("TerminalManager", (it) => {
-  const itEffectSkipOnWindows = process.platform === "win32" ? it.effect.skip : it.effect;
-
   it.effect("spawns lazily and reuses running terminal per thread", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();
@@ -281,10 +286,113 @@ it.layer(
       const third = yield* manager.open(openInput());
 
       assert.equal(first.threadId, "thread-1");
-      assert.equal(first.terminalId, "default");
+      assert.equal(first.terminalId, DEFAULT_TERMINAL_ID);
       assert.equal(second.threadId, "thread-1");
       assert.equal(third.threadId, "thread-1");
       expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
+  it.effect("attaches to running sessions without restarting them", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+
+      yield* manager.open(openInput());
+      const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+      const unsubscribe = yield* manager.attachStream(
+        {
+          threadId: "thread-1",
+          terminalId: DEFAULT_TERMINAL_ID,
+          cols: 100,
+          rows: 40,
+        },
+        (event) => Ref.update(attachEvents, (events) => [...events, event]),
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+      const snapshot = (yield* Ref.get(attachEvents)).find((event) => event.type === "snapshot");
+      expect(snapshot).toBeDefined();
+      if (!snapshot || snapshot.type !== "snapshot") return;
+      assert.equal(snapshot.snapshot.threadId, "thread-1");
+      assert.equal(snapshot.snapshot.terminalId, DEFAULT_TERMINAL_ID);
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
+  it.effect("attaches to exited sessions without restarting them", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, getEvents } = yield* createManager();
+
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+
+      process.emitExit({ exitCode: 0, signal: 0 });
+
+      yield* waitFor(
+        Effect.map(getEvents, (events) => events.some((event) => event.type === "exited")),
+        "1200 millis",
+      );
+
+      const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+      const unsubscribe = yield* manager.attachStream(
+        openInput({
+          env: {
+            T3CODE_WORKTREE_PATH: "/tmp/should-not-restart",
+          },
+          worktreePath: "/tmp/should-not-restart",
+        }),
+        (event) => Ref.update(attachEvents, (events) => [...events, event]),
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+      const snapshot = (yield* Ref.get(attachEvents)).find((event) => event.type === "snapshot");
+      expect(snapshot).toBeDefined();
+      if (!snapshot || snapshot.type !== "snapshot") return;
+      assert.equal(snapshot.snapshot.status, "exited");
+      assert.equal(snapshot.snapshot.worktreePath, null);
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
+  it.effect("restarts inactive sessions from attach only when requested", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, getEvents } = yield* createManager();
+
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+
+      process.emitExit({ exitCode: 0, signal: 0 });
+
+      yield* waitFor(
+        Effect.map(getEvents, (events) => events.some((event) => event.type === "exited")),
+        "1200 millis",
+      );
+
+      const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+      const unsubscribe = yield* manager.attachStream(
+        {
+          ...openInput({
+            env: {
+              T3CODE_WORKTREE_PATH: "/tmp/restart-requested",
+            },
+            worktreePath: "/tmp/restart-requested",
+          }),
+          restartIfNotRunning: true,
+        },
+        (event) => Ref.update(attachEvents, (events) => [...events, event]),
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+      const snapshot = (yield* Ref.get(attachEvents)).find((event) => event.type === "snapshot");
+      expect(snapshot).toBeDefined();
+      if (!snapshot || snapshot.type !== "snapshot") return;
+      assert.equal(snapshot.snapshot.status, "running");
+      assert.equal(snapshot.snapshot.worktreePath, "/tmp/restart-requested");
+      expect(ptyAdapter.spawnInputs).toHaveLength(2);
     }),
   );
 
@@ -307,8 +415,10 @@ it.layer(
       fs.writeFileString(filePath, contents),
     );
 
-  itEffectSkipOnWindows("preserves non-notFound cwd stat failures", () =>
+  it.effect("preserves non-notFound cwd stat failures", () =>
     Effect.gen(function* () {
+      if ((yield* HostProcessPlatform) === "win32") return;
+
       const path = yield* Path.Path;
 
       const { manager, baseDir } = yield* createManager();
@@ -436,7 +546,7 @@ it.layer(
           (event) =>
             event.type === "cleared" &&
             event.threadId === "thread-1" &&
-            event.terminalId === "default",
+            event.terminalId === DEFAULT_TERMINAL_ID,
         ),
       ).toBe(true);
     }),
@@ -469,6 +579,34 @@ it.layer(
           Effect.map((text) => text === ""),
         ),
       );
+    }),
+  );
+
+  it.effect("restarts a running session when open is called with a different cwd", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, logsDir, baseDir } = yield* createManager();
+      const path = yield* Path.Path;
+      const originalCwd = path.join(baseDir, "original");
+      const differentCwd = path.join(baseDir, "different");
+      yield* makeDirectory(originalCwd);
+      yield* makeDirectory(differentCwd);
+
+      yield* manager.open(openInput({ cwd: originalCwd }));
+      const firstProcess = ptyAdapter.processes[0];
+      expect(firstProcess).toBeDefined();
+      if (!firstProcess) return;
+
+      firstProcess.emitData("before reopen\n");
+      const logPath = yield* historyLogPath(logsDir);
+      yield* waitFor(pathExists(logPath));
+
+      const reopened = yield* manager.open(openInput({ cwd: differentCwd }));
+
+      expect(ptyAdapter.spawnInputs).toHaveLength(2);
+      assert.equal(firstProcess.killed, true);
+      assert.equal(reopened.cwd, differentCwd);
+      assert.equal(reopened.history, "");
+      yield* waitFor(Effect.map(readFileString(logPath), (text) => text === ""));
     }),
   );
 
@@ -607,27 +745,41 @@ it.layer(
 
   it.effect("emits subprocess activity events when child-process state changes", () =>
     Effect.gen(function* () {
-      let hasRunningSubprocess = false;
+      let inspect: {
+        readonly hasRunningSubprocess: boolean;
+        readonly childCommand: string | null;
+        readonly processIds: ReadonlyArray<number>;
+      } = { hasRunningSubprocess: false, childCommand: null, processIds: [] };
       const { manager, getEvents } = yield* createManager(5, {
-        subprocessChecker: () => Effect.succeed(hasRunningSubprocess),
+        subprocessInspector: () => Effect.succeed(inspect),
         subprocessPollIntervalMs: 20,
       });
 
       yield* manager.open(openInput());
       expect((yield* getEvents).some((event) => event.type === "activity")).toBe(false);
 
-      hasRunningSubprocess = true;
+      inspect = { hasRunningSubprocess: true, childCommand: "vim", processIds: [100, 101] };
       yield* waitFor(
         Effect.map(getEvents, (events) =>
-          events.some((event) => event.type === "activity" && event.hasRunningSubprocess === true),
+          events.some(
+            (event) =>
+              event.type === "activity" &&
+              event.hasRunningSubprocess === true &&
+              event.label === "vim",
+          ),
         ),
         "1200 millis",
       );
 
-      hasRunningSubprocess = false;
+      inspect = { hasRunningSubprocess: false, childCommand: null, processIds: [] };
       yield* waitFor(
         Effect.map(getEvents, (events) =>
-          events.some((event) => event.type === "activity" && event.hasRunningSubprocess === false),
+          events.some(
+            (event) =>
+              event.type === "activity" &&
+              event.hasRunningSubprocess === false &&
+              event.label === "Terminal 1",
+          ),
         ),
         "1200 millis",
       );
@@ -638,9 +790,13 @@ it.layer(
     Effect.gen(function* () {
       let checks = 0;
       const { manager } = yield* createManager(5, {
-        subprocessChecker: () => {
+        subprocessInspector: () => {
           checks += 1;
-          return Effect.succeed(false);
+          return Effect.succeed({
+            hasRunningSubprocess: false,
+            childCommand: null,
+            processIds: [],
+          });
         },
         subprocessPollIntervalMs: 20,
       });
@@ -851,6 +1007,21 @@ it.layer(
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("publishes closed events when terminals are explicitly closed", () =>
+    Effect.gen(function* () {
+      const { manager, getEvents } = yield* createManager();
+      yield* manager.open(openInput({ terminalId: "default" }));
+      yield* manager.open(openInput({ terminalId: "sidecar" }));
+
+      yield* manager.close({ threadId: "thread-1" });
+
+      const closedEvents = (yield* getEvents).filter(
+        (event): event is Extract<TerminalEvent, { type: "closed" }> => event.type === "closed",
+      );
+      expect(closedEvents.map((event) => event.terminalId).sort()).toEqual(["default", "sidecar"]);
+    }),
+  );
+
   it.effect("evicts oldest inactive terminal sessions when retention limit is exceeded", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter, logsDir, getEvents } = yield* createManager(5, {
@@ -913,10 +1084,9 @@ it.layer(
 
   it.effect("retries with fallback shells when preferred shell spawn fails", () =>
     Effect.gen(function* () {
+      const platform = yield* HostProcessPlatform;
       const missingShell =
-        process.platform === "win32"
-          ? "C:\\definitely\\missing-shell.exe"
-          : "/definitely/missing-shell -l";
+        platform === "win32" ? "C:\\definitely\\missing-shell.exe" : "/definitely/missing-shell -l";
       const { manager, ptyAdapter } = yield* createManager(5, {
         shellResolver: () => missingShell,
       });
@@ -927,10 +1097,10 @@ it.layer(
       assert.equal(snapshot.status, "running");
       expect(ptyAdapter.spawnInputs.length).toBeGreaterThanOrEqual(2);
       expect(ptyAdapter.spawnInputs[0]?.shell).toBe(
-        process.platform === "win32" ? missingShell : "/definitely/missing-shell",
+        platform === "win32" ? missingShell : "/definitely/missing-shell",
       );
 
-      if (process.platform === "win32") {
+      if (platform === "win32") {
         expect(
           ptyAdapter.spawnInputs.some(
             (input) =>
@@ -952,13 +1122,12 @@ it.layer(
   it.effect("prefers PowerShell over ComSpec for Windows terminals", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager(5, {
-        platform: "win32",
         env: {
           ComSpec: "C:\\Windows\\System32\\cmd.exe",
           PATH: "C:\\Windows\\System32",
           SystemRoot: "C:\\Windows",
         },
-      });
+      }).pipe(Effect.provide(withHostPlatform("win32")));
 
       yield* manager.open(openInput());
 
@@ -973,15 +1142,16 @@ it.layer(
 
   it.effect("falls back to built-in PowerShell by absolute path on Windows", () =>
     Effect.gen(function* () {
-      const { manager, ptyAdapter } = yield* createManager(5, {
-        platform: "win32",
+      const ptyAdapter = new FakePtyAdapter();
+      const { manager } = yield* createManager(5, {
+        ptyAdapter,
+        shellResolver: () => "C:\\missing\\custom-shell.exe",
         env: {
           ComSpec: "C:\\Windows\\System32\\cmd.exe",
           PATH: "C:\\Windows\\System32",
           SystemRoot: "C:\\Windows",
         },
-        shellResolver: () => "C:\\missing\\custom-shell.exe",
-      });
+      }).pipe(Effect.provide(withHostPlatform("win32")));
       ptyAdapter.spawnFailures.push(
         new Error("spawn custom-shell.exe ENOENT"),
         new Error("spawn pwsh.exe ENOENT"),
@@ -1001,46 +1171,25 @@ it.layer(
 
   it.effect("filters app runtime env variables from terminal sessions", () =>
     Effect.gen(function* () {
-      const originalValues = new Map<string, string | undefined>();
-      const setEnv = (key: string, value: string | undefined) => {
-        if (!originalValues.has(key)) {
-          originalValues.set(key, process.env[key]);
-        }
-        if (value === undefined) {
-          delete process.env[key];
-          return;
-        }
-        process.env[key] = value;
-      };
-      const restoreEnv = () => {
-        for (const [key, value] of originalValues) {
-          if (value === undefined) {
-            delete process.env[key];
-          } else {
-            process.env[key] = value;
-          }
-        }
-      };
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        env: {
+          PORT: "5173",
+          T3CODE_PORT: "3773",
+          VITE_DEV_SERVER_URL: "http://localhost:5173",
+          TEST_TERMINAL_KEEP: "keep-me",
+        },
+      });
+      yield* manager.open(openInput());
+      const spawnInput = ptyAdapter.spawnInputs[0];
+      expect(spawnInput).toBeDefined();
+      if (!spawnInput) return;
 
-      setEnv("PORT", "5173");
-      setEnv("T3CODE_PORT", "3773");
-      setEnv("VITE_DEV_SERVER_URL", "http://localhost:5173");
-      setEnv("TEST_TERMINAL_KEEP", "keep-me");
-
-      try {
-        const { manager, ptyAdapter } = yield* createManager();
-        yield* manager.open(openInput());
-        const spawnInput = ptyAdapter.spawnInputs[0];
-        expect(spawnInput).toBeDefined();
-        if (!spawnInput) return;
-
-        expect(spawnInput.env.PORT).toBeUndefined();
-        expect(spawnInput.env.T3CODE_PORT).toBeUndefined();
-        expect(spawnInput.env.VITE_DEV_SERVER_URL).toBeUndefined();
-        expect(spawnInput.env.TEST_TERMINAL_KEEP).toBe("keep-me");
-      } finally {
-        restoreEnv();
-      }
+      expect(spawnInput.env.PORT).toBeUndefined();
+      expect(spawnInput.env.T3CODE_PORT).toBeUndefined();
+      expect(spawnInput.env.VITE_DEV_SERVER_URL).toBeUndefined();
+      // Arbitrary host env vars must pass through — terminals inherit the
+      // user's environment apart from the explicit blocklist.
+      expect(spawnInput.env.TEST_TERMINAL_KEEP).toBe("keep-me");
     }),
   );
 
@@ -1068,7 +1217,7 @@ it.layer(
 
   it.effect("starts zsh with prompt spacer disabled to avoid `%` end markers", () =>
     Effect.gen(function* () {
-      if (process.platform === "win32") return;
+      if ((yield* HostProcessPlatform) === "win32") return;
       const { manager, ptyAdapter } = yield* createManager(5, {
         shellResolver: () => "/bin/zsh",
       });
@@ -1108,12 +1257,11 @@ it.layer(
       const { manager, ptyAdapter } = yield* createManager(5, {
         ptyAdapter: new FakePtyAdapter("async"),
       });
-      const scope = yield* Effect.scope;
       const subscriberEvents = yield* Ref.make<ReadonlyArray<TerminalEvent>>([]);
       const unsubscribe = yield* manager.subscribe((event) =>
         Ref.update(subscriberEvents, (events) => [...events, event]),
       );
-      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe));
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
 
       yield* manager.open(openInput());
       const process = ptyAdapter.processes[0];
@@ -1130,6 +1278,157 @@ it.layer(
         ),
         "1200 millis",
       );
+    }),
+  );
+
+  it.effect("subscribes terminal metadata with an initial snapshot and live deltas", () =>
+    Effect.gen(function* () {
+      const { manager } = yield* createManager();
+      yield* manager.open(openInput({ threadId: "existing-thread" }));
+
+      const metadataEvents = yield* Ref.make<ReadonlyArray<TerminalMetadataStreamEvent>>([]);
+      const unsubscribe = yield* manager.subscribeMetadata((event) =>
+        Ref.update(metadataEvents, (events) => [...events, event]),
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+      const initialEvents = yield* Ref.get(metadataEvents);
+      expect(initialEvents[0]).toMatchObject({
+        type: "snapshot",
+        terminals: [
+          {
+            threadId: "existing-thread",
+            terminalId: DEFAULT_TERMINAL_ID,
+          },
+        ],
+      });
+
+      yield* manager.open(openInput({ threadId: "new-thread" }));
+
+      yield* waitFor(
+        Effect.map(Ref.get(metadataEvents), (events) =>
+          events.some(
+            (event) =>
+              event.type === "upsert" &&
+              event.terminal.threadId === "new-thread" &&
+              event.terminal.terminalId === DEFAULT_TERMINAL_ID,
+          ),
+        ),
+        "1200 millis",
+      );
+
+      yield* manager.close({ threadId: "new-thread", terminalId: DEFAULT_TERMINAL_ID });
+
+      yield* waitFor(
+        Effect.map(Ref.get(metadataEvents), (events) =>
+          events.some(
+            (event) =>
+              event.type === "remove" &&
+              event.threadId === "new-thread" &&
+              event.terminalId === DEFAULT_TERMINAL_ID,
+          ),
+        ),
+        "1200 millis",
+      );
+    }),
+  );
+
+  it.effect("removes terminal metadata subscriptions when initial delivery fails", () =>
+    Effect.gen(function* () {
+      const { manager } = yield* createManager();
+      yield* manager.open(openInput({ threadId: "existing-thread" }));
+
+      const leakedLiveEvents = yield* Ref.make(0);
+      const exit = yield* Effect.exit(
+        manager.subscribeMetadata((event) =>
+          event.type === "snapshot"
+            ? Effect.die("snapshot listener failed")
+            : Ref.update(leakedLiveEvents, (count) => count + 1),
+        ),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+
+      yield* manager.open(openInput({ threadId: "new-thread" }));
+      expect(yield* Ref.get(leakedLiveEvents)).toBe(0);
+    }),
+  );
+
+  it.effect(
+    "streams attach snapshots followed by live events without duplicate start snapshots",
+    () =>
+      Effect.gen(function* () {
+        const { manager, ptyAdapter } = yield* createManager(5, {
+          ptyAdapter: new FakePtyAdapter("async"),
+        });
+        const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+        const unsubscribe = yield* manager.attachStream(openInput(), (event) =>
+          Ref.update(attachEvents, (events) => [...events, event]),
+        );
+        yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+        const process = ptyAdapter.processes[0];
+        expect(process).toBeDefined();
+        if (!process) return;
+
+        expect(yield* Ref.get(attachEvents)).toMatchObject([
+          {
+            type: "snapshot",
+            snapshot: {
+              threadId: "thread-1",
+              terminalId: DEFAULT_TERMINAL_ID,
+            },
+          },
+        ]);
+
+        process.emitData("hello from attach\n");
+
+        yield* waitFor(
+          Effect.map(Ref.get(attachEvents), (events) =>
+            events.some((event) => event.type === "output" && event.data === "hello from attach\n"),
+          ),
+          "1200 millis",
+        );
+
+        const events = yield* Ref.get(attachEvents);
+        expect(events.filter((event) => event.type === "snapshot")).toHaveLength(1);
+      }),
+  );
+
+  it.effect("buffers attach output delivered during the initial snapshot callback", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        ptyAdapter: new FakePtyAdapter("async"),
+      });
+      yield* manager.open(openInput());
+
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+
+      const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+      const unsubscribe = yield* manager.attachStream(openInput(), (event) =>
+        Effect.gen(function* () {
+          yield* Ref.update(attachEvents, (events) => [...events, event]);
+          if (event.type === "snapshot") {
+            yield* Effect.sync(() => process.emitData("during snapshot\n"));
+            yield* Effect.yieldNow;
+          }
+        }),
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+      yield* waitFor(
+        Effect.map(Ref.get(attachEvents), (events) =>
+          events.some((event) => event.type === "output" && event.data === "during snapshot\n"),
+        ),
+        "1200 millis",
+      );
+
+      expect(yield* Ref.get(attachEvents)).toMatchObject([
+        { type: "snapshot" },
+        { type: "output", data: "during snapshot\n" },
+      ]);
     }),
   );
 
@@ -1162,10 +1461,25 @@ it.layer(
         (event) => event.type === "output" || event.type === "exited",
       );
       expect(relevant).toEqual([
-        expect.objectContaining({ type: "output", data: "first\n" }),
-        expect.objectContaining({ type: "output", data: "second\n" }),
-        expect.objectContaining({ type: "exited", exitCode: 0, exitSignal: 0 }),
+        expect.objectContaining({ type: "output", data: "first\n", sequence: 2 }),
+        expect.objectContaining({ type: "output", data: "second\n", sequence: 3 }),
+        expect.objectContaining({ type: "exited", exitCode: 0, exitSignal: 0, sequence: 4 }),
       ]);
+
+      const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+      const unsubscribe = yield* manager.attachStream(
+        {
+          threadId: "thread-1",
+          terminalId: DEFAULT_TERMINAL_ID,
+        },
+        (event) => Ref.update(attachEvents, (events) => [...events, event]),
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+      const snapshot = (yield* Ref.get(attachEvents)).find((event) => event.type === "snapshot");
+      expect(snapshot).toBeDefined();
+      if (!snapshot || snapshot.type !== "snapshot") return;
+      expect(snapshot.snapshot.sequence).toBe(4);
     }),
   );
 

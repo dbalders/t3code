@@ -145,7 +145,7 @@ function syncDesktopTheme(theme: Theme) {
   if (typeof window === "undefined") return;
   const bridge = window.desktopBridge;
   const desktopTheme = resolveDesktopTheme(theme);
-  if (!bridge || lastDesktopTheme === desktopTheme) {
+  if (!bridge || typeof bridge.setTheme !== "function" || lastDesktopTheme === desktopTheme) {
     return;
   }
 

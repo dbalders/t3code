@@ -9,6 +9,7 @@ import * as Scope from "effect/Scope";
 
 import { GitCommandError } from "@t3tools/contracts";
 import { ServerConfig } from "../config.ts";
+import { splitNullSeparatedGitStdoutPaths } from "./GitVcsDriverCore.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
@@ -77,6 +78,30 @@ const initRepoWithCommit = (
   });
 
 it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
+  describe("review diff previews", () => {
+    it.effect("drops an unterminated path from truncated NUL-separated git output", () =>
+      Effect.sync(() => {
+        const paths = splitNullSeparatedGitStdoutPaths({
+          stdout: "complete.txt\0partial",
+          stdoutTruncated: true,
+        });
+
+        assert.deepStrictEqual(paths, ["complete.txt"]);
+      }),
+    );
+
+    it.effect("keeps the final path when NUL-separated git output is complete", () =>
+      Effect.sync(() => {
+        const paths = splitNullSeparatedGitStdoutPaths({
+          stdout: "complete.txt\0final.txt",
+          stdoutTruncated: false,
+        });
+
+        assert.deepStrictEqual(paths, ["complete.txt", "final.txt"]);
+      }),
+    );
+  });
+
   describe("repository status", () => {
     it.effect("reports non-repository directories without failing", () =>
       Effect.gen(function* () {
@@ -130,7 +155,68 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
-    it.effect("disables SSH askpass for background upstream status fetches", () =>
+    it.effect("reports remote divergence without reading working-tree details", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const remote = yield* makeTmpDir("git-vcs-driver-remote-");
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(remote, ["init", "--bare"]);
+        yield* git(cwd, ["remote", "add", "origin", remote]);
+        yield* git(cwd, ["push", "-u", "origin", initialBranch]);
+        yield* git(cwd, ["checkout", "-b", "feature/remote-status"]);
+        yield* writeTextFile(cwd, "feature.txt", "feature\n");
+        yield* git(cwd, ["add", "feature.txt"]);
+        yield* git(cwd, ["commit", "-m", "feature commit"]);
+        yield* git(cwd, ["push", "-u", "origin", "feature/remote-status"]);
+        yield* writeTextFile(cwd, "untracked.txt", "local-only\n");
+
+        const status = yield* (yield* GitVcsDriver.GitVcsDriver).statusDetailsRemote(cwd);
+
+        assert.equal(status.isRepo, true);
+        assert.equal(status.branch, "feature/remote-status");
+        assert.equal(status.hasUpstream, true);
+        assert.equal(status.aheadCount, 0);
+        assert.equal(status.behindCount, 0);
+        assert.equal(status.aheadOfDefaultCount, 1);
+        assert.notProperty(status, "workingTree");
+        assert.notProperty(status, "hasWorkingTreeChanges");
+      }),
+    );
+
+    it.effect("uses origin HEAD for default-branch detection with a non-origin upstream", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const origin = yield* makeTmpDir("git-vcs-driver-origin-");
+        const upstream = yield* makeTmpDir("git-vcs-driver-upstream-");
+        yield* initRepoWithCommit(cwd);
+        yield* git(origin, ["init", "--bare"]);
+        yield* git(upstream, ["init", "--bare"]);
+        yield* git(cwd, ["branch", "-M", "main"]);
+        yield* git(cwd, ["remote", "add", "origin", origin]);
+        yield* git(cwd, ["remote", "add", "upstream", upstream]);
+        yield* git(cwd, ["push", "origin", "main"]);
+        yield* git(cwd, ["push", "upstream", "main"]);
+        yield* git(cwd, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
+        yield* git(cwd, ["checkout", "-b", "release"]);
+        yield* writeTextFile(cwd, "release.txt", "release\n");
+        yield* git(cwd, ["add", "release.txt"]);
+        yield* git(cwd, ["commit", "-m", "release commit"]);
+        yield* git(cwd, ["push", "-u", "upstream", "release"]);
+        yield* git(cwd, [
+          "symbolic-ref",
+          "refs/remotes/upstream/HEAD",
+          "refs/remotes/upstream/release",
+        ]);
+
+        const status = yield* (yield* GitVcsDriver.GitVcsDriver).statusDetailsRemote(cwd);
+
+        assert.equal(status.branch, "release");
+        assert.equal(status.upstreamRef, "upstream/release");
+        assert.equal(status.isDefaultBranch, false);
+      }),
+    );
+
+    it.effect("makes background upstream status fetches non-interactive", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
         const tempDir = yield* makeTmpDir("git-vcs-driver-ssh-env-");
@@ -139,15 +225,26 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         const pathService = yield* Path.Path;
         const sshLogPath = pathService.join(tempDir, "ssh-env.txt");
         const sshWrapperPath = pathService.join(tempDir, "ssh-wrapper.sh");
-        const previousGitSsh = process.env.GIT_SSH;
-        const previousAskpassRequire = process.env.SSH_ASKPASS_REQUIRE;
-        const previousAskpassLog = process.env.T3_TEST_SSH_ASKPASS_LOG;
+        const envKeys = [
+          "GCM_INTERACTIVE",
+          "GIT_ASKPASS",
+          "GIT_SSH",
+          "GIT_TERMINAL_PROMPT",
+          "SSH_ASKPASS",
+          "SSH_ASKPASS_REQUIRE",
+          "T3_TEST_SSH_ASKPASS_LOG",
+        ] as const;
+        const previousEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
         yield* fileSystem.writeFileString(
           sshWrapperPath,
           [
             "#!/bin/sh",
-            'printf "%s\\n" "${SSH_ASKPASS_REQUIRE:-}" > "$T3_TEST_SSH_ASKPASS_LOG"',
+            'printf "GCM_INTERACTIVE=%s\\n" "${GCM_INTERACTIVE:-}" > "$T3_TEST_SSH_ASKPASS_LOG"',
+            'printf "GIT_ASKPASS=%s\\n" "${GIT_ASKPASS:-}" >> "$T3_TEST_SSH_ASKPASS_LOG"',
+            'printf "GIT_TERMINAL_PROMPT=%s\\n" "${GIT_TERMINAL_PROMPT:-}" >> "$T3_TEST_SSH_ASKPASS_LOG"',
+            'printf "SSH_ASKPASS=%s\\n" "${SSH_ASKPASS:-}" >> "$T3_TEST_SSH_ASKPASS_LOG"',
+            'printf "SSH_ASKPASS_REQUIRE=%s\\n" "${SSH_ASKPASS_REQUIRE:-}" >> "$T3_TEST_SSH_ASKPASS_LOG"',
             "exit 1",
             "",
           ].join("\n"),
@@ -159,29 +256,32 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         yield* Effect.gen(function* () {
           process.env.GIT_SSH = sshWrapperPath;
+          process.env.GCM_INTERACTIVE = "always";
+          process.env.GIT_ASKPASS = "git-askpass";
+          process.env.GIT_TERMINAL_PROMPT = "1";
+          process.env.SSH_ASKPASS = "ssh-askpass";
           process.env.SSH_ASKPASS_REQUIRE = "force";
           process.env.T3_TEST_SSH_ASKPASS_LOG = sshLogPath;
 
           yield* (yield* GitVcsDriver.GitVcsDriver).statusDetails(cwd);
 
-          assert.equal((yield* fileSystem.readFileString(sshLogPath)).trim(), "never");
+          assert.deepEqual((yield* fileSystem.readFileString(sshLogPath)).trim().split(/\r?\n/), [
+            "GCM_INTERACTIVE=never",
+            "GIT_ASKPASS=",
+            "GIT_TERMINAL_PROMPT=0",
+            "SSH_ASKPASS=",
+            "SSH_ASKPASS_REQUIRE=never",
+          ]);
         }).pipe(
           Effect.ensuring(
             Effect.sync(() => {
-              if (previousGitSsh === undefined) {
-                delete process.env.GIT_SSH;
-              } else {
-                process.env.GIT_SSH = previousGitSsh;
-              }
-              if (previousAskpassRequire === undefined) {
-                delete process.env.SSH_ASKPASS_REQUIRE;
-              } else {
-                process.env.SSH_ASKPASS_REQUIRE = previousAskpassRequire;
-              }
-              if (previousAskpassLog === undefined) {
-                delete process.env.T3_TEST_SSH_ASKPASS_LOG;
-              } else {
-                process.env.T3_TEST_SSH_ASKPASS_LOG = previousAskpassLog;
+              for (const key of envKeys) {
+                const previous = previousEnv.get(key);
+                if (previous === undefined) {
+                  delete process.env[key];
+                } else {
+                  process.env[key] = previous;
+                }
               }
             }),
           ),

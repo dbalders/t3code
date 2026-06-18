@@ -1,6 +1,13 @@
 import * as Effect from "effect/Effect";
 
 import * as DesktopIpc from "./DesktopIpc.ts";
+import {
+  clearCloudAuthToken,
+  createCloudAuthRequest,
+  fetchCloudAuth,
+  getCloudAuthToken,
+  setCloudAuthToken,
+} from "./methods/cloudAuth.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
 import {
   getSavedEnvironmentRegistry,
@@ -22,7 +29,7 @@ import {
   ensureSshEnvironment,
   fetchSshEnvironmentDescriptor,
   fetchSshSessionState,
-  issueSshWebSocketToken,
+  issueSshWebSocketTicket,
   resolveSshPasswordPrompt,
 } from "./methods/sshEnvironment.ts";
 import {
@@ -41,9 +48,11 @@ import {
   setTheme,
   showContextMenu,
 } from "./methods/window.ts";
+import * as PreviewIpc from "./methods/preview.ts";
 
-export const installDesktopIpcHandlers = Effect.gen(function* () {
+export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers")(function* () {
   const ipc = yield* DesktopIpc.DesktopIpc;
+  yield* PreviewIpc.installPreviewEventForwarding();
 
   yield* ipc.handleSync(getAppBranding);
   yield* ipc.handleSync(getLocalEnvironmentBootstrap);
@@ -62,7 +71,7 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handle(fetchSshEnvironmentDescriptor);
   yield* ipc.handle(bootstrapSshBearerSession);
   yield* ipc.handle(fetchSshSessionState);
-  yield* ipc.handle(issueSshWebSocketToken);
+  yield* ipc.handle(issueSshWebSocketTicket);
   yield* ipc.handle(resolveSshPasswordPrompt);
 
   yield* ipc.handle(getServerExposureState);
@@ -75,10 +84,17 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handle(setTheme);
   yield* ipc.handle(showContextMenu);
   yield* ipc.handle(openExternal);
-
+  yield* ipc.handle(createCloudAuthRequest);
+  yield* ipc.handle(getCloudAuthToken);
+  yield* ipc.handle(setCloudAuthToken);
+  yield* ipc.handle(clearCloudAuthToken);
+  yield* ipc.handle(fetchCloudAuth);
   yield* ipc.handle(getUpdateState);
   yield* ipc.handle(setUpdateChannel);
   yield* ipc.handle(downloadUpdate);
   yield* ipc.handle(installUpdate);
   yield* ipc.handle(checkForUpdate);
-}).pipe(Effect.withSpan("desktop.ipc.installHandlers"));
+  for (const previewMethod of PreviewIpc.methods) {
+    yield* ipc.handle(previewMethod);
+  }
+});

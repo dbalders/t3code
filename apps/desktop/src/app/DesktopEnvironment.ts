@@ -49,6 +49,7 @@ export interface DesktopEnvironmentShape {
   readonly savedEnvironmentRegistryPath: string;
   readonly serverSettingsPath: string;
   readonly logDir: string;
+  readonly browserArtifactsDir: string;
   readonly rootDir: string;
   readonly appRoot: string;
   readonly backendEntryPath: string;
@@ -78,7 +79,7 @@ export interface DesktopEnvironmentShape {
 export class DesktopEnvironment extends Context.Service<
   DesktopEnvironment,
   DesktopEnvironmentShape
->()("t3/desktop/Environment") {}
+>()("@t3tools/desktop/app/DesktopEnvironment") {}
 
 const APP_BASE_NAME = "TritonAI Code";
 
@@ -184,6 +185,7 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     savedEnvironmentRegistryPath: path.join(stateDir, "saved-environments.json"),
     serverSettingsPath: path.join(stateDir, "settings.json"),
     logDir: path.join(stateDir, "logs"),
+    browserArtifactsDir: path.join(stateDir, "browser-artifacts"),
     rootDir,
     appRoot,
     backendEntryPath: path.join(appRoot, "apps/server/dist/bin.mjs"),
@@ -200,7 +202,9 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     otlpExportIntervalMs: config.otlpExportIntervalMs,
     branding,
     displayName,
-    appUserModelId: isDevelopment ? "edu.ucsd.ai.tritonai-code.dev" : "edu.ucsd.ai.tritonai-code",
+    appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
+      isDevelopment ? "edu.ucsd.ai.tritonai-code.dev" : "edu.ucsd.ai.tritonai-code",
+    ),
     linuxDesktopEntryName: isDevelopment ? "tritonai-code-dev.desktop" : "tritonai-code.desktop",
     linuxWmClass: isDevelopment ? "tritonai-code-dev" : "tritonai-code",
     userDataDirName,

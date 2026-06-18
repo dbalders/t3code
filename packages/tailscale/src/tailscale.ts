@@ -1,3 +1,4 @@
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -10,6 +11,11 @@ export const DEFAULT_TAILSCALE_SERVE_PORT = 443;
 export const TAILSCALE_STATUS_TIMEOUT_MS = 1_500;
 export const TAILSCALE_SERVE_TIMEOUT_MS = 10_000;
 export const TAILSCALE_PROBE_TIMEOUT_MS = 2_500;
+
+// tailscale is a real executable everywhere (`tailscale.exe` on Windows), so
+// it is always spawned directly rather than through cmd.exe shell mode.
+const tailscaleCommandForPlatform = (platform: NodeJS.Platform): string =>
+  platform === "win32" ? "tailscale.exe" : "tailscale";
 
 export class TailscaleCommandError extends Data.TaggedError("TailscaleCommandError")<{
   readonly command: readonly string[];
@@ -112,11 +118,14 @@ export const parseTailscaleStatus = (
     Effect.mapError((cause) => new TailscaleStatusParseError({ cause })),
     Effect.map((parsed) => {
       const rawIps = parsed.Self?.TailscaleIPs;
-      const tailnetIpv4Addresses = Array.isArray(rawIps)
-        ? rawIps
-            .filter((address): address is string => typeof address === "string")
-            .filter(isTailscaleIpv4Address)
-        : [];
+      const tailnetIpv4Addresses: Array<string> = [];
+      if (Array.isArray(rawIps)) {
+        for (const address of rawIps) {
+          if (typeof address === "string" && isTailscaleIpv4Address(address)) {
+            tailnetIpv4Addresses.push(address);
+          }
+        }
+      }
 
       return {
         magicDnsName: normalizeMagicDnsName(parsed),
@@ -132,12 +141,9 @@ export const readTailscaleStatus: Effect.Effect<
 > = Effect.gen(function* () {
   const args = ["status", "--json"];
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const hostPlatform = yield* HostProcessPlatform;
   const child = yield* spawner
-    .spawn(
-      ChildProcess.make("tailscale", args, {
-        shell: process.platform === "win32",
-      }),
-    )
+    .spawn(ChildProcess.make(tailscaleCommandForPlatform(hostPlatform), args))
     .pipe(
       Effect.mapError((cause) =>
         tailscaleCommandError(
@@ -211,12 +217,9 @@ const runTailscaleCommand = (
 ): Effect.Effect<void, TailscaleCommandError, ChildProcessSpawner.ChildProcessSpawner> =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const hostPlatform = yield* HostProcessPlatform;
     const child = yield* spawner
-      .spawn(
-        ChildProcess.make("tailscale", args, {
-          shell: process.platform === "win32",
-        }),
-      )
+      .spawn(ChildProcess.make(tailscaleCommandForPlatform(hostPlatform), args))
       .pipe(
         Effect.mapError((cause) =>
           tailscaleCommandError(
@@ -301,7 +304,7 @@ export const probeTailscaleHttpsEndpoint = (input: {
       onNone: () => false,
       onSome: (httpResponse) => httpResponse.status >= 200 && httpResponse.status < 300,
     });
-  }).pipe(Effect.catch(() => Effect.succeed(false)));
+  }).pipe(Effect.orElseSucceed(() => false));
 
 export const resolveTailscaleHttpsBaseUrl = (
   input: {

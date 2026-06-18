@@ -2,41 +2,26 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import {
-  createBuildConfig,
+  createStageWorkspaceConfig,
+  createStagePnpmConfig,
+  DESKTOP_ASAR_UNPACK,
   resolveDesktopRuntimeDependencies,
+  resolveFffNativeDependencies,
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
-  resolveDesktopPublishConfig,
-  resolveDesktopUpdateRepository,
   resolveDesktopProductName,
   resolveDesktopUpdateChannel,
   resolveGitHubPublishConfig,
   resolveMockUpdateServerPort,
   resolveMockUpdateServerUrl,
-  TRITONAI_DESKTOP_APP_ID,
+  STAGE_INSTALL_ARGS,
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
-
-function withDesktopUpdateRepositoryEnv(value: string | undefined, fn: () => void) {
-  const previous = process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY;
-  try {
-    if (value === undefined) {
-      delete process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY;
-    } else {
-      process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY = value;
-    }
-    fn();
-  } finally {
-    if (previous === undefined) {
-      delete process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY;
-    } else {
-      process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY = previous;
-    }
-  }
-}
+import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("resolves the dedicated nightly updater channel from nightly versions", () => {
@@ -52,25 +37,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     );
   });
 
-  it.effect("keeps Windows resource editing enabled for unsigned local builds", () =>
-    Effect.gen(function* () {
-      const buildConfig = yield* createBuildConfig(
-        "win",
-        "nsis",
-        "0.0.17",
-        false,
-        false,
-        undefined,
-      );
-
-      const winConfig = buildConfig.win as Record<string, unknown>;
-      assert.equal(buildConfig.appId, TRITONAI_DESKTOP_APP_ID);
-      assert.equal(buildConfig.productName, "TritonAI Code");
-      assert.equal(winConfig.icon, "icon.ico");
-      assert.equal(winConfig.signAndEditExecutable, undefined);
-    }),
-  );
-
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
     assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.0.17"), {
       macIconPng: BRAND_ASSET_PATHS.productionMacIconPng,
@@ -85,41 +51,46 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
   });
 
-  it("defaults desktop updater releases to the controlled downstream repository", () => {
-    withDesktopUpdateRepositoryEnv(undefined, () => {
-      assert.equal(resolveDesktopUpdateRepository(), "dbalders/t3code");
-      assert.deepStrictEqual(resolveGitHubPublishConfig("latest"), {
+  it.effect("resolves GitHub desktop publish config from Effect config", () =>
+    Effect.gen(function* () {
+      const latestConfig = yield* resolveGitHubPublishConfig("latest").pipe(
+        Effect.provide(
+          ConfigProvider.layer(
+            ConfigProvider.fromEnv({
+              env: {
+                T3CODE_DESKTOP_UPDATE_REPOSITORY: "pingdotgg/t3code",
+              },
+            }),
+          ),
+        ),
+      );
+      const nightlyConfig = yield* resolveGitHubPublishConfig("nightly").pipe(
+        Effect.provide(
+          ConfigProvider.layer(
+            ConfigProvider.fromEnv({
+              env: {
+                GITHUB_REPOSITORY: "pingdotgg/t3code",
+              },
+            }),
+          ),
+        ),
+      );
+
+      assert.deepStrictEqual(latestConfig, {
         provider: "github",
-        owner: "dbalders",
+        owner: "pingdotgg",
         repo: "t3code",
         releaseType: "release",
       });
-    });
-  });
-
-  it("keeps the explicit desktop updater repository override for test feeds", () => {
-    withDesktopUpdateRepositoryEnv("example/custom-updates", () => {
-      assert.equal(resolveDesktopUpdateRepository(), "example/custom-updates");
-      assert.deepStrictEqual(resolveGitHubPublishConfig("nightly"), {
+      assert.deepStrictEqual(nightlyConfig, {
         provider: "github",
-        owner: "example",
-        repo: "custom-updates",
+        owner: "pingdotgg",
+        repo: "t3code",
         releaseType: "prerelease",
         channel: "nightly",
       });
-    });
-  });
-
-  it("uses the generic mock update server when mock updates are enabled", () => {
-    withDesktopUpdateRepositoryEnv(undefined, () => {
-      assert.deepStrictEqual(resolveDesktopPublishConfig("latest", true, 4123), [
-        {
-          provider: "generic",
-          url: "http://localhost:4123",
-        },
-      ]);
-    });
-  });
+    }),
+  );
 
   it("omits bundled workspace packages from staged desktop dependencies", () => {
     assert.deepStrictEqual(
@@ -145,6 +116,85 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     );
   });
 
+  it("carries only staged dependency patch metadata into staged desktop installs", () => {
+    assert.deepStrictEqual(
+      createStagePnpmConfig(
+        {
+          "@expo/metro-config@56.0.13": "patches/@expo%2Fmetro-config@56.0.13.patch",
+          "@ff-labs/fff-node@0.9.4": "patches/@ff-labs__fff-node@0.9.4.patch",
+          "@pierre/diffs@1.1.20": "patches/@pierre%2Fdiffs@1.1.20.patch",
+          "alchemy@2.0.0-beta.49": "patches/alchemy@2.0.0-beta.49.patch",
+          "effect@4.0.0-beta.73": "patches/effect@4.0.0-beta.73.patch",
+        },
+        {
+          "@ff-labs/fff-node": "0.9.4",
+          "@pierre/diffs": "1.1.20",
+          effect: "4.0.0-beta.73",
+        },
+      ),
+      {
+        patchedDependencies: {
+          "@ff-labs/fff-node@0.9.4": "patches/@ff-labs__fff-node@0.9.4.patch",
+          "@pierre/diffs@1.1.20": "patches/@pierre%2Fdiffs@1.1.20.patch",
+          "effect@4.0.0-beta.73": "patches/effect@4.0.0-beta.73.patch",
+        },
+      },
+    );
+
+    assert.equal(
+      createStagePnpmConfig(
+        {
+          "@expo/metro-config@56.0.13": "patches/@expo%2Fmetro-config@56.0.13.patch",
+        },
+        { effect: "4.0.0-beta.73" },
+      ),
+      undefined,
+    );
+  });
+
+  it("installs optional native dependencies for the target desktop architecture", () => {
+    assert.deepStrictEqual(STAGE_INSTALL_ARGS, ["install", "--prod"]);
+    assert.deepStrictEqual(createStageWorkspaceConfig("mac", "x64"), {
+      supportedArchitectures: {
+        os: ["darwin"],
+        cpu: ["x64"],
+      },
+    });
+    assert.deepStrictEqual(createStageWorkspaceConfig("win", "arm64"), {
+      supportedArchitectures: {
+        os: ["win32"],
+        cpu: ["arm64"],
+      },
+    });
+    assert.deepStrictEqual(createStageWorkspaceConfig("mac", "universal"), {
+      supportedArchitectures: {
+        os: ["darwin"],
+        cpu: ["arm64", "x64"],
+      },
+    });
+  });
+
+  it("unpacks the fff shared library for filesystem and FFI access", () => {
+    assert.deepStrictEqual(DESKTOP_ASAR_UNPACK, ["node_modules/@ff-labs/fff-bin-*/**/*"]);
+  });
+
+  it("promotes target fff binaries to direct staged dependencies", () => {
+    assert.deepStrictEqual(resolveFffNativeDependencies("mac", "arm64", "0.9.4"), {
+      "@ff-labs/fff-bin-darwin-arm64": "0.9.4",
+    });
+    assert.deepStrictEqual(resolveFffNativeDependencies("mac", "universal", "0.9.4"), {
+      "@ff-labs/fff-bin-darwin-arm64": "0.9.4",
+      "@ff-labs/fff-bin-darwin-x64": "0.9.4",
+    });
+    assert.deepStrictEqual(resolveFffNativeDependencies("win", "x64", "0.9.4"), {
+      "@ff-labs/fff-bin-win32-x64": "0.9.4",
+    });
+    assert.deepStrictEqual(resolveFffNativeDependencies("linux", "arm64", "0.9.4"), {
+      "@ff-labs/fff-bin-linux-arm64-gnu": "0.9.4",
+      "@ff-labs/fff-bin-linux-arm64-musl": "0.9.4",
+    });
+  });
+
   it("falls back to the default mock update port when the configured port is blank", () => {
     assert.equal(resolveMockUpdateServerUrl(undefined), "http://localhost:3000");
     assert.equal(resolveMockUpdateServerUrl(4123), "http://localhost:4123");
@@ -166,6 +216,43 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         const exit = yield* Effect.exit(resolveMockUpdateServerPort(port));
         assert.equal(exit._tag, "Failure");
       }
+    }),
+  );
+
+  it.effect("resolves default platform and architecture from host references", () =>
+    Effect.gen(function* () {
+      const resolved = yield* resolveBuildOptions({
+        platform: Option.none(),
+        target: Option.none(),
+        arch: Option.none(),
+        buildVersion: Option.none(),
+        outputDir: Option.none(),
+        skipBuild: Option.none(),
+        keepStage: Option.none(),
+        signed: Option.none(),
+        verbose: Option.none(),
+        mockUpdates: Option.none(),
+        mockUpdateServerPort: Option.none(),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(HostProcessPlatform, "win32"),
+            Layer.succeed(HostProcessArchitecture, "x64"),
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({
+                env: {
+                  PROCESSOR_ARCHITECTURE: "AMD64",
+                  PROCESSOR_ARCHITEW6432: "ARM64",
+                },
+              }),
+            ),
+          ),
+        ),
+      );
+
+      assert.equal(resolved.platform, "win");
+      assert.equal(resolved.target, "nsis");
+      assert.equal(resolved.arch, "arm64");
     }),
   );
 

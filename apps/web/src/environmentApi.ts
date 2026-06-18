@@ -1,6 +1,6 @@
 import type { EnvironmentId, EnvironmentApi } from "@t3tools/contracts";
 
-import type { WsRpcClient } from "./rpc/wsRpcClient";
+import type { WsRpcClient } from "@t3tools/client-runtime";
 import { readEnvironmentConnection } from "./environments/runtime";
 
 const environmentApiOverridesForTests = new Map<EnvironmentId, EnvironmentApi>();
@@ -9,19 +9,26 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
   return {
     terminal: {
       open: (input) => rpcClient.terminal.open(input as never),
+      attach: (input, callback, options) =>
+        rpcClient.terminal.attach(input as never, callback, options),
       write: (input) => rpcClient.terminal.write(input as never),
       resize: (input) => rpcClient.terminal.resize(input as never),
       clear: (input) => rpcClient.terminal.clear(input as never),
       restart: (input) => rpcClient.terminal.restart(input as never),
       close: (input) => rpcClient.terminal.close(input as never),
-      onEvent: (callback) => rpcClient.terminal.onEvent(callback),
+      onMetadata: (callback, options) => rpcClient.terminal.onMetadata(callback, options),
     },
     projects: {
+      listEntries: rpcClient.projects.listEntries,
+      readFile: rpcClient.projects.readFile,
       searchEntries: rpcClient.projects.searchEntries,
       writeFile: rpcClient.projects.writeFile,
     },
     filesystem: {
       browse: rpcClient.filesystem.browse,
+    },
+    assets: {
+      createUrl: rpcClient.assets.createUrl,
     },
     sourceControl: {
       lookupRepository: rpcClient.sourceControl.lookupRepository,
@@ -43,6 +50,9 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       resolvePullRequest: rpcClient.git.resolvePullRequest,
       preparePullRequestThread: rpcClient.git.preparePullRequestThread,
     },
+    review: {
+      getDiffPreview: rpcClient.review.getDiffPreview,
+    },
     orchestration: {
       dispatchCommand: rpcClient.orchestration.dispatchCommand,
       getTurnDiff: rpcClient.orchestration.getTurnDiff,
@@ -52,6 +62,23 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
         rpcClient.orchestration.subscribeShell(callback, options),
       subscribeThread: (input, callback, options) =>
         rpcClient.orchestration.subscribeThread(input, callback, options),
+    },
+    preview: {
+      open: (input) => rpcClient.preview.open(input as never),
+      navigate: (input) => rpcClient.preview.navigate(input as never),
+      refresh: (input) => rpcClient.preview.refresh(input as never),
+      close: (input) => rpcClient.preview.close(input as never),
+      list: (input) => rpcClient.preview.list(input as never),
+      reportStatus: (input) => rpcClient.preview.reportStatus(input as never),
+      automation: {
+        connect: (input, callback, options) =>
+          rpcClient.preview.automation.connect(input as never, callback, options),
+        respond: (response) => rpcClient.preview.automation.respond(response as never),
+        reportOwner: (owner) => rpcClient.preview.automation.reportOwner(owner as never),
+        clearOwner: (input) => rpcClient.preview.automation.clearOwner(input as never),
+      },
+      onEvent: (callback, options) => rpcClient.preview.onEvent(callback, options),
+      subscribePorts: (callback, options) => rpcClient.preview.subscribePorts(callback, options),
     },
   };
 }

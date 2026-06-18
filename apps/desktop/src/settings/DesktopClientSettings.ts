@@ -49,7 +49,7 @@ export interface DesktopClientSettingsShape {
 export class DesktopClientSettings extends Context.Service<
   DesktopClientSettings,
   DesktopClientSettingsShape
->()("t3/desktop/ClientSettings") {}
+>()("@t3tools/desktop/settings/DesktopClientSettings") {}
 
 const readClientSettings = (
   fileSystem: FileSystem.FileSystem,
@@ -63,7 +63,7 @@ const readClientSettings = (
         onSome: (raw) =>
           decodeClientSettingsJson(raw).pipe(
             Effect.map((settings) => Option.some(settings)),
-            Effect.catch(() => Effect.succeed(Option.none<ClientSettings>())),
+            Effect.orElseSucceed(() => Option.none<ClientSettings>()),
           ),
       }),
     ),

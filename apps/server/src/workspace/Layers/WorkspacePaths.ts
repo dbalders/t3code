@@ -1,4 +1,4 @@
-import * as OS from "node:os";
+import * as NodeOS from "node:os";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -19,10 +19,10 @@ function toPosixRelativePath(input: string): string {
 
 function expandHomePath(input: string, path: Path.Path): string {
   if (input === "~") {
-    return OS.homedir();
+    return NodeOS.homedir();
   }
   if (input.startsWith("~/") || input.startsWith("~\\")) {
-    return path.join(OS.homedir(), input.slice(2));
+    return path.join(NodeOS.homedir(), input.slice(2));
   }
   return input;
 }
@@ -37,7 +37,7 @@ export const makeWorkspacePaths = Effect.gen(function* () {
     const normalizedWorkspaceRoot = path.resolve(expandHomePath(workspaceRoot.trim(), path));
     let workspaceStat = yield* fileSystem
       .stat(normalizedWorkspaceRoot)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+      .pipe(Effect.orElseSucceed(() => null));
     if (!workspaceStat && options?.createIfMissing) {
       yield* fileSystem.makeDirectory(normalizedWorkspaceRoot, { recursive: true }).pipe(
         Effect.mapError(
@@ -50,7 +50,7 @@ export const makeWorkspacePaths = Effect.gen(function* () {
       );
       workspaceStat = yield* fileSystem
         .stat(normalizedWorkspaceRoot)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+        .pipe(Effect.orElseSucceed(() => null));
     }
     if (!workspaceStat) {
       return yield* new WorkspaceRootNotExistsError({

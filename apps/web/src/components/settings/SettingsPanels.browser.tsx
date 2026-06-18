@@ -3,6 +3,7 @@ import "../../index.css";
 import {
   type AuthAccessStreamEvent,
   type AuthAccessSnapshot,
+  type AuthEnvironmentScope,
   AuthSessionId,
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
@@ -19,8 +20,8 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
-import { page } from "vitest/browser";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { page } from "vite-plus/test/browser";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { render } from "vitest-browser-react";
 import type { ReactNode } from "react";
 import {
@@ -147,6 +148,18 @@ const authAccessHarness = vi.hoisted(() => {
 });
 
 const mockConnectDesktopSshEnvironment = vi.hoisted(() => vi.fn());
+const mockGetClerkToken = vi.hoisted(() => vi.fn(async () => null));
+const mockOpenClerkWaitlist = vi.hoisted(() => vi.fn());
+
+vi.mock("@clerk/react", () => ({
+  useAuth: () => ({
+    getToken: mockGetClerkToken,
+    isSignedIn: false,
+  }),
+  useClerk: () => ({
+    openWaitlist: mockOpenClerkWaitlist,
+  }),
+}));
 
 vi.mock("../../environments/runtime", () => {
   const primaryConnection = {
@@ -184,6 +197,7 @@ vi.mock("../../environments/runtime", () => {
     resolveEnvironmentHttpUrl: (_environmentId: unknown, path: string) =>
       new URL(path, "http://localhost:3000").toString(),
     waitForSavedEnvironmentRegistryHydration: async () => undefined,
+    addManagedRelayEnvironment: vi.fn(),
     addSavedEnvironment: vi.fn(),
     connectDesktopSshEnvironment: mockConnectDesktopSshEnvironment,
     disconnectSavedEnvironment: vi.fn(),
@@ -217,7 +231,7 @@ function createBaseServerConfig(): ServerConfig {
     auth: {
       policy: "loopback-browser",
       bootstrapMethods: ["one-time-token"],
-      sessionMethods: ["browser-session-cookie", "bearer-session-token"],
+      sessionMethods: ["browser-session-cookie", "bearer-access-token"],
       sessionCookieName: "t3_session",
     },
     cwd: "/repo/project",
@@ -286,7 +300,7 @@ function createEmptyProcessResourceHistoryResult(): ServerProcessResourceHistory
 function makePairingLink(input: {
   readonly id: string;
   readonly credential: string;
-  readonly role: "owner" | "client";
+  readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly subject: string;
   readonly label?: string;
   readonly createdAt: string;
@@ -302,7 +316,7 @@ function makePairingLink(input: {
 function makeClientSession(input: {
   readonly sessionId: string;
   readonly subject: string;
-  readonly role: "owner" | "client";
+  readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly method: "browser-session-cookie";
   readonly client?: {
     readonly label?: string;
@@ -394,26 +408,26 @@ const createDesktopBridgeStub = (overrides?: {
       },
     }),
     bootstrapSshBearerSession: vi.fn().mockResolvedValue({
-      authenticated: true,
-      role: "owner",
-      sessionMethod: "bearer-session-token",
-      expiresAt: "2026-05-01T12:00:00.000Z",
-      sessionToken: "ssh-bearer-token",
+      access_token: "ssh-bearer-token",
+      issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      token_type: "Bearer",
+      expires_in: 3_600,
+      scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
     }),
     fetchSshSessionState: vi.fn().mockResolvedValue({
       authenticated: true,
       auth: {
         policy: "remote-reachable",
         bootstrapMethods: ["one-time-token"],
-        sessionMethods: ["browser-session-cookie", "bearer-session-token"],
+        sessionMethods: ["browser-session-cookie", "bearer-access-token"],
         sessionCookieName: "t3_session",
       },
-      role: "owner",
-      sessionMethod: "bearer-session-token",
+      scopes: ["orchestration:read", "access:write"],
+      sessionMethod: "bearer-access-token",
       expiresAt: "2026-05-01T12:00:00.000Z",
     }),
-    issueSshWebSocketToken: vi.fn().mockResolvedValue({
-      token: "ssh-ws-token",
+    issueSshWebSocketTicket: vi.fn().mockResolvedValue({
+      ticket: "ssh-ws-ticket",
       expiresAt: "2026-05-01T12:05:00.000Z",
     }),
     onSshPasswordPrompt: vi.fn(() => () => {}),
@@ -449,6 +463,18 @@ const createDesktopBridgeStub = (overrides?: {
     setTheme: vi.fn().mockResolvedValue(undefined),
     showContextMenu: vi.fn().mockResolvedValue(null),
     openExternal: vi.fn().mockResolvedValue(true),
+    createCloudAuthRequest: vi.fn().mockResolvedValue("t3code-dev://auth/callback?t3_state=test"),
+    getCloudAuthToken: vi.fn().mockResolvedValue(null),
+    setCloudAuthToken: vi.fn().mockResolvedValue(true),
+    clearCloudAuthToken: vi.fn().mockResolvedValue(undefined),
+    fetchCloudAuth: vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      body: "",
+    }),
+    onCloudAuthCallback: () => () => {},
     onMenuAction: () => () => {},
     getUpdateState: vi.fn().mockResolvedValue(idleUpdateState),
     setUpdateChannel:
@@ -508,7 +534,7 @@ describe("GeneralSettingsPanel observability", () => {
         makeClientSession({
           sessionId: "session-owner",
           subject: "browser-owner",
-          role: "owner",
+          scopes: ["orchestration:read", "access:write"],
           method: "browser-session-cookie",
           client: {
             label: "Chrome on Mac",
@@ -531,7 +557,7 @@ describe("GeneralSettingsPanel observability", () => {
           JSON.stringify({
             authenticated: true,
             auth: createBaseServerConfig().auth,
-            role: "owner",
+            scopes: ["orchestration:read", "access:write"],
             sessionMethod: "browser-session-cookie",
             expiresAt: "2036-05-07T00:00:00.000Z",
           }),
@@ -552,7 +578,9 @@ describe("GeneralSettingsPanel observability", () => {
       </AppAtomRegistryProvider>,
     );
 
-    await expect.element(page.getByText("Manage local backend")).toBeInTheDocument();
+    await expect
+      .element(page.getByRole("heading", { name: "This environment", exact: true }))
+      .toBeInTheDocument();
     await expect.element(page.getByLabelText("Enable network access")).toBeDisabled();
     await expect
       .element(
@@ -776,7 +804,7 @@ describe("GeneralSettingsPanel observability", () => {
       makeClientSession({
         sessionId: "session-owner",
         subject: "desktop-bootstrap",
-        role: "owner",
+        scopes: ["orchestration:read", "access:write"],
         method: "browser-session-cookie",
         client: {
           label: "This Mac",
@@ -805,7 +833,7 @@ describe("GeneralSettingsPanel observability", () => {
             makePairingLink({
               id: "pairing-link-1",
               credential: "pairing-token",
-              role: "client",
+              scopes: ["orchestration:read"],
               subject: "one-time-token",
               label: "Julius iPhone",
               createdAt: "2036-04-07T00:00:00.000Z",
@@ -817,7 +845,7 @@ describe("GeneralSettingsPanel observability", () => {
             makeClientSession({
               sessionId: "session-client",
               subject: "one-time-token",
-              role: "client",
+              scopes: ["orchestration:read"],
               method: "browser-session-cookie",
               client: {
                 label: "Julius iPhone",
@@ -867,16 +895,79 @@ describe("GeneralSettingsPanel observability", () => {
     await expect.element(page.getByText("This Mac")).toBeInTheDocument();
     await page.getByRole("button", { name: "Create link", exact: true }).click();
     await expect.element(page.getByText("Create pairing link")).toBeInTheDocument();
+    await expect.element(page.getByRole("checkbox", { name: /View environment/ })).toBeChecked();
+    await expect.element(page.getByRole("checkbox", { name: /Operate tasks/ })).toBeChecked();
+    await page.getByRole("button", { name: "Read only", exact: true }).click();
+    await expect.element(page.getByRole("checkbox", { name: /View environment/ })).toBeChecked();
+    await expect.element(page.getByRole("checkbox", { name: /Operate tasks/ })).not.toBeChecked();
     await page.getByRole("button", { name: "Create link", exact: true }).click();
     authAccessHarness.emitPairingLinkUpserted(pairingLinks[0]!);
     authAccessHarness.emitClientUpserted(clientSessions[1]!);
     await expect
-      .element(page.getByText("Client · Mobile · iOS · Safari · 192.168.1.88"))
+      .element(page.getByRole("button", { name: "Pairing link scopes: show 1 scope" }))
       .toBeInTheDocument();
+    await expect
+      .element(page.getByText("Mobile · iOS · Safari · 192.168.1.88"))
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Client scopes: show 1 scope" }).click();
+    await expect.element(page.getByText("orchestration:read", { exact: true })).toBeInTheDocument();
     await expect
       .element(page.getByRole("button", { name: /^Copy pairing URL for:/ }))
       .toBeInTheDocument();
     await expect.element(page.getByText("Revoke others")).toBeInTheDocument();
+  });
+
+  it("keeps authorized clients within a five-row fading scroll area", async () => {
+    window.desktopBridge = createDesktopBridgeStub({
+      serverExposureState: {
+        mode: "network-accessible",
+        endpointUrl: "http://192.168.1.44:3773",
+        advertisedHost: "192.168.1.44",
+        tailscaleServeEnabled: false,
+        tailscaleServePort: 443,
+      },
+    });
+    authAccessHarness.setSnapshot({
+      pairingLinks: [],
+      clientSessions: Array.from({ length: 7 }, (_, index) =>
+        makeClientSession({
+          sessionId: `session-client-${index}`,
+          subject: `client-${index}`,
+          scopes: ["orchestration:read"],
+          method: "browser-session-cookie",
+          client: {
+            label: `Client ${index + 1}`,
+            deviceType: "desktop",
+            os: "macOS",
+            browser: "Electron",
+            ipAddress: `192.168.1.${index + 10}`,
+          },
+          issuedAt: "2036-04-07T00:00:00.000Z",
+          expiresAt: "2036-05-07T00:00:00.000Z",
+          connected: index === 0,
+          current: index === 0,
+        }),
+      ),
+    });
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <ConnectionsSettings />
+      </AppAtomRegistryProvider>,
+    );
+
+    await expect.element(page.getByText("Client 7")).toBeInTheDocument();
+    const scrollArea = document.querySelector<HTMLElement>(
+      '[data-testid="authorized-clients-scroll-area"]',
+    );
+    const viewport = scrollArea?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+
+    expect(scrollArea).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(scrollArea?.clientHeight).toBe(360);
+    expect(viewport?.scrollHeight).toBeGreaterThan(viewport?.clientHeight ?? 0);
+    expect(viewport?.className).toContain("mask-b-from");
   });
 
   it("revokes all other paired clients from settings", async () => {
@@ -893,7 +984,7 @@ describe("GeneralSettingsPanel observability", () => {
       makeClientSession({
         sessionId: "session-owner",
         subject: "desktop-bootstrap",
-        role: "owner",
+        scopes: ["orchestration:read", "access:write"],
         method: "browser-session-cookie",
         client: {
           label: "This Mac",
@@ -909,7 +1000,7 @@ describe("GeneralSettingsPanel observability", () => {
       makeClientSession({
         sessionId: "session-client",
         subject: "one-time-token",
-        role: "client",
+        scopes: ["orchestration:read"],
         method: "browser-session-cookie",
         client: {
           label: "Julius iPhone",
@@ -1361,6 +1452,50 @@ describe("SourceControlSettingsPanel discovery states", () => {
 
     await expect.element(page.getByRole("switch", { name: "Git availability" })).toBeDisabled();
     await expect.element(page.getByText("Nothing detected yet")).not.toBeInTheDocument();
+  });
+
+  it("shows unauthenticated API providers as available but not enabled", async () => {
+    setSourceControlDiscoveryStub(async () => ({
+      versionControlSystems: [],
+      sourceControlProviders: [
+        {
+          kind: "bitbucket",
+          label: "Bitbucket",
+          status: "available",
+          version: Option.none(),
+          installHint:
+            "Set T3CODE_BITBUCKET_EMAIL and T3CODE_BITBUCKET_API_TOKEN, or T3CODE_BITBUCKET_ACCESS_TOKEN.",
+          detail: Option.none(),
+          auth: {
+            status: "unauthenticated",
+            account: Option.none(),
+            host: Option.some("bitbucket.org"),
+            detail: Option.some(
+              "Set T3CODE_BITBUCKET_EMAIL and T3CODE_BITBUCKET_API_TOKEN, or T3CODE_BITBUCKET_ACCESS_TOKEN.",
+            ),
+          },
+        },
+      ],
+    }));
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <SourceControlSettingsPanel />
+      </AppAtomRegistryProvider>,
+    );
+
+    const bitbucketSwitch = page.getByRole("switch", { name: "Bitbucket availability" });
+
+    await expect.element(page.getByText("Not authenticated")).toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "Available. Set T3CODE_BITBUCKET_EMAIL and T3CODE_BITBUCKET_API_TOKEN, or T3CODE_BITBUCKET_ACCESS_TOKEN.",
+        ),
+      )
+      .toBeInTheDocument();
+    await expect.element(bitbucketSwitch).toBeDisabled();
+    await expect.element(bitbucketSwitch).not.toBeChecked();
   });
 
   it("shows Git fetch interval settings inside the Git details dropdown", async () => {
