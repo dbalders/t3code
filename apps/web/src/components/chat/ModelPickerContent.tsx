@@ -219,10 +219,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     [instanceEntries, matchesLockedProvider, props.lockedProvider],
   );
   const showLockedInstanceSidebar = isLocked && lockedInstanceEntries.length > 1;
-  const showSidebar = !isSearching && (!isLocked || showLockedInstanceSidebar);
   const sidebarInstanceEntries = showLockedInstanceSidebar
     ? lockedInstanceEntries
     : instanceEntries;
+  const showUnlockedSidebar =
+    !isLocked && (favorites.length > 0 || sidebarInstanceEntries.length > 1);
+  const showSidebar = !isSearching && (showUnlockedSidebar || showLockedInstanceSidebar);
   const instanceOrder = useMemo(
     () => instanceEntries.map((entry) => entry.instanceId),
     [instanceEntries],

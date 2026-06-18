@@ -44,6 +44,7 @@ import {
   deriveProviderInstanceEntries,
   sortProviderInstanceEntries,
 } from "../../providerInstances";
+import { filterVisibleServerProviders, isVisibleProviderDriver } from "../../providerVisibility";
 import { ensureLocalApi, readLocalApi } from "../../localApi";
 import { useShallow } from "zustand/react/shallow";
 import { selectProjectsAcrossEnvironments, useStore } from "../../store";
@@ -490,6 +491,10 @@ export function GeneralSettingsPanel() {
   const { updateSettings } = useUpdateSettings();
   const observability = useServerObservability();
   const serverProviders = useServerProviders();
+  const visibleServerProviders = useMemo(
+    () => filterVisibleServerProviders(serverProviders),
+    [serverProviders],
+  );
   const diagnosticsDescription = formatDiagnosticsDescription({
     localTracingEnabled: observability?.localTracingEnabled ?? false,
     otlpTracesEnabled: observability?.otlpTracesEnabled ?? false,
@@ -498,12 +503,15 @@ export function GeneralSettingsPanel() {
     otlpMetricsUrl: observability?.otlpMetricsUrl,
   });
 
-  const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
+  const textGenerationModelSelection = resolveAppModelSelectionState(
+    settings,
+    visibleServerProviders,
+  );
   const textGenInstanceId = textGenerationModelSelection.instanceId;
   const textGenModel = textGenerationModelSelection.model;
   const textGenModelOptions = textGenerationModelSelection.options;
   const gitModelInstanceEntries = sortProviderInstanceEntries(
-    deriveProviderInstanceEntries(serverProviders),
+    deriveProviderInstanceEntries(visibleServerProviders),
   );
   const textGenInstanceEntry = gitModelInstanceEntries.find(
     (entry) => entry.instanceId === textGenInstanceId,
@@ -512,7 +520,7 @@ export function GeneralSettingsPanel() {
     textGenInstanceEntry?.driverKind ?? DEFAULT_PROVIDER_DRIVER_KIND;
   const gitModelOptionsByInstance = getCustomModelOptionsByInstance(
     settings,
-    serverProviders,
+    visibleServerProviders,
     textGenInstanceId,
     textGenModel,
   );
@@ -856,7 +864,7 @@ export function GeneralSettingsPanel() {
                         ...settings,
                         textGenerationModelSelection: createModelSelection(instanceId, model),
                       },
-                      serverProviders,
+                      visibleServerProviders,
                     ),
                   });
                 }}
@@ -888,7 +896,7 @@ export function GeneralSettingsPanel() {
                           nextOptions,
                         ),
                       },
-                      serverProviders,
+                      visibleServerProviders,
                     ),
                   });
                 }}
@@ -925,6 +933,10 @@ export function ProviderSettingsPanel() {
   const settings = useSettings();
   const { updateSettings } = useUpdateSettings();
   const serverProviders = useServerProviders();
+  const visibleServerProviders = useMemo(
+    () => filterVisibleServerProviders(serverProviders),
+    [serverProviders],
+  );
   const [isRefreshingProviders, setIsRefreshingProviders] = useState(false);
   const [isAddInstanceDialogOpen, setIsAddInstanceDialogOpen] = useState(false);
   const [updatingProviderDrivers, setUpdatingProviderDrivers] = useState<
@@ -934,28 +946,26 @@ export function ProviderSettingsPanel() {
   const refreshingRef = useRef(false);
 
   const providerUpdateCandidates = useMemo(
-    () => collectProviderUpdateCandidates(serverProviders),
-    [serverProviders],
+    () => collectProviderUpdateCandidates(visibleServerProviders),
+    [visibleServerProviders],
   );
   const providerUpdateCandidateByInstanceId = useMemo(
     () => new Map(providerUpdateCandidates.map((candidate) => [candidate.instanceId, candidate])),
     [providerUpdateCandidates],
   );
-  const visibleProviderSettings = PROVIDER_SETTINGS.filter(
-    (providerSettings) =>
-      providerSettings.provider !== "cursor" ||
-      serverProviders.some(
-        (provider) =>
-          provider.instanceId === defaultInstanceIdForDriver(ProviderDriverKind.make("cursor")),
-      ),
+  const visibleProviderSettings = PROVIDER_SETTINGS.filter((providerSettings) =>
+    isVisibleProviderDriver(providerSettings.provider),
   );
-  const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
+  const textGenerationModelSelection = resolveAppModelSelectionState(
+    settings,
+    visibleServerProviders,
+  );
   const textGenInstanceId = textGenerationModelSelection.instanceId;
   const lastCheckedAt =
-    serverProviders.length > 0
-      ? serverProviders.reduce(
+    visibleServerProviders.length > 0
+      ? visibleServerProviders.reduce(
           (latest, provider) => (provider.checkedAt > latest ? provider.checkedAt : latest),
-          serverProviders[0]!.checkedAt,
+          visibleServerProviders[0]!.checkedAt,
         )
       : null;
 
@@ -1031,6 +1041,7 @@ export function ProviderSettingsPanel() {
   >();
   for (const [rawId, instance] of Object.entries(settings.providerInstances ?? {})) {
     const driver = instance.driver;
+    if (!isVisibleProviderDriver(driver)) continue;
     const list = instancesByDriver.get(driver) ?? [];
     list.push([rawId as ProviderInstanceId, instance]);
     instancesByDriver.set(driver, list);
@@ -1081,7 +1092,7 @@ export function ProviderSettingsPanel() {
     }
   }
   for (const [driver, list] of instancesByDriver) {
-    if (visibleDriverKinds.has(driver)) continue;
+    if (!isVisibleProviderDriver(driver) || visibleDriverKinds.has(driver)) continue;
     for (const [id, instance] of list) {
       rows.push({
         instanceId: id,
@@ -1232,7 +1243,7 @@ export function ProviderSettingsPanel() {
       >
         {rows.map((row) => {
           const driverOption = getDriverOption(row.driver);
-          const liveProvider = serverProviders.find(
+          const liveProvider = visibleServerProviders.find(
             (candidate) => candidate.instanceId === row.instanceId,
           );
           const updateCandidate = liveProvider
@@ -1241,16 +1252,16 @@ export function ProviderSettingsPanel() {
           const isDriverUpdateRunning =
             updateCandidate !== undefined &&
             (updatingProviderDrivers.has(updateCandidate.driver) ||
-              serverProviders.some(
+              visibleServerProviders.some(
                 (provider) =>
                   provider.driver === updateCandidate.driver && isProviderUpdateActive(provider),
               ));
           const showInlineUpdateButton =
             updateCandidate !== undefined &&
-            hasOneClickUpdateProviderCandidate(updateCandidate, serverProviders);
+            hasOneClickUpdateProviderCandidate(updateCandidate, visibleServerProviders);
           const canRunInlineUpdate =
             updateCandidate !== undefined &&
-            canOneClickUpdateProviderCandidate(updateCandidate, serverProviders) &&
+            canOneClickUpdateProviderCandidate(updateCandidate, visibleServerProviders) &&
             !updatingProviderDrivers.has(updateCandidate.driver);
           const modelPreferences = settings.providerModelPreferences?.[row.instanceId] ?? {
             hiddenModels: [],

@@ -1144,9 +1144,48 @@ describe("GeneralSettingsPanel observability", () => {
     await expect.element(page.getByPlaceholder("Optional")).toBeInTheDocument();
   });
 
+  it("hides non-OpenCode provider rows from provider settings", async () => {
+    setServerConfigSnapshot({
+      ...createBaseServerConfig(),
+      providers: [createOutdatedProvider("opencode"), createOutdatedProvider("codex")],
+      settings: {
+        ...DEFAULT_SERVER_SETTINGS,
+        providerInstances: {
+          [ProviderInstanceId.make("opencode_work")]: {
+            driver: ProviderDriverKind.make("opencode"),
+            displayName: "OpenCode Work",
+          },
+          [ProviderInstanceId.make("codex_work")]: {
+            driver: ProviderDriverKind.make("codex"),
+            displayName: "Codex Work",
+          },
+        },
+      },
+    });
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <ProviderSettingsPanel />
+      </AppAtomRegistryProvider>,
+    );
+
+    await expect
+      .element(page.getByRole("heading", { name: "OpenCode", exact: true }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("heading", { name: "OpenCode Work", exact: true }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("heading", { name: "Codex", exact: true }))
+      .not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("heading", { name: "Codex Work", exact: true }))
+      .not.toBeInTheDocument();
+  });
+
   it("runs one-click provider updates from the provider card", async () => {
     const updateProvider = vi.fn<LocalApi["server"]["updateProvider"]>().mockResolvedValue({
-      providers: [createOutdatedProvider("codex")],
+      providers: [createOutdatedProvider("opencode")],
     });
     window.nativeApi = {
       persistence: {
@@ -1160,7 +1199,7 @@ describe("GeneralSettingsPanel observability", () => {
 
     setServerConfigSnapshot({
       ...createBaseServerConfig(),
-      providers: [createOutdatedProvider("codex")],
+      providers: [createOutdatedProvider("opencode")],
     });
 
     mounted = await render(
@@ -1174,18 +1213,18 @@ describe("GeneralSettingsPanel observability", () => {
     await page.getByRole("button", { name: "Update now" }).click();
 
     expect(updateProvider).toHaveBeenCalledWith({
-      provider: ProviderDriverKind.make("codex"),
-      instanceId: ProviderInstanceId.make("codex"),
+      provider: ProviderDriverKind.make("opencode"),
+      instanceId: ProviderInstanceId.make("opencode"),
     });
   });
 
   it("keeps long provider update commands inside the fixed-width popover", async () => {
     const longUpdateCommand =
-      "npm install -g @anthropic-ai/claude-code@latest --registry=https://registry.npmjs.org --cache=/tmp/t3code-provider-update-cache";
+      "npm install -g opencode-ai@latest --registry=https://registry.npmjs.org --cache=/tmp/t3code-provider-update-cache";
 
     setServerConfigSnapshot({
       ...createBaseServerConfig(),
-      providers: [createOutdatedProvider("codex", longUpdateCommand)],
+      providers: [createOutdatedProvider("opencode", longUpdateCommand)],
     });
 
     mounted = await render(

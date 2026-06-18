@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import type * as Schema from "effect/Schema";
 import { ClaudeAI, CursorIcon, type Icon, OpenAI, OpenCodeIcon } from "../Icons";
+import { isVisibleProviderDriver } from "../../providerVisibility";
 
 type ProviderSettingsSchema = {
   readonly fields: Readonly<Record<string, Schema.Top>>;
@@ -33,7 +34,7 @@ export interface ProviderClientDefinition {
   readonly badgeLabel?: string;
 }
 
-export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
+const ALL_PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
   {
     value: ProviderDriverKind.make("opencode"),
     label: "OpenCode",
@@ -60,6 +61,9 @@ export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = 
     settingsSchema: CursorSettings,
   },
 ];
+
+export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] =
+  ALL_PROVIDER_CLIENT_DEFINITIONS.filter((definition) => isVisibleProviderDriver(definition.value));
 
 export const PROVIDER_CLIENT_DEFINITION_BY_VALUE: Partial<
   Record<ProviderDriverKind, ProviderClientDefinition>

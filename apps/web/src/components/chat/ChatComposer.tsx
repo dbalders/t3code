@@ -103,6 +103,7 @@ import {
   sortProviderInstanceEntries,
   type ProviderInstanceEntry,
 } from "../../providerInstances";
+import { filterVisibleServerProviders, isVisibleProviderDriver } from "../../providerVisibility";
 import { type AppModelOption, getAppModelOptionsForInstance } from "../../modelSelection";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
 import type { SessionPhase, Thread } from "../../types";
@@ -595,9 +596,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Instance-aware projection of the wire provider list. One entry per
   // configured instance (default built-in + any custom `providerInstances.*`),
   // sorted default-first per driver kind for a stable picker order.
-  const providerInstanceEntries = useMemo<ReadonlyArray<ProviderInstanceEntry>>(
-    () => sortProviderInstanceEntries(deriveProviderInstanceEntries(providerStatuses)),
+  const visibleProviderStatuses = useMemo(
+    () => filterVisibleServerProviders(providerStatuses),
     [providerStatuses],
+  );
+  const providerInstanceEntries = useMemo<ReadonlyArray<ProviderInstanceEntry>>(
+    () => sortProviderInstanceEntries(deriveProviderInstanceEntries(visibleProviderStatuses)),
+    [visibleProviderStatuses],
   );
   const selectedProviderByThreadId = composerDraft.activeProvider ?? null;
   const threadProvider =
@@ -608,12 +613,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const explicitSelectedInstanceId = selectedProviderByThreadId ?? threadProvider;
 
   const unlockedSelectedProvider = resolveSelectableProvider(
-    providerStatuses,
+    visibleProviderStatuses,
     explicitSelectedInstanceId ?? DEFAULT_PROVIDER_DRIVER_KIND,
   );
-  const selectedProvider: ProviderDriverKind = lockedProvider ?? unlockedSelectedProvider;
+  const visibleLockedProvider =
+    lockedProvider && isVisibleProviderDriver(lockedProvider) ? lockedProvider : null;
+  const selectedProvider: ProviderDriverKind = visibleLockedProvider ?? unlockedSelectedProvider;
   const lockedContinuationGroupKey = useMemo((): string | null => {
-    if (!lockedProvider || !activeThread) return null;
+    if (!visibleLockedProvider || !activeThread) return null;
     const lockedInstanceId =
       activeThread.session?.providerInstanceId ?? activeThreadModelSelection?.instanceId;
     if (!lockedInstanceId) return null;
@@ -624,8 +631,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [
     activeThread,
     activeThreadModelSelection?.instanceId,
-    lockedProvider,
     providerInstanceEntries,
+    visibleLockedProvider,
   ]);
 
   // Resolve which configured instance the composer is currently targeting.
@@ -653,7 +660,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (match) {
         // When locked to a specific driver kind, ignore persisted instance
         // ids from a different kind or continuation group.
-        if (lockedProvider && match.driverKind !== lockedProvider) continue;
+        if (visibleLockedProvider && match.driverKind !== visibleLockedProvider) continue;
         if (
           lockedContinuationGroupKey &&
           match.continuationGroupKey !== lockedContinuationGroupKey
@@ -685,14 +692,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadModelSelection?.instanceId,
     composerDraft.activeProvider,
     lockedContinuationGroupKey,
-    lockedProvider,
     providerInstanceEntries,
     selectedProvider,
+    visibleLockedProvider,
   ]);
 
   const { modelOptions: composerModelOptions, selectedModel } = useEffectiveComposerModelState({
     threadRef: composerDraftTarget,
-    providers: providerStatuses,
+    providers: visibleProviderStatuses,
     selectedProvider,
     selectedInstanceId,
     threadModelSelection: activeThreadModelSelection,
@@ -740,11 +747,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerProviderControls = useMemo(
     () => ({
       showInteractionModeToggle: getProviderInteractionModeToggle(
-        providerStatuses,
+        visibleProviderStatuses,
         selectedProvider,
       ),
     }),
-    [providerStatuses, selectedProvider],
+    [visibleProviderStatuses, selectedProvider],
   );
   const selectedModelSelection = useMemo<ModelSelection>(
     () => createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
@@ -2326,7 +2333,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   compact={isComposerFooterCompact}
                   activeInstanceId={selectedInstanceId}
                   model={selectedModelForPickerWithCustomFallback}
-                  lockedProvider={lockedProvider}
+                  lockedProvider={visibleLockedProvider}
                   lockedContinuationGroupKey={lockedContinuationGroupKey}
                   instanceEntries={providerInstanceEntries}
                   keybindings={keybindings}

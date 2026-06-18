@@ -12,16 +12,20 @@ import {
 describe("ProviderSettingsForm helpers", () => {
   it("presents OpenCode as the first built-in provider option", () => {
     expect(DRIVER_OPTIONS[0]?.value).toBe(ProviderDriverKind.make("opencode"));
+    expect(DRIVER_OPTIONS).toHaveLength(1);
+    expect(DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("codex")]).toBeUndefined();
+    expect(DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("claudeAgent")]).toBeUndefined();
+    expect(DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("cursor")]).toBeUndefined();
   });
 
   it("derives visible provider config fields from the client definition schema", () => {
-    const codex = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("codex")];
+    const opencode = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("opencode")];
 
-    expect(codex).toBeDefined();
-    expect(deriveProviderSettingsFields(codex!).map((field) => field.key)).toEqual([
+    expect(opencode).toBeDefined();
+    expect(deriveProviderSettingsFields(opencode!).map((field) => field.key)).toEqual([
       "binaryPath",
-      "homePath",
-      "shadowHomePath",
+      "serverUrl",
+      "serverPassword",
     ]);
   });
 

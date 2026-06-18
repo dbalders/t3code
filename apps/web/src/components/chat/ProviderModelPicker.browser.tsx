@@ -213,6 +213,16 @@ const TEST_PROVIDERS: ReadonlyArray<ServerProvider> = [
 const CODEX_INSTANCE_ID = ProviderInstanceId.make("codex");
 const CLAUDE_INSTANCE_ID = ProviderInstanceId.make("claudeAgent");
 const OPENCODE_INSTANCE_ID = ProviderInstanceId.make("opencode");
+const SETTINGS_WITHOUT_OPENCODE_CUSTOM_MODELS: UnifiedSettings = {
+  ...DEFAULT_UNIFIED_SETTINGS,
+  providers: {
+    ...DEFAULT_UNIFIED_SETTINGS.providers,
+    opencode: {
+      ...DEFAULT_UNIFIED_SETTINGS.providers.opencode,
+      customModels: [],
+    },
+  },
+};
 
 function buildCodexProvider(models: ServerProvider["models"]): ServerProvider {
   return {
@@ -369,6 +379,86 @@ describe("ProviderModelPicker", () => {
       });
     } finally {
       await mounted.cleanup();
+    }
+  });
+
+  it("hides the sidebar when only one visible OpenCode instance has no favorites", async () => {
+    localStorage.removeItem("t3code:client-settings:v1");
+    const providers: ReadonlyArray<ServerProvider> = [
+      buildOpenCodeProvider([
+        {
+          slug: "github-copilot/claude-opus-4.8",
+          name: "Claude Opus 4.8",
+          subProvider: "GitHub Copilot",
+          isCustom: false,
+          capabilities: createModelCapabilities({ optionDescriptors: [] }),
+        },
+      ]),
+    ];
+    const mounted = await mountPicker({
+      activeInstanceId: OPENCODE_INSTANCE_ID,
+      model: "github-copilot/claude-opus-4.8",
+      lockedProvider: null,
+      providers,
+      settings: SETTINGS_WITHOUT_OPENCODE_CUSTOM_MODELS,
+    });
+
+    try {
+      await page.getByRole("button").click();
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('[data-model-picker-sidebar="true"]')).toBeNull();
+        expect(getSidebarProviderOrder()).toEqual([]);
+        expect(getModelPickerListText()).toContain("Claude Opus 4.8");
+      });
+    } finally {
+      await mounted.cleanup();
+      localStorage.removeItem("t3code:client-settings:v1");
+    }
+  });
+
+  it("shows favorites for a single OpenCode instance without non-OpenCode coming-soon entries", async () => {
+    localStorage.setItem(
+      "t3code:client-settings:v1",
+      JSON.stringify({
+        ...DEFAULT_CLIENT_SETTINGS,
+        favorites: [{ provider: "opencode", model: "github-copilot/claude-opus-4.8" }],
+      }),
+    );
+    const providers: ReadonlyArray<ServerProvider> = [
+      buildOpenCodeProvider([
+        {
+          slug: "github-copilot/claude-opus-4.8",
+          name: "Claude Opus 4.8",
+          subProvider: "GitHub Copilot",
+          isCustom: false,
+          capabilities: createModelCapabilities({ optionDescriptors: [] }),
+        },
+      ]),
+    ];
+    const mounted = await mountPicker({
+      activeInstanceId: OPENCODE_INSTANCE_ID,
+      model: "github-copilot/claude-opus-4.8",
+      lockedProvider: null,
+      providers,
+      settings: SETTINGS_WITHOUT_OPENCODE_CUSTOM_MODELS,
+    });
+
+    try {
+      await page.getByRole("button").click();
+
+      await vi.waitFor(() => {
+        expect(getSidebarProviderOrder()).toEqual(["favorites", "opencode"]);
+        expect(document.querySelector('[data-model-picker-provider="gemini-coming-soon"]')).toBe(
+          null,
+        );
+        expect(
+          document.querySelector('[data-model-picker-provider="github-copilot-coming-soon"]'),
+        ).toBe(null);
+      });
+    } finally {
+      await mounted.cleanup();
+      localStorage.removeItem("t3code:client-settings:v1");
     }
   });
 
@@ -651,6 +741,7 @@ describe("ProviderModelPicker", () => {
       model: "github-copilot/claude-opus-4.5",
       lockedProvider: ProviderDriverKind.make("opencode"),
       providers,
+      settings: SETTINGS_WITHOUT_OPENCODE_CUSTOM_MODELS,
     });
 
     try {
