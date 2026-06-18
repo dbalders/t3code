@@ -421,7 +421,7 @@ describe("ProviderModelPicker", () => {
     }
   });
 
-  it("shows favorites for a single OpenCode instance without non-OpenCode coming-soon entries", async () => {
+  it("hides the sidebar for a single OpenCode instance even when favorites exist", async () => {
     localStorage.setItem(
       "t3code:client-settings:v1",
       JSON.stringify({
@@ -435,6 +435,13 @@ describe("ProviderModelPicker", () => {
           slug: "github-copilot/claude-opus-4.8",
           name: "Claude Opus 4.8",
           subProvider: "GitHub Copilot",
+          isCustom: false,
+          capabilities: createModelCapabilities({ optionDescriptors: [] }),
+        },
+        {
+          slug: "ucsd/api-deepseek-v4-flash",
+          name: "DeepSeek v4 Flash Max",
+          subProvider: "UCSD",
           isCustom: false,
           capabilities: createModelCapabilities({ optionDescriptors: [] }),
         },
@@ -452,13 +459,15 @@ describe("ProviderModelPicker", () => {
       await page.getByRole("button").click();
 
       await vi.waitFor(() => {
-        expect(getSidebarProviderOrder()).toEqual(["favorites", "opencode"]);
+        expect(document.querySelector('[data-model-picker-sidebar="true"]')).toBeNull();
+        expect(getSidebarProviderOrder()).toEqual([]);
         expect(document.querySelector('[data-model-picker-provider="gemini-coming-soon"]')).toBe(
           null,
         );
         expect(
           document.querySelector('[data-model-picker-provider="github-copilot-coming-soon"]'),
         ).toBe(null);
+        expect(getVisibleModelNames()).toEqual(["Claude Opus 4.8", "DeepSeek v4 Flash Max"]);
       });
     } finally {
       await mounted.cleanup();
