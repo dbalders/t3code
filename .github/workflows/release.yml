@@ -156,7 +156,7 @@ jobs:
         run: vp run typecheck
 
       - name: Test
-        run: vp run test
+        run: vp run -r --concurrency-limit 1 test
 
       - id: previous_tag
         name: Resolve previous release tag

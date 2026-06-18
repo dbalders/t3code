@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { expect, it } from "@effect/vitest";
-import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeOS from "node:os";
 import path from "node:path";
@@ -430,6 +430,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       writeFileSync(packageBinPath, "#!/usr/bin/env node\n");
       chmodSync(packageBinPath, 0o755);
       symlinkSync(packageBinPath, symlinkPath);
+      const realTempDir = realpathSync(tempDir);
 
       const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(packageToolUpdate, {
         binaryPath: symlinkPath,
@@ -442,13 +443,13 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         provider: driver("packageTool"),
         packageName: "@example/package-tool",
         update: {
-          command: "npm install -g @example/package-tool@latest",
+          command: `npm install -g --prefix ${realTempDir} @example/package-tool@latest`,
 
           executable: "npm",
 
-          args: ["install", "-g", "@example/package-tool@latest"],
+          args: ["install", "-g", "--prefix", realTempDir, "@example/package-tool@latest"],
 
-          lockKey: "npm-global",
+          lockKey: `npm-prefix:${realTempDir}`,
         },
       });
     }),

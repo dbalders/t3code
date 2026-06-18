@@ -160,13 +160,34 @@ function relayProtectedErrorMessage(error: RelayProtectedErrorType): string {
   }
 }
 
+function summarizeErrorCause(cause: unknown): unknown {
+  if (cause === null || cause === undefined) {
+    return cause;
+  }
+  if (typeof cause !== "object") {
+    return cause;
+  }
+  if (cause instanceof Error) {
+    return { name: cause.name, message: cause.message };
+  }
+
+  const tag = "_tag" in cause && typeof cause._tag === "string" ? { _tag: cause._tag } : {};
+  const message =
+    "message" in cause && typeof cause.message === "string" ? { message: cause.message } : {};
+  if ("_tag" in tag || "message" in message) {
+    return { ...tag, ...message };
+  }
+  return { type: Object.prototype.toString.call(cause) };
+}
+
 function decodedRelayClientError(message: string) {
   return (cause: unknown) => {
     const relayError = findRelayProtectedError(cause);
     const detail = relayError ? relayProtectedErrorMessage(relayError) : null;
+    const safeCause = relayError ?? summarizeErrorCause(cause);
     return new CloudEnvironmentLinkError({
       message: detail ? `${message}: ${detail}` : message,
-      cause,
+      ...(safeCause === undefined ? {} : { cause: safeCause }),
     });
   };
 }
@@ -193,11 +214,12 @@ function findEnvironmentCloudApiError(cause: unknown): { readonly message: strin
 
 const environmentApiError = (message: string) => (cause: unknown) => {
   const environmentError = findEnvironmentCloudApiError(cause);
+  const safeCause = environmentError ?? summarizeErrorCause(cause);
   return new CloudEnvironmentLinkError({
     message: environmentError
       ? `${message.replace(/[.:]$/, "")}: ${environmentError.message}`
       : message,
-    cause,
+    ...(safeCause === undefined ? {} : { cause: safeCause }),
   });
 };
 

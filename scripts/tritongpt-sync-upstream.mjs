@@ -17,7 +17,7 @@ const config = {
   branchPrefix: env("T3_SYNC_BRANCH_PREFIX", "sync/upstream"),
   checks: env(
     "T3_SYNC_CHECKS",
-    "vp check && vp run -r --concurrency-limit 2 typecheck && vp run -r test && vp run release:smoke",
+    "vp check && vp run -r --concurrency-limit 2 typecheck && vp run -r --concurrency-limit 1 test && vp run release:smoke",
   ),
   liteLlmBaseUrl: trimTrailingSlash(env("LITELLM_BASE_URL", "")),
   liteLlmApiKey: env("LITELLM_API_KEY", ""),

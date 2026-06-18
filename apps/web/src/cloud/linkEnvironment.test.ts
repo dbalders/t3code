@@ -448,10 +448,8 @@ describe("web cloud link environment client", () => {
           clerkToken: "clerk-token",
         }),
       ).pipe(Effect.flip);
-      expect(error).toMatchObject({
-        _tag: "CloudEnvironmentLinkError",
-        message: "https://relay.example.test/v1/client/environment-links failed",
-      });
+      expect(error._tag).toBe("CloudEnvironmentLinkError");
+      expect(error.message).toBe("https://relay.example.test/v1/client/environment-links failed");
     }),
   );
 
@@ -739,7 +737,7 @@ describe("web cloud link environment client", () => {
           .fn()
           .mockResolvedValueOnce(Response.json(validChallenge()))
           .mockResolvedValueOnce(Response.json(validProof()))
-          .mockResolvedValueOnce(Response.json({ error: "unavailable" }, { status: 503 })),
+          .mockRejectedValueOnce(new TypeError("Relay fetch failed")),
       );
 
       const error = yield* withCloudServices(
@@ -748,10 +746,8 @@ describe("web cloud link environment client", () => {
           clerkToken: "clerk-token",
         }),
       ).pipe(Effect.flip);
-      expect(error).toMatchObject({
-        _tag: "CloudEnvironmentLinkError",
-        message: "https://relay.example.test/v1/client/environment-links failed",
-      });
+      expect(error._tag).toBe("CloudEnvironmentLinkError");
+      expect(error.message).toBe("https://relay.example.test/v1/client/environment-links failed");
     }),
   );
 

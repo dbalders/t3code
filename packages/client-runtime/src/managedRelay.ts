@@ -19,6 +19,8 @@ import {
   RelayJwtSubjectTokenType,
   type RelayLiveActivityRegistrationRequest,
   RelayMobileRegistrationScope,
+  RelayProtectedError,
+  type RelayProtectedError as RelayProtectedErrorType,
   type RelayOkResponse,
   type RelayPublicClientId,
   RelayRegisterDeviceEndpoint,
@@ -35,6 +37,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 import type { HttpMethod } from "effect/unstable/http/HttpMethod";
 import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
@@ -138,8 +141,44 @@ export class ManagedRelayClient extends Context.Service<
   ManagedRelayClientShape
 >()("@t3tools/client-runtime/managedRelay/ManagedRelayClient") {}
 
+const isRelayProtectedError = Schema.is(RelayProtectedError);
+
+function findRelayProtectedError(cause: unknown): RelayProtectedErrorType | null {
+  if (isRelayProtectedError(cause)) {
+    return cause;
+  }
+  if (typeof cause !== "object" || cause === null) {
+    return null;
+  }
+  return "cause" in cause ? findRelayProtectedError(cause.cause) : null;
+}
+
+function summarizeErrorCause(cause: unknown): unknown {
+  if (cause === null || cause === undefined) {
+    return cause;
+  }
+  if (typeof cause !== "object") {
+    return cause;
+  }
+  if (cause instanceof Error) {
+    return { name: cause.name, message: cause.message };
+  }
+
+  const tag = "_tag" in cause && typeof cause._tag === "string" ? { _tag: cause._tag } : {};
+  const message =
+    "message" in cause && typeof cause.message === "string" ? { message: cause.message } : {};
+  if ("_tag" in tag || "message" in message) {
+    return { ...tag, ...message };
+  }
+  return { type: Object.prototype.toString.call(cause) };
+}
+
 function relayClientError(message: string, cause?: unknown): ManagedRelayClientError {
-  return new ManagedRelayClientError({ message, ...(cause === undefined ? {} : { cause }) });
+  if (cause === undefined) {
+    return new ManagedRelayClientError({ message });
+  }
+  const safeCause = findRelayProtectedError(cause) ?? summarizeErrorCause(cause);
+  return new ManagedRelayClientError({ message, cause: safeCause });
 }
 
 function timeoutRelayRequest(message: string) {
