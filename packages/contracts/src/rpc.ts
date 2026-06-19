@@ -114,12 +114,16 @@ import {
 import {
   ServerConfigStreamEvent,
   ServerConfig,
+  ServerProviderSkillPreferenceError,
+  ServerProviderSkillRemovalError,
   ServerProviderUpdateError,
   ServerProviderUpdateInput,
   ServerLifecycleStreamEvent,
   ServerRemoveKeybindingInput,
+  ServerRemoveProviderSkillInput,
   ServerRemoveKeybindingResult,
   ServerProviderUpdatedPayload,
+  ServerSetProviderSkillPreferenceInput,
   ServerTraceDiagnosticsResult,
   ServerProcessDiagnosticsResult,
   ServerProcessResourceHistoryInput,
@@ -202,6 +206,8 @@ export const WS_METHODS = {
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
+  serverRemoveProviderSkill: "server.removeProviderSkill",
+  serverSetProviderSkillPreference: "server.setProviderSkillPreference",
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
@@ -269,6 +275,25 @@ export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvide
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([ServerProviderUpdateError, EnvironmentAuthorizationError]),
 });
+
+export const WsServerRemoveProviderSkillRpc = Rpc.make(WS_METHODS.serverRemoveProviderSkill, {
+  payload: ServerRemoveProviderSkillInput,
+  success: ServerProviderUpdatedPayload,
+  error: Schema.Union([ServerProviderSkillRemovalError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerSetProviderSkillPreferenceRpc = Rpc.make(
+  WS_METHODS.serverSetProviderSkillPreference,
+  {
+    payload: ServerSetProviderSkillPreferenceInput,
+    success: ServerSettings,
+    error: Schema.Union([
+      ServerProviderSkillPreferenceError,
+      ServerSettingsError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
 
 export const WsServerGetSettingsRpc = Rpc.make(WS_METHODS.serverGetSettings, {
   payload: Schema.Struct({}),
@@ -682,6 +707,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
+  WsServerRemoveProviderSkillRpc,
+  WsServerSetProviderSkillPreferenceRpc,
   WsServerUpsertKeybindingRpc,
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,

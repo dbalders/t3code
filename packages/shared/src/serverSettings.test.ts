@@ -194,4 +194,22 @@ describe("serverSettings helpers", () => {
       config: { homePath: "~/.codex" },
     });
   });
+
+  it("replaces providerSkillPreferences maps so enabled skills are cleared", () => {
+    const opencodeId = ProviderInstanceId.make("opencode");
+    const current = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerSkillPreferences: {
+        [opencodeId]: {
+          "/Users/test/.agents/skills/release/SKILL.md": { disabled: true },
+        },
+      },
+    };
+
+    expect(
+      applyServerSettingsPatch(current, {
+        providerSkillPreferences: {},
+      }).providerSkillPreferences,
+    ).toEqual({});
+  });
 });

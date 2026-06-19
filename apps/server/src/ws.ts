@@ -44,6 +44,10 @@ import {
   FilesystemBrowseError,
   AssetAccessError,
   EnvironmentAuthorizationError,
+  type ServerProvider,
+  ServerProviderSkillPreferenceError,
+  type ServerSettingsError,
+  type ServerSetProviderSkillPreferenceInput,
   ThreadId,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -70,6 +74,10 @@ import {
 } from "./observability/RpcInstrumentation.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
+import {
+  removeProviderSkillFolder,
+  resolveProviderSkillRemovalTarget,
+} from "./provider/removeProviderSkill.ts";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
 import { redactServerSettingsForClient, ServerSettingsService } from "./serverSettings.ts";
@@ -137,6 +145,26 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
 
 const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
+function providerSkillPreferenceError(message: string) {
+  return new ServerProviderSkillPreferenceError({ message });
+}
+
+function validateProviderSkillPreferenceTarget(input: {
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly request: ServerSetProviderSkillPreferenceInput;
+}): ServerProviderSkillPreferenceError | null {
+  const provider = input.providers.find(
+    (candidate) => candidate.instanceId === input.request.instanceId,
+  );
+  if (!provider) {
+    return providerSkillPreferenceError(`Provider '${input.request.instanceId}' was not found.`);
+  }
+  if (!provider.skills.some((skill) => skill.path === input.request.skillPath)) {
+    return providerSkillPreferenceError("Skill was not found in the current provider inventory.");
+  }
+  return null;
+}
+
 const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [ORCHESTRATION_WS_METHODS.dispatchCommand, AuthOrchestrationOperateScope],
   [ORCHESTRATION_WS_METHODS.getTurnDiff, AuthOrchestrationReadScope],
@@ -148,6 +176,8 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverGetConfig, AuthOrchestrationReadScope],
   [WS_METHODS.serverRefreshProviders, AuthOrchestrationOperateScope],
   [WS_METHODS.serverUpdateProvider, AuthOrchestrationOperateScope],
+  [WS_METHODS.serverRemoveProviderSkill, AuthOrchestrationOperateScope],
+  [WS_METHODS.serverSetProviderSkillPreference, AuthOrchestrationOperateScope],
   [WS_METHODS.serverUpsertKeybinding, AuthOrchestrationOperateScope],
   [WS_METHODS.serverRemoveKeybinding, AuthOrchestrationOperateScope],
   [WS_METHODS.serverGetSettings, AuthOrchestrationReadScope],
@@ -1030,6 +1060,56 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
           observeRpcEffect(
             WS_METHODS.serverUpdateProvider,
             providerMaintenanceRunner.updateProvider(input),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverRemoveProviderSkill]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverRemoveProviderSkill,
+            Effect.gen(function* () {
+              const providers = yield* providerRegistry.getProviders;
+              const target = yield* resolveProviderSkillRemovalTarget({
+                providers,
+                request: input,
+              });
+              yield* removeProviderSkillFolder(target);
+              yield* serverSettings
+                .updateProviderSkillPreference({
+                  instanceId: input.instanceId,
+                  skillPath: input.skillPath,
+                  disabled: false,
+                })
+                .pipe(
+                  Effect.catch((error: ServerSettingsError) =>
+                    Effect.logWarning("failed to clear removed provider skill preference", {
+                      detail: error.detail,
+                    }),
+                  ),
+                );
+              const refreshedProviders = yield* providerRegistry.refreshInstance(input.instanceId);
+              return { providers: refreshedProviders };
+            }),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverSetProviderSkillPreference]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverSetProviderSkillPreference,
+            Effect.gen(function* () {
+              const providers = yield* providerRegistry.getProviders;
+              const validationError = validateProviderSkillPreferenceTarget({
+                providers,
+                request: input,
+              });
+              if (validationError) {
+                return yield* validationError;
+              }
+              return yield* serverSettings
+                .updateProviderSkillPreference(input)
+                .pipe(Effect.map(redactServerSettingsForClient));
+            }),
             {
               "rpc.aggregate": "server",
             },

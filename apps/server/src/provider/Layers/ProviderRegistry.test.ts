@@ -43,7 +43,11 @@ import {
   selectProvidersByKind,
 } from "./ProviderRegistry.ts";
 import { ServerConfig } from "../../config.ts";
-import { ServerSettingsService, type ServerSettingsShape } from "../../serverSettings.ts";
+import {
+  applyProviderSkillPreferenceUpdate,
+  ServerSettingsService,
+  type ServerSettingsShape,
+} from "../../serverSettings.ts";
 import { readProviderStatusCache, resolveProviderStatusCachePath } from "../providerStatusCache.ts";
 import type { ProviderInstance } from "../ProviderDriver.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";
@@ -288,6 +292,15 @@ function makeMutableServerSettingsService(
         Effect.gen(function* () {
           const current = yield* Ref.get(settingsRef);
           const next = applyServerSettingsPatch(current, patch);
+          encodeServerSettings(next);
+          yield* Ref.set(settingsRef, next);
+          yield* PubSub.publish(changes, next);
+          return next;
+        }),
+      updateProviderSkillPreference: (input) =>
+        Effect.gen(function* () {
+          const current = yield* Ref.get(settingsRef);
+          const next = applyProviderSkillPreferenceUpdate(current, input);
           encodeServerSettings(next);
           yield* Ref.set(settingsRef, next);
           yield* PubSub.publish(changes, next);

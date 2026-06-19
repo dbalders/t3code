@@ -39,7 +39,9 @@ import type {
   ServerProcessResourceHistoryResult,
   ServerProviderUpdateInput,
   ServerProviderUpdatedPayload,
+  ServerRemoveProviderSkillInput,
   ServerRemoveKeybindingResult,
+  ServerSetProviderSkillPreferenceInput,
   ServerSignalProcessInput,
   ServerSignalProcessResult,
   ServerTraceDiagnosticsResult,
@@ -1068,6 +1070,12 @@ export interface LocalApi {
       readonly instanceId?: ProviderInstanceId;
     }) => Promise<ServerProviderUpdatedPayload>;
     updateProvider: (input: ServerProviderUpdateInput) => Promise<ServerProviderUpdatedPayload>;
+    removeProviderSkill: (
+      input: ServerRemoveProviderSkillInput,
+    ) => Promise<ServerProviderUpdatedPayload>;
+    setProviderSkillPreference: (
+      input: ServerSetProviderSkillPreferenceInput,
+    ) => Promise<ServerSettings>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
     removeKeybinding: (input: ServerRemoveKeybindingInput) => Promise<ServerRemoveKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
