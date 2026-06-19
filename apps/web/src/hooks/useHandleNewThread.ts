@@ -17,6 +17,7 @@ import {
 } from "../logicalProject";
 import { selectProjectsAcrossEnvironments, useStore } from "../store";
 import { createThreadSelectorByRef } from "../storeSelectors";
+import { isTritonAiChatsWorkspacePath } from "../tritonAiWorkspace";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { useSettings } from "./useSettings";
@@ -167,8 +168,11 @@ export function useHandleNewThread() {
   );
   const projects = useStore(useShallow((store) => selectProjectsAcrossEnvironments(store)));
   const orderedProjects = useMemo(() => {
+    const visibleProjects = projects.filter(
+      (project) => !isTritonAiChatsWorkspacePath(project.cwd),
+    );
     return orderItemsByPreferredIds({
-      items: projects,
+      items: visibleProjects,
       preferredIds: projectOrder,
       getId: getProjectOrderKey,
     });

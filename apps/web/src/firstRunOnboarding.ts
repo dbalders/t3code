@@ -22,31 +22,31 @@ import { useClientSettingsHydrated, useSettings, useUpdateSettings } from "./hoo
 import { usePrimaryEnvironmentId } from "./environments/primary";
 import { useStore, type EnvironmentState, type AppState } from "./store";
 import { buildDraftThreadRouteParams } from "./threadRoutes";
+import {
+  TRITONAI_CHATS_WORKSPACE,
+  TRITONAI_FIRST_RUN_PROMPT,
+  TRITONAI_FIRST_RUN_WORKSPACE,
+  isTritonAiCodeBrand,
+  isTritonAiChatsWorkspacePath,
+  isTritonAiWorkspacePath,
+  resolveTritonAiChatsWorkspacePath,
+  resolveTritonAiFirstRunWorkspacePath,
+} from "./tritonAiWorkspace";
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type Project } from "./types";
 
-export const TRITONAI_FIRST_RUN_PROMPT = "How does TritonAI Code work, and how can it help me?";
-export const TRITONAI_FIRST_RUN_WORKSPACE = "~/Documents/TritonAI";
-
-const TRITONAI_APP_BASE_NAME = "TritonAI Code";
 const ONBOARDING_PROJECT_TITLE = "TritonAI";
 const PROJECT_CREATE_WAIT_TIMEOUT_MS = 5_000;
 
-export function isTritonAiCodeBrand(appBaseName: string): boolean {
-  return appBaseName.trim() === TRITONAI_APP_BASE_NAME;
-}
-
-export function isTritonAiWorkspacePath(path: string): boolean {
-  const normalized = path.trim().replaceAll("\\", "/").replace(/\/+$/g, "").toLowerCase();
-  return (
-    normalized === "~/documents/tritonai" ||
-    normalized.endsWith("/documents/tritonai") ||
-    /^[a-z]:\/users\/[^/]+\/documents\/tritonai$/i.test(normalized)
-  );
-}
-
-export function resolveTritonAiFirstRunWorkspacePath(): string {
-  return TRITONAI_FIRST_RUN_WORKSPACE;
-}
+export {
+  TRITONAI_CHATS_WORKSPACE,
+  TRITONAI_FIRST_RUN_PROMPT,
+  TRITONAI_FIRST_RUN_WORKSPACE,
+  isTritonAiCodeBrand,
+  isTritonAiChatsWorkspacePath,
+  isTritonAiWorkspacePath,
+  resolveTritonAiChatsWorkspacePath,
+  resolveTritonAiFirstRunWorkspacePath,
+};
 
 export function hasPriorProjectOrConversationState(input: {
   projectCount: number;
