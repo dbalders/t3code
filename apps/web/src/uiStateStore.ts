@@ -19,13 +19,22 @@ export interface PersistedUiState {
   collapsedProjectCwds?: string[];
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
+  pinnedProjectOrderEntries?: PersistedPinnedProjectOrderEntry[];
+  pinnedProjectOrderCwds?: string[];
   defaultAdvertisedEndpointKey?: string | null;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
+}
+
+export interface PersistedPinnedProjectOrderEntry {
+  key: string;
+  cwd: string;
 }
 
 export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
   projectOrder: string[];
+  pinnedProjectOrder: string[];
+  pinnedProjectOrderCustomized: boolean;
 }
 
 export interface UiThreadState {
@@ -55,6 +64,8 @@ export interface SyncThreadInput {
 const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
+  pinnedProjectOrder: [],
+  pinnedProjectOrderCustomized: false,
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
@@ -64,6 +75,8 @@ const persistedCollapsedProjectCwds = new Set<string>();
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
 const persistedProjectOrderCwdSet = new Set<string>();
+const persistedPinnedProjectOrderEntries: PersistedPinnedProjectOrderEntry[] = [];
+const persistedPinnedProjectOrderEntrySet = new Set<string>();
 // Pre-fix persisted shape only listed expanded cwds, so anything not listed
 // was treated as collapsed. Track whether the loaded blob carried the new
 // `collapsedProjectCwds` field so we can preserve that legacy semantic for
@@ -142,6 +155,8 @@ export function hydratePersistedProjectState(parsed: PersistedUiState): void {
   persistedExpandedProjectCwds.clear();
   persistedProjectOrderCwds.length = 0;
   persistedProjectOrderCwdSet.clear();
+  persistedPinnedProjectOrderEntries.length = 0;
+  persistedPinnedProjectOrderEntrySet.clear();
   persistedProjectStateUsesLegacyShape = !Array.isArray(parsed.collapsedProjectCwds);
   for (const cwd of parsed.collapsedProjectCwds ?? []) {
     if (typeof cwd === "string" && cwd.length > 0) {
@@ -157,6 +172,33 @@ export function hydratePersistedProjectState(parsed: PersistedUiState): void {
     if (typeof cwd === "string" && cwd.length > 0 && !persistedProjectOrderCwdSet.has(cwd)) {
       persistedProjectOrderCwdSet.add(cwd);
       persistedProjectOrderCwds.push(cwd);
+    }
+  }
+  const pushPinnedProjectOrderEntry = (entry: PersistedPinnedProjectOrderEntry) => {
+    const entryKey = entry.key ? `key:${entry.key}` : `cwd:${entry.cwd}`;
+    if (persistedPinnedProjectOrderEntrySet.has(entryKey)) {
+      return;
+    }
+    persistedPinnedProjectOrderEntrySet.add(entryKey);
+    persistedPinnedProjectOrderEntries.push(entry);
+  };
+  if (Array.isArray(parsed.pinnedProjectOrderEntries)) {
+    for (const entry of parsed.pinnedProjectOrderEntries) {
+      if (
+        entry &&
+        typeof entry.key === "string" &&
+        entry.key.length > 0 &&
+        typeof entry.cwd === "string" &&
+        entry.cwd.length > 0
+      ) {
+        pushPinnedProjectOrderEntry({ key: entry.key, cwd: entry.cwd });
+      }
+    }
+  } else {
+    for (const cwd of parsed.pinnedProjectOrderCwds ?? []) {
+      if (typeof cwd === "string" && cwd.length > 0) {
+        pushPinnedProjectOrderEntry({ key: "", cwd });
+      }
     }
   }
 }
@@ -179,6 +221,10 @@ export function persistState(state: UiState): void {
       const cwd = currentProjectCwdById.get(projectId);
       return cwd ? [cwd] : [];
     });
+    const pinnedProjectOrderEntries = state.pinnedProjectOrder.flatMap((projectId) => {
+      const cwd = currentProjectCwdById.get(projectId);
+      return cwd ? [{ key: projectId, cwd }] : [];
+    });
     const threadChangedFilesExpandedById = Object.fromEntries(
       Object.entries(state.threadChangedFilesExpandedById).flatMap(([threadId, turns]) => {
         const nextTurns = Object.fromEntries(
@@ -193,6 +239,8 @@ export function persistState(state: UiState): void {
         collapsedProjectCwds,
         expandedProjectCwds,
         projectOrderCwds,
+        pinnedProjectOrderEntries,
+        pinnedProjectOrderCwds: pinnedProjectOrderEntries.map((entry) => entry.cwd),
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
         threadChangedFilesExpandedById,
       } satisfies PersistedUiState),
@@ -228,6 +276,104 @@ function projectOrdersEqual(left: readonly string[], right: readonly string[]): 
   return (
     left.length === right.length && left.every((projectId, index) => projectId === right[index])
   );
+}
+
+function remapExistingOrder(input: {
+  order: readonly string[];
+  currentProjectIds: ReadonlySet<string>;
+  nextProjectIdByCwd: ReadonlyMap<string, string>;
+  previousProjectCwdById: ReadonlyMap<string, string>;
+}): string[] {
+  const usedProjectIds = new Set<string>();
+  const orderedProjectIds: string[] = [];
+
+  for (const projectId of input.order) {
+    const matchedProjectId =
+      (input.currentProjectIds.has(projectId) ? projectId : undefined) ??
+      (() => {
+        const previousCwd = input.previousProjectCwdById.get(projectId);
+        return previousCwd ? input.nextProjectIdByCwd.get(previousCwd) : undefined;
+      })();
+    if (!matchedProjectId || usedProjectIds.has(matchedProjectId)) {
+      continue;
+    }
+    usedProjectIds.add(matchedProjectId);
+    orderedProjectIds.push(matchedProjectId);
+  }
+
+  return orderedProjectIds;
+}
+
+function orderProjectsFromPersistedCwds(input: {
+  projects: readonly { id: string; cwd: string; incomingIndex: number }[];
+  persistedOrderCwds: readonly string[];
+  includeUnpersistedProjects: boolean;
+}): string[] {
+  const persistedOrderByCwd = new Map(
+    input.persistedOrderCwds.map((cwd, index) => [cwd, index] as const),
+  );
+  if (!input.includeUnpersistedProjects && persistedOrderByCwd.size === 0) {
+    return [];
+  }
+
+  return input.projects
+    .map((project) => {
+      const orderIndex = persistedOrderByCwd.get(project.cwd);
+      return {
+        id: project.id,
+        incomingIndex: project.incomingIndex,
+        orderIndex:
+          orderIndex ?? (input.includeUnpersistedProjects ? input.persistedOrderCwds.length : null),
+      };
+    })
+    .filter((project) => project.orderIndex !== null)
+    .toSorted((left, right) => {
+      const byOrder = left.orderIndex! - right.orderIndex!;
+      if (byOrder !== 0) {
+        return byOrder;
+      }
+      return left.incomingIndex - right.incomingIndex;
+    })
+    .map((project) => project.id);
+}
+
+function orderPinnedProjectsFromPersistedEntries(input: {
+  projects: readonly { id: string; cwd: string }[];
+  persistedOrderEntries: readonly PersistedPinnedProjectOrderEntry[];
+}): string[] {
+  if (input.persistedOrderEntries.length === 0) {
+    return [];
+  }
+
+  const projectIdSet = new Set(input.projects.map((project) => project.id));
+  const projectIdsByCwd = new Map<string, string[]>();
+  for (const project of input.projects) {
+    const projectIds = projectIdsByCwd.get(project.cwd);
+    if (projectIds) {
+      projectIds.push(project.id);
+    } else {
+      projectIdsByCwd.set(project.cwd, [project.id]);
+    }
+  }
+
+  const usedProjectIds = new Set<string>();
+  const orderedProjectIds: string[] = [];
+  for (const entry of input.persistedOrderEntries) {
+    const fallbackProjectIds = projectIdsByCwd.get(entry.cwd) ?? [];
+    const matchedProjectId =
+      projectIdSet.has(entry.key) && entry.key.length > 0
+        ? entry.key
+        : fallbackProjectIds.length === 1
+          ? fallbackProjectIds[0]
+          : undefined;
+    if (!matchedProjectId || usedProjectIds.has(matchedProjectId)) {
+      continue;
+    }
+    usedProjectIds.add(matchedProjectId);
+    orderedProjectIds.push(matchedProjectId);
+  }
+
+  return orderedProjectIds;
 }
 
 function nestedBooleanRecordsEqual(
@@ -298,9 +444,6 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
 
   const nextExpandedById: Record<string, boolean> = {};
   const previousExpandedById = state.projectExpandedById;
-  const persistedOrderByCwd = new Map(
-    persistedProjectOrderCwds.map((cwd, index) => [cwd, index] as const),
-  );
   const mappedProjects = projects.map((project, index) => {
     if (!(project.logicalKey in nextExpandedById)) {
       const groupCwds = currentProjectCwdsByLogicalKey.get(project.logicalKey) ?? [project.cwd];
@@ -341,30 +484,20 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
     };
   });
 
+  const currentProjectIds = new Set(mappedProjects.map((project) => project.id));
+  const nextProjectIdByCwd = new Map(
+    mappedProjects.map((project) => [project.cwd, project.id] as const),
+  );
   const nextProjectOrder =
     state.projectOrder.length > 0
       ? (() => {
-          const currentProjectIds = new Set(mappedProjects.map((project) => project.id));
-          const nextProjectIdByCwd = new Map(
-            mappedProjects.map((project) => [project.cwd, project.id] as const),
-          );
-          const usedProjectIds = new Set<string>();
-          const orderedProjectIds: string[] = [];
-
-          for (const projectId of state.projectOrder) {
-            const matchedProjectId =
-              (currentProjectIds.has(projectId) ? projectId : undefined) ??
-              (() => {
-                const previousCwd = previousProjectCwdById.get(projectId);
-                return previousCwd ? nextProjectIdByCwd.get(previousCwd) : undefined;
-              })();
-            if (!matchedProjectId || usedProjectIds.has(matchedProjectId)) {
-              continue;
-            }
-            usedProjectIds.add(matchedProjectId);
-            orderedProjectIds.push(matchedProjectId);
-          }
-
+          const orderedProjectIds = remapExistingOrder({
+            order: state.projectOrder,
+            currentProjectIds,
+            nextProjectIdByCwd,
+            previousProjectCwdById,
+          });
+          const usedProjectIds = new Set(orderedProjectIds);
           for (const project of mappedProjects) {
             if (usedProjectIds.has(project.id)) {
               continue;
@@ -374,26 +507,31 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
 
           return orderedProjectIds;
         })()
-      : mappedProjects
-          .map((project) => ({
-            id: project.id,
-            incomingIndex: project.incomingIndex,
-            orderIndex:
-              persistedOrderByCwd.get(project.cwd) ??
-              persistedProjectOrderCwds.length + project.incomingIndex,
-          }))
-          .toSorted((left, right) => {
-            const byOrder = left.orderIndex - right.orderIndex;
-            if (byOrder !== 0) {
-              return byOrder;
-            }
-            return left.incomingIndex - right.incomingIndex;
-          })
-          .map((project) => project.id);
+      : orderProjectsFromPersistedCwds({
+          projects: mappedProjects,
+          persistedOrderCwds: persistedProjectOrderCwds,
+          includeUnpersistedProjects: true,
+        });
+  const remappedPinnedProjectOrder = remapExistingOrder({
+    order: state.pinnedProjectOrder,
+    currentProjectIds,
+    nextProjectIdByCwd,
+    previousProjectCwdById,
+  });
+  const restoredPinnedProjectOrder = state.pinnedProjectOrderCustomized
+    ? []
+    : orderPinnedProjectsFromPersistedEntries({
+        projects: mappedProjects,
+        persistedOrderEntries: persistedPinnedProjectOrderEntries,
+      });
+  const nextPinnedProjectOrder = [
+    ...new Set([...remappedPinnedProjectOrder, ...restoredPinnedProjectOrder]),
+  ];
 
   if (
     recordsEqual(state.projectExpandedById, nextExpandedById) &&
     projectOrdersEqual(state.projectOrder, nextProjectOrder) &&
+    projectOrdersEqual(state.pinnedProjectOrder, nextPinnedProjectOrder) &&
     !cwdMappingChanged
   ) {
     return state;
@@ -403,6 +541,7 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
     ...state,
     projectExpandedById: nextExpandedById,
     projectOrder: nextProjectOrder,
+    pinnedProjectOrder: nextPinnedProjectOrder,
   };
 }
 
@@ -590,26 +729,52 @@ export function setProjectExpanded(state: UiState, projectId: string, expanded: 
   };
 }
 
+export function setProjectOrder(state: UiState, projectIds: readonly string[]): UiState {
+  const projectOrder = [...new Set(projectIds)];
+  if (projectOrdersEqual(state.projectOrder, projectOrder)) {
+    return state;
+  }
+  return {
+    ...state,
+    projectOrder,
+  };
+}
+
 export function reorderProjects(
   state: UiState,
   draggedProjectIds: readonly string[],
   targetProjectIds: readonly string[],
 ): UiState {
-  if (draggedProjectIds.length === 0) {
+  const projectOrder = reorderProjectIds(state.projectOrder, draggedProjectIds, targetProjectIds);
+  if (!projectOrder) {
     return state;
+  }
+  return {
+    ...state,
+    projectOrder,
+  };
+}
+
+function reorderProjectIds(
+  currentOrder: readonly string[],
+  draggedProjectIds: readonly string[],
+  targetProjectIds: readonly string[],
+): string[] | null {
+  if (draggedProjectIds.length === 0) {
+    return null;
   }
   const draggedSet = new Set(draggedProjectIds);
   const targetSet = new Set(targetProjectIds);
   if (draggedProjectIds.every((id) => targetSet.has(id))) {
-    return state;
+    return null;
   }
 
-  const originalTargetIndex = state.projectOrder.findIndex((id) => targetSet.has(id));
+  const originalTargetIndex = currentOrder.findIndex((id) => targetSet.has(id));
   if (originalTargetIndex < 0) {
-    return state;
+    return null;
   }
 
-  const projectOrder = [...state.projectOrder];
+  const projectOrder = [...currentOrder];
 
   const removed: string[] = [];
   let draggedBeforeTarget = 0;
@@ -622,14 +787,86 @@ export function reorderProjects(
     }
   }
   if (removed.length === 0) {
-    return state;
+    return null;
   }
 
   const insertIndex = originalTargetIndex - Math.max(0, draggedBeforeTarget - 1);
   projectOrder.splice(insertIndex, 0, ...removed);
+  return projectOrder;
+}
+
+function appendUniqueProjectIds(
+  currentOrder: readonly string[],
+  projectIds: readonly string[],
+): string[] | null {
+  if (projectIds.length === 0) {
+    return null;
+  }
+  const projectOrder = [...currentOrder];
+  const seen = new Set(projectOrder);
+  for (const projectId of projectIds) {
+    if (!projectId || seen.has(projectId)) {
+      continue;
+    }
+    seen.add(projectId);
+    projectOrder.push(projectId);
+  }
+  return projectOrdersEqual(currentOrder, projectOrder) ? null : projectOrder;
+}
+
+export function pinProjects(state: UiState, projectIds: readonly string[]): UiState {
+  const pinnedProjectOrder = appendUniqueProjectIds(state.pinnedProjectOrder, projectIds);
+  if (!pinnedProjectOrder) {
+    return state;
+  }
   return {
     ...state,
-    projectOrder,
+    pinnedProjectOrder,
+    pinnedProjectOrderCustomized: true,
+  };
+}
+
+export function unpinProjects(state: UiState, projectIds: readonly string[]): UiState {
+  if (projectIds.length === 0) {
+    return state;
+  }
+  const unpinnedProjectIds = new Set(projectIds);
+  const pinnedProjectOrder = state.pinnedProjectOrder.filter((id) => !unpinnedProjectIds.has(id));
+  if (projectOrdersEqual(state.pinnedProjectOrder, pinnedProjectOrder)) {
+    return state;
+  }
+  return {
+    ...state,
+    pinnedProjectOrder,
+    pinnedProjectOrderCustomized: true,
+  };
+}
+
+export function setProjectsPinned(
+  state: UiState,
+  projectIds: readonly string[],
+  pinned: boolean,
+): UiState {
+  return pinned ? pinProjects(state, projectIds) : unpinProjects(state, projectIds);
+}
+
+export function reorderPinnedProjects(
+  state: UiState,
+  draggedProjectIds: readonly string[],
+  targetProjectIds: readonly string[],
+): UiState {
+  const pinnedProjectOrder = reorderProjectIds(
+    state.pinnedProjectOrder,
+    draggedProjectIds,
+    targetProjectIds,
+  );
+  if (!pinnedProjectOrder) {
+    return state;
+  }
+  return {
+    ...state,
+    pinnedProjectOrder,
+    pinnedProjectOrderCustomized: true,
   };
 }
 
@@ -643,7 +880,13 @@ interface UiStateStore extends UiState {
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
+  setProjectOrder: (projectIds: readonly string[]) => void;
+  setProjectsPinned: (projectIds: readonly string[], pinned: boolean) => void;
   reorderProjects: (
+    draggedProjectIds: readonly string[],
+    targetProjectIds: readonly string[],
+  ) => void;
+  reorderPinnedProjects: (
     draggedProjectIds: readonly string[],
     targetProjectIds: readonly string[],
   ) => void;
@@ -665,8 +908,13 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),
+  setProjectOrder: (projectIds) => set((state) => setProjectOrder(state, projectIds)),
+  setProjectsPinned: (projectIds, pinned) =>
+    set((state) => setProjectsPinned(state, projectIds, pinned)),
   reorderProjects: (draggedProjectIds, targetProjectIds) =>
     set((state) => reorderProjects(state, draggedProjectIds, targetProjectIds)),
+  reorderPinnedProjects: (draggedProjectIds, targetProjectIds) =>
+    set((state) => reorderPinnedProjects(state, draggedProjectIds, targetProjectIds)),
 }));
 
 useUiStateStore.subscribe((state) => debouncedPersistState.maybeExecute(state));
