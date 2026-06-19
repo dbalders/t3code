@@ -7,14 +7,19 @@ import {
   markThreadVisited,
   markThreadUnread,
   PERSISTED_STATE_KEY,
+  pinProjects,
   type PersistedUiState,
   persistState,
+  reorderPinnedProjects,
   reorderProjects,
   setDefaultAdvertisedEndpointKey,
   setProjectExpanded,
+  setProjectOrder,
+  setProjectsPinned,
   setThreadChangedFilesExpanded,
   syncProjects,
   syncThreads,
+  unpinProjects,
   type UiState,
 } from "./uiStateStore";
 
@@ -22,6 +27,8 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
     projectOrder: [],
+    pinnedProjectOrder: [],
+    pinnedProjectOrderCustomized: false,
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -104,6 +111,60 @@ describe("uiStateStore pure functions", () => {
     expect(next).toBe(initialState);
   });
 
+  it("setProjectOrder replaces project order and removes duplicates", () => {
+    const project1 = ProjectId.make("project-1");
+    const project2 = ProjectId.make("project-2");
+    const initialState = makeUiState({
+      projectOrder: [project2, project1],
+    });
+
+    const next = setProjectOrder(initialState, [project1, project2, project1]);
+
+    expect(next.projectOrder).toEqual([project1, project2]);
+  });
+
+  it("pinProjects appends unique project keys", () => {
+    const keyA = "env-local:proj-a";
+    const keyB = "env-local:proj-b";
+    const initialState = makeUiState({
+      pinnedProjectOrder: [keyA],
+    });
+
+    const next = pinProjects(initialState, [keyB, keyA]);
+
+    expect(next.pinnedProjectOrder).toEqual([keyA, keyB]);
+  });
+
+  it("unpinProjects removes all requested project keys", () => {
+    const keyA = "env-local:proj-a";
+    const keyB = "env-local:proj-b";
+    const initialState = makeUiState({
+      pinnedProjectOrder: [keyA, keyB],
+    });
+
+    const next = unpinProjects(initialState, [keyA]);
+
+    expect(next.pinnedProjectOrder).toEqual([keyB]);
+  });
+
+  it("setProjectsPinned pins and unpins every requested project key", () => {
+    const keyA = "env-local:proj-a";
+    const keyB = "env-remote:proj-a";
+    const keyC = "env-local:proj-c";
+    const initialState = makeUiState({
+      pinnedProjectOrder: [keyA],
+    });
+
+    const afterPin = setProjectsPinned(initialState, [keyA, keyB, keyC], true);
+    expect(afterPin.pinnedProjectOrder).toEqual([keyA, keyB, keyC]);
+
+    const afterUnpin = setProjectsPinned(afterPin, [keyA, keyB], false);
+    expect(afterUnpin.pinnedProjectOrder).toEqual([keyC]);
+
+    const afterMixedUnpin = setProjectsPinned(initialState, [keyA, keyB], false);
+    expect(afterMixedUnpin.pinnedProjectOrder).toEqual([]);
+  });
+
   it("setDefaultAdvertisedEndpointKey stores endpoint preference by stable key", () => {
     const initialState = makeUiState();
 
@@ -128,6 +189,20 @@ describe("uiStateStore pure functions", () => {
     const next = reorderProjects(initialState, [keyALocal, keyARemote], [keyC]);
 
     expect(next.projectOrder).toEqual([keyB, keyC, keyALocal, keyARemote]);
+  });
+
+  it("reorderPinnedProjects moves all member keys of a pinned group together", () => {
+    const keyALocal = "env-local:proj-a";
+    const keyARemote = "env-remote:proj-a";
+    const keyB = "env-local:proj-b";
+    const keyC = "env-local:proj-c";
+    const initialState = makeUiState({
+      pinnedProjectOrder: [keyALocal, keyARemote, keyB, keyC],
+    });
+
+    const next = reorderPinnedProjects(initialState, [keyALocal, keyARemote], [keyC]);
+
+    expect(next.pinnedProjectOrder).toEqual([keyB, keyC, keyALocal, keyARemote]);
   });
 
   it("reorderProjects handles member keys scattered across projectOrder", () => {
@@ -261,6 +336,29 @@ describe("uiStateStore pure functions", () => {
 
     expect(next.projectOrder).toEqual([keyProject2, keyProject1]);
     expect(next.projectExpandedById[keyProject2]).toBe(false);
+  });
+
+  it("syncProjects preserves pinned project order when physical keys change at the same cwd", () => {
+    const keyProject1 = "env-local:/tmp/project-1";
+    const keyProject2 = "env-local:/tmp/project-2";
+    const replacementKeyProject1 = "env-local:/tmp/project-1#replacement";
+    const replacementKeyProject2 = "env-local:/tmp/project-2#replacement";
+    const initialState = syncProjects(
+      makeUiState({
+        pinnedProjectOrder: [keyProject2, keyProject1],
+      }),
+      [
+        { key: keyProject1, logicalKey: keyProject1, cwd: "/tmp/project-1" },
+        { key: keyProject2, logicalKey: keyProject2, cwd: "/tmp/project-2" },
+      ],
+    );
+
+    const next = syncProjects(initialState, [
+      { key: replacementKeyProject1, logicalKey: replacementKeyProject1, cwd: "/tmp/project-1" },
+      { key: replacementKeyProject2, logicalKey: replacementKeyProject2, cwd: "/tmp/project-2" },
+    ]);
+
+    expect(next.pinnedProjectOrder).toEqual([replacementKeyProject2, replacementKeyProject1]);
   });
 
   it("syncProjects returns a new state when only project cwd changes", () => {
@@ -566,6 +664,104 @@ describe("uiStateStore persistence round-trip", () => {
     const rehydrated = syncProjects(makeUiState(), [projectA, projectB, projectC]);
 
     expect(rehydrated.projectOrder).toEqual([projectC.key, projectA.key, projectB.key]);
+  });
+
+  it("preserves pinned project order across restart", () => {
+    const projectA = { key: "kPinnedA", logicalKey: "kPinnedA", cwd: "/pinned-projA" };
+    const projectB = { key: "kPinnedB", logicalKey: "kPinnedB", cwd: "/pinned-projB" };
+    const projectC = { key: "kPinnedC", logicalKey: "kPinnedC", cwd: "/pinned-projC" };
+
+    let state = syncProjects(makeUiState(), [projectA, projectB, projectC]);
+    state = pinProjects(state, [projectC.key, projectA.key]);
+    expect(state.pinnedProjectOrder).toEqual([projectC.key, projectA.key]);
+    persistState(state);
+
+    const persisted = JSON.parse(
+      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+    ) as PersistedUiState;
+    expect(persisted.pinnedProjectOrderEntries).toEqual([
+      { key: projectC.key, cwd: projectC.cwd },
+      { key: projectA.key, cwd: projectA.cwd },
+    ]);
+    expect(persisted.pinnedProjectOrderCwds).toEqual([projectC.cwd, projectA.cwd]);
+
+    hydratePersistedProjectState(persisted);
+    const rehydrated = syncProjects(makeUiState(), [projectA, projectB, projectC]);
+
+    expect(rehydrated.pinnedProjectOrder).toEqual([projectC.key, projectA.key]);
+  });
+
+  it("restores pinned projects by physical key when sibling environments share a cwd", () => {
+    const localProject = {
+      key: "env-local:/shared-project",
+      logicalKey: "env-local:/shared-project",
+      cwd: "/shared-project",
+    };
+    const remoteProject = {
+      key: "env-remote:/shared-project",
+      logicalKey: "env-remote:/shared-project",
+      cwd: "/shared-project",
+    };
+
+    let state = syncProjects(makeUiState(), [localProject, remoteProject]);
+    state = pinProjects(state, [localProject.key]);
+    persistState(state);
+
+    const persisted = JSON.parse(
+      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+    ) as PersistedUiState;
+    hydratePersistedProjectState(persisted);
+    const rehydrated = syncProjects(makeUiState(), [localProject, remoteProject]);
+
+    expect(rehydrated.pinnedProjectOrder).toEqual([localProject.key]);
+  });
+
+  it("continues restoring persisted pins as projects hydrate incrementally", () => {
+    const localProject = {
+      key: "env-local:/incremental-project",
+      logicalKey: "env-local:/incremental-project",
+      cwd: "/incremental-project",
+    };
+    const remoteProject = {
+      key: "env-remote:/incremental-project",
+      logicalKey: "env-remote:/incremental-project",
+      cwd: "/incremental-project",
+    };
+
+    hydratePersistedProjectState({
+      collapsedProjectCwds: [],
+      expandedProjectCwds: [],
+      pinnedProjectOrderEntries: [
+        { key: localProject.key, cwd: localProject.cwd },
+        { key: remoteProject.key, cwd: remoteProject.cwd },
+      ],
+    });
+
+    let state = syncProjects(makeUiState(), [localProject]);
+    expect(state.pinnedProjectOrder).toEqual([localProject.key]);
+
+    state = syncProjects(state, [localProject, remoteProject]);
+
+    expect(state.pinnedProjectOrder).toEqual([localProject.key, remoteProject.key]);
+  });
+
+  it("does not restore old persisted pins after unpinning every project", () => {
+    const projectA = { key: "kPinnedA", logicalKey: "kPinnedA", cwd: "/pinned-projA" };
+    const projectB = { key: "kPinnedB", logicalKey: "kPinnedB", cwd: "/pinned-projB" };
+
+    hydratePersistedProjectState({
+      collapsedProjectCwds: [],
+      expandedProjectCwds: [],
+      pinnedProjectOrderCwds: [projectA.cwd],
+    });
+
+    let state = syncProjects(makeUiState(), [projectA, projectB]);
+    expect(state.pinnedProjectOrder).toEqual([projectA.key]);
+
+    state = unpinProjects(state, [projectA.key]);
+    const resynced = syncProjects(state, [projectA, projectB]);
+
+    expect(resynced.pinnedProjectOrder).toEqual([]);
   });
 
   it("persists the default advertised endpoint preference", () => {
