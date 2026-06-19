@@ -37,6 +37,46 @@ jobs:
                 color: "fbca04",
                 description: "Issue needs maintainer review and initial categorization.",
               },
+              {
+                name: "automation:auto",
+                color: "5319e7",
+                description: "Maintainer approved automatic issue implementation.",
+              },
+              {
+                name: "automation:triaged",
+                color: "bfd4f2",
+                description: "Issue autopilot triaged this issue.",
+              },
+              {
+                name: "automation:auto-pr",
+                color: "0e8a16",
+                description: "Issue autopilot considers this suitable for an automatic PR.",
+              },
+              {
+                name: "automation:needs-human",
+                color: "fbca04",
+                description: "Issue autopilot needs maintainer input before continuing.",
+              },
+              {
+                name: "automation:declined",
+                color: "b60205",
+                description: "Issue autopilot decided not to pursue this automatically.",
+              },
+              {
+                name: "area:installer",
+                color: "c5def5",
+                description: "Issue belongs in the installer area.",
+              },
+              {
+                name: "area:t3code",
+                color: "c2e0c6",
+                description: "Issue belongs in the T3 Code app area.",
+              },
+              {
+                name: "area:both",
+                color: "fef2c0",
+                description: "Issue likely needs coordinated installer and app changes.",
+              },
             ];
 
             for (const label of managedLabels) {
@@ -64,12 +104,18 @@ jobs:
                   throw error;
                 }
 
-                await github.rest.issues.createLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  name: label.name,
-                  color: label.color,
-                  description: label.description,
-                });
+                try {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label.name,
+                    color: label.color,
+                    description: label.description,
+                  });
+                } catch (createError) {
+                  if (createError.status !== 422) {
+                    throw createError;
+                  }
+                }
               }
             }
