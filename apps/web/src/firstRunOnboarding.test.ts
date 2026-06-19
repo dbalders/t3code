@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   TRITONAI_FIRST_RUN_WORKSPACE,
+  TRITONAI_CHATS_WORKSPACE,
   hasPriorProjectOrConversationState,
   isTritonAiCodeBrand,
+  isTritonAiChatsWorkspacePath,
   isTritonAiWorkspacePath,
+  resolveTritonAiChatsWorkspacePath,
   resolveTritonAiFirstRunWorkspacePath,
   shouldRunTritonAiFirstRunOnboarding,
 } from "./firstRunOnboarding";
@@ -15,16 +18,33 @@ describe("firstRunOnboarding", () => {
     expect(isTritonAiCodeBrand("T3 Code")).toBe(false);
   });
 
-  it("uses the installer-created TritonAI documents workspace", () => {
+  it("uses the installer-created TritonAI home workspace", () => {
     expect(resolveTritonAiFirstRunWorkspacePath()).toBe(TRITONAI_FIRST_RUN_WORKSPACE);
+    expect(resolveTritonAiChatsWorkspacePath()).toBe(TRITONAI_CHATS_WORKSPACE);
   });
 
-  it("recognizes tilde, macOS/Linux, and Windows TritonAI documents paths", () => {
-    expect(isTritonAiWorkspacePath("~/Documents/TritonAI")).toBe(true);
-    expect(isTritonAiWorkspacePath("/Users/alice/Documents/TritonAI")).toBe(true);
-    expect(isTritonAiWorkspacePath("/home/alice/Documents/TritonAI/")).toBe(true);
-    expect(isTritonAiWorkspacePath("C:\\Users\\alice\\Documents\\TritonAI")).toBe(true);
+  it("recognizes tilde, macOS/Linux, and Windows TritonAI home paths", () => {
+    expect(isTritonAiWorkspacePath("~/TritonAI")).toBe(true);
+    expect(isTritonAiWorkspacePath("/Users/alice/TritonAI")).toBe(true);
+    expect(isTritonAiWorkspacePath("/home/alice/TritonAI/")).toBe(true);
+    expect(isTritonAiWorkspacePath("C:\\Users\\alice\\TritonAI")).toBe(true);
+    expect(isTritonAiWorkspacePath("~/Documents/TritonAI")).toBe(false);
     expect(isTritonAiWorkspacePath("/Users/alice/Projects/TritonAI")).toBe(false);
+  });
+
+  it("recognizes the hidden managed chats workspace", () => {
+    expect(isTritonAiChatsWorkspacePath("~/.agents/ucsd/state/tritonai-code/chats")).toBe(true);
+    expect(
+      isTritonAiChatsWorkspacePath("/Users/alice/.agents/ucsd/state/tritonai-code/chats"),
+    ).toBe(true);
+    expect(
+      isTritonAiChatsWorkspacePath("/home/alice/.agents/ucsd/state/tritonai-code/chats/"),
+    ).toBe(true);
+    expect(
+      isTritonAiChatsWorkspacePath("C:\\Users\\alice\\.agents\\ucsd\\state\\tritonai-code\\chats"),
+    ).toBe(true);
+    expect(isTritonAiChatsWorkspacePath("~/TritonAI/Chats")).toBe(false);
+    expect(isTritonAiChatsWorkspacePath("~/Documents/TritonAI/Chats")).toBe(false);
   });
 
   it("treats existing non-onboarding projects, threads, and drafts as prior state", () => {

@@ -53,6 +53,7 @@ type MessageEntry = {
 const runtimeMock = {
   state: {
     startCalls: [] as string[],
+    connectReuseLocalServer: [] as Array<boolean | undefined>,
     sessionCreateUrls: [] as string[],
     authHeaders: [] as Array<string | null>,
     abortCalls: [] as string[],
@@ -66,6 +67,7 @@ const runtimeMock = {
   },
   reset() {
     this.state.startCalls.length = 0;
+    this.state.connectReuseLocalServer.length = 0;
     this.state.sessionCreateUrls.length = 0;
     this.state.authHeaders.length = 0;
     this.state.abortCalls.length = 0;
@@ -97,9 +99,11 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
         exitCode: Effect.never,
       };
     }),
-  connectToOpenCodeServer: ({ serverUrl }) =>
+  connectToOpenCodeServer: ({ serverUrl, reuseLocalServer }) =>
     Effect.gen(function* () {
-      const url = serverUrl ?? "http://127.0.0.1:4301";
+      const externalServerUrl = serverUrl?.trim();
+      const url = externalServerUrl ? externalServerUrl : "http://127.0.0.1:4301";
+      runtimeMock.state.connectReuseLocalServer.push(reuseLocalServer);
       // Unconditionally register a scope finalizer for test observability —
       // preserves the `closeCalls` / `closeError` probes that the existing
       // suites rely on. Production code never attaches a finalizer to an
@@ -115,7 +119,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
       return {
         url,
         exitCode: null,
-        external: Boolean(serverUrl),
+        external: Boolean(externalServerUrl),
       };
     }),
   runOpenCodeCommand: () => Effect.succeed({ stdout: "", stderr: "", code: 0 }),
@@ -198,6 +202,10 @@ const openCodeAdapterTestSettings = Schema.decodeSync(OpenCodeSettings)({
   serverUrl: "http://127.0.0.1:9999",
   serverPassword: "secret-password",
 });
+const openCodeAdapterLocalServerTestSettings = Schema.decodeSync(OpenCodeSettings)({
+  binaryPath: "fake-opencode",
+  serverUrl: "",
+});
 
 const OpenCodeAdapterTestLayer = Layer.effect(
   OpenCodeAdapter,
@@ -212,6 +220,26 @@ const OpenCodeAdapterTestLayer = Layer.effect(
           binaryPath: "fake-opencode",
           serverUrl: "http://127.0.0.1:9999",
           serverPassword: "secret-password",
+        },
+      },
+    }),
+  ),
+  Layer.provideMerge(providerSessionDirectoryTestLayer),
+  Layer.provideMerge(NodeServices.layer),
+);
+
+const OpenCodeAdapterLocalServerTestLayer = Layer.effect(
+  OpenCodeAdapter,
+  makeOpenCodeAdapter(openCodeAdapterLocalServerTestSettings),
+).pipe(
+  Layer.provideMerge(Layer.succeed(OpenCodeRuntime, OpenCodeRuntimeTestDouble)),
+  Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+  Layer.provideMerge(
+    ServerSettingsService.layerTest({
+      providers: {
+        opencode: {
+          binaryPath: "fake-opencode",
+          serverUrl: "",
         },
       },
     }),
@@ -246,6 +274,21 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
         `Basic ${btoa("opencode:secret-password")}`,
       ]);
     }),
+  );
+
+  it.effect("requests an exclusive local server lease for chat sessions", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId: asThreadId("thread-opencode-local-exclusive"),
+        runtimeMode: "full-access",
+      });
+
+      assert.deepEqual(runtimeMock.state.connectReuseLocalServer, [false]);
+      assert.deepEqual(runtimeMock.state.sessionCreateUrls, ["http://127.0.0.1:4301"]);
+    }).pipe(Effect.provide(OpenCodeAdapterLocalServerTestLayer)),
   );
 
   it.effect("stops a configured-server session without trying to own server lifecycle", () =>

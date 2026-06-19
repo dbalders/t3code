@@ -79,6 +79,7 @@ import {
 } from "../store";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
+import { isTritonAiChatsWorkspacePath } from "../tritonAiWorkspace";
 import {
   ADDON_ICON_CLASS,
   buildBrowseGroups,
@@ -402,7 +403,11 @@ function OpenCommandPaletteDialog() {
   const settings = useSettings();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
-  const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
+  const allProjects = useStore(useShallow(selectProjectsAcrossEnvironments));
+  const projects = useMemo(
+    () => allProjects.filter((project) => !isTritonAiChatsWorkspacePath(project.cwd)),
+    [allProjects],
+  );
   const threads = useStore(useShallow(selectSidebarThreadsAcrossEnvironments));
   const keybindings = useServerKeybindings();
   const [viewStack, setViewStack] = useState<CommandPaletteView[]>([]);

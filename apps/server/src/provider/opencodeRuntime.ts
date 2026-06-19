@@ -24,6 +24,7 @@ import * as P from "effect/Predicate";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -39,6 +40,7 @@ const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
 const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 5_000;
 const DEFAULT_HOSTNAME = "127.0.0.1";
+const OPENCODE_DATABASE_LOCKED_RETRY_DELAYS = ["250 millis", "750 millis", "1500 millis"] as const;
 export interface OpenCodeServerProcess {
   readonly url: string;
   readonly exitCode: Effect.Effect<number, never>;
@@ -48,6 +50,12 @@ export interface OpenCodeServerConnection {
   readonly url: string;
   readonly exitCode: Effect.Effect<number, never> | null;
   readonly external: boolean;
+}
+
+interface SharedOpenCodeServerEntry {
+  readonly server: OpenCodeServerProcess;
+  readonly scope: Scope.Closeable;
+  readonly refCount: number;
 }
 
 const OPENCODE_RUNTIME_ERROR_TAG = "OpenCodeRuntimeError";
@@ -79,6 +87,34 @@ export function openCodeRuntimeErrorDetail(cause: unknown): string {
     }
   }
   return String(cause);
+}
+
+export function isOpenCodeDatabaseLockedError(cause: unknown): boolean {
+  return openCodeRuntimeErrorDetail(cause).toLowerCase().includes("database is locked");
+}
+
+function nonEmptyEnvironmentValue(value: string | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function openCodeLocalServerLockKey(input: {
+  readonly binaryPath: string;
+  readonly environment?: NodeJS.ProcessEnv;
+}): string {
+  const environment = buildOpenCodeServerEnvironment(input.environment ?? process.env);
+  const dataScope =
+    nonEmptyEnvironmentValue(environment.XDG_DATA_HOME) ??
+    nonEmptyEnvironmentValue(environment.HOME) ??
+    nonEmptyEnvironmentValue(environment.USERPROFILE) ??
+    nonEmptyEnvironmentValue(environment.XDG_STATE_HOME) ??
+    nonEmptyEnvironmentValue(environment.OPENCODE_CONFIG) ??
+    input.binaryPath;
+
+  return `opencode-local-server:${dataScope}`;
 }
 
 export const runOpenCodeSdk = <A>(
@@ -138,6 +174,7 @@ export interface OpenCodeRuntimeShape {
     readonly binaryPath: string;
     readonly serverUrl?: string | null;
     readonly environment?: NodeJS.ProcessEnv;
+    readonly reuseLocalServer?: boolean;
     readonly port?: number;
     readonly hostname?: string;
     readonly timeoutMs?: number;
@@ -304,8 +341,109 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const netService = yield* NetService.NetService;
   const hostPlatform = yield* HostProcessPlatform;
+  const runtimeScope = yield* Effect.scope;
+  const localServerLocksRef = yield* Ref.make<ReadonlyMap<string, Semaphore.Semaphore>>(new Map());
+  const sharedLocalServersRef = yield* Ref.make<ReadonlyMap<string, SharedOpenCodeServerEntry>>(
+    new Map(),
+  );
   const resolveCommand = (command: string, args: ReadonlyArray<string>, env?: NodeJS.ProcessEnv) =>
     resolveSpawnCommand(command, args, env ? { env } : {});
+
+  const getLocalServerLock = Effect.fn("getOpenCodeLocalServerLock")(function* (lockKey: string) {
+    const existing = (yield* Ref.get(localServerLocksRef)).get(lockKey);
+    if (existing) {
+      return existing;
+    }
+
+    const lock = yield* Semaphore.make(1);
+    return yield* Ref.modify(localServerLocksRef, (locks) => {
+      const current = locks.get(lockKey);
+      if (current) {
+        return [current, locks] as const;
+      }
+      const next = new Map(locks);
+      next.set(lockKey, lock);
+      return [lock, next] as const;
+    });
+  });
+
+  const removeSharedLocalServer = (
+    lockKey: string,
+    server: OpenCodeServerProcess,
+  ): Effect.Effect<SharedOpenCodeServerEntry | null> =>
+    Ref.modify(sharedLocalServersRef, (servers) => {
+      const current = servers.get(lockKey);
+      if (!current || current.server !== server) {
+        return [null, servers] as const;
+      }
+      const next = new Map(servers);
+      next.delete(lockKey);
+      return [current, next] as const;
+    });
+
+  const releaseSharedLocalServer = (
+    lockKey: string,
+    server: OpenCodeServerProcess,
+  ): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const lock = yield* getLocalServerLock(lockKey);
+      yield* lock.withPermits(1)(
+        Effect.gen(function* () {
+          const scopeToClose = yield* Ref.modify(sharedLocalServersRef, (servers) => {
+            const current = servers.get(lockKey);
+            if (!current || current.server !== server) {
+              return [null, servers] as const;
+            }
+            if (current.refCount > 1) {
+              const next = new Map(servers);
+              next.set(lockKey, { ...current, refCount: current.refCount - 1 });
+              return [null, next] as const;
+            }
+            const next = new Map(servers);
+            next.delete(lockKey);
+            return [current.scope, next] as const;
+          });
+          if (scopeToClose) {
+            yield* Scope.close(scopeToClose, Exit.void).pipe(Effect.ignore);
+          }
+        }),
+      );
+    });
+
+  const tryAcquireExclusiveLocalServerLock = Effect.fn(
+    "tryAcquireOpenCodeExclusiveLocalServerLock",
+  )(function* (lockKey: string, exclusiveScope: Scope.Closeable) {
+    const lock = yield* getLocalServerLock(lockKey);
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        yield* restore(lock.take(1));
+        const existing = (yield* Ref.get(sharedLocalServersRef)).get(lockKey);
+        if (existing) {
+          yield* lock.release(1);
+          return false;
+        }
+        yield* Scope.addFinalizer(exclusiveScope, lock.release(1));
+        return true;
+      }),
+    );
+  });
+
+  const acquireExclusiveLocalServerLock = Effect.fn("acquireOpenCodeExclusiveLocalServerLock")(
+    function* (lockKey: string, exclusiveScope: Scope.Closeable) {
+      while (true) {
+        const acquired = yield* tryAcquireExclusiveLocalServerLock(lockKey, exclusiveScope);
+        if (acquired) {
+          return;
+        }
+        const existing = (yield* Ref.get(sharedLocalServersRef)).get(lockKey);
+        if (existing) {
+          yield* existing.server.exitCode.pipe(Effect.timeoutOption("100 millis"), Effect.ignore);
+        } else {
+          yield* Effect.sleep("100 millis");
+        }
+      }
+    },
+  );
 
   const runOpenCodeCommand: OpenCodeRuntimeShape["runOpenCodeCommand"] = (input) =>
     Effect.gen(function* () {
@@ -343,7 +481,9 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       ),
     );
 
-  const startOpenCodeServerProcess: OpenCodeRuntimeShape["startOpenCodeServerProcess"] = (input) =>
+  const startOpenCodeServerProcessOnce: OpenCodeRuntimeShape["startOpenCodeServerProcess"] = (
+    input,
+  ) =>
     Effect.gen(function* () {
       // Bind this server's lifetime to the caller's scope. When the caller's
       // scope closes, the spawned child is killed and all associated fibers
@@ -471,6 +611,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
 
       if (Exit.isFailure(readyExit)) {
         yield* Fiber.interrupt(exitFiber).pipe(Effect.ignore);
+        yield* terminateChild;
         const squashed = Cause.squash(readyExit.cause);
         return yield* ensureRuntimeError(
           "startOpenCodeServerProcess",
@@ -482,6 +623,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       const readyOption = readyExit.value;
       if (Option.isNone(readyOption)) {
         yield* Fiber.interrupt(exitFiber).pipe(Effect.ignore);
+        yield* terminateChild;
         return yield* new OpenCodeRuntimeError({
           operation: "startOpenCodeServerProcess",
           detail: `Timed out waiting for OpenCode server start after ${timeoutMs}ms.`,
@@ -497,6 +639,159 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       } satisfies OpenCodeServerProcess;
     });
 
+  const startOpenCodeServerProcessWithRetry = (
+    input: Parameters<OpenCodeRuntimeShape["startOpenCodeServerProcess"]>[0],
+    attempt = 0,
+  ): ReturnType<OpenCodeRuntimeShape["startOpenCodeServerProcess"]> =>
+    startOpenCodeServerProcessOnce(input).pipe(
+      Effect.catch((cause: OpenCodeRuntimeError) => {
+        const retryDelay = OPENCODE_DATABASE_LOCKED_RETRY_DELAYS[attempt];
+        if (!retryDelay || !isOpenCodeDatabaseLockedError(cause)) {
+          return Effect.fail(cause);
+        }
+        return Effect.logWarning(
+          `OpenCode server startup hit a locked database; retrying in ${retryDelay}.`,
+        ).pipe(
+          Effect.andThen(Effect.sleep(retryDelay)),
+          Effect.andThen(startOpenCodeServerProcessWithRetry(input, attempt + 1)),
+        );
+      }),
+    );
+
+  const startOpenCodeServerProcess: OpenCodeRuntimeShape["startOpenCodeServerProcess"] = (input) =>
+    startOpenCodeServerProcessWithRetry(input);
+
+  const retainSharedLocalServer = (
+    input: Omit<Parameters<OpenCodeRuntimeShape["connectToOpenCodeServer"]>[0], "serverUrl">,
+  ): Effect.Effect<OpenCodeServerConnection, OpenCodeRuntimeError, Scope.Scope> => {
+    const lockKey = openCodeLocalServerLockKey({
+      binaryPath: input.binaryPath,
+      ...(input.environment !== undefined ? { environment: input.environment } : {}),
+    });
+
+    return Effect.gen(function* () {
+      const callerScope = yield* Scope.Scope;
+      const lock = yield* getLocalServerLock(lockKey);
+
+      return yield* lock.withPermits(1)(
+        Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            const existing = (yield* Ref.get(sharedLocalServersRef)).get(lockKey);
+            if (existing) {
+              const exited = yield* existing.server.exitCode.pipe(Effect.timeoutOption("1 millis"));
+              if (Option.isNone(exited)) {
+                yield* Ref.update(sharedLocalServersRef, (servers) => {
+                  const current = servers.get(lockKey);
+                  if (!current || current.server !== existing.server) {
+                    return servers;
+                  }
+                  const next = new Map(servers);
+                  next.set(lockKey, { ...current, refCount: current.refCount + 1 });
+                  return next;
+                });
+                yield* Scope.addFinalizer(
+                  callerScope,
+                  releaseSharedLocalServer(lockKey, existing.server),
+                );
+                return {
+                  url: existing.server.url,
+                  exitCode: existing.server.exitCode,
+                  external: false,
+                } satisfies OpenCodeServerConnection;
+              }
+
+              yield* removeSharedLocalServer(lockKey, existing.server);
+              yield* Scope.close(existing.scope, Exit.void).pipe(Effect.ignore);
+            }
+
+            const serverScope = yield* Scope.make();
+            const startedExit = yield* Effect.exit(
+              restore(
+                startOpenCodeServerProcess({
+                  binaryPath: input.binaryPath,
+                  ...(input.environment !== undefined ? { environment: input.environment } : {}),
+                  ...(input.port !== undefined ? { port: input.port } : {}),
+                  ...(input.hostname !== undefined ? { hostname: input.hostname } : {}),
+                  ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+                }).pipe(Effect.provideService(Scope.Scope, serverScope)),
+              ),
+            );
+
+            if (Exit.isFailure(startedExit)) {
+              yield* Scope.close(serverScope, Exit.void).pipe(Effect.ignore);
+              return yield* Effect.failCause(startedExit.cause);
+            }
+
+            const server = startedExit.value;
+            yield* Ref.update(sharedLocalServersRef, (servers) => {
+              const next = new Map(servers);
+              next.set(lockKey, { server, scope: serverScope, refCount: 1 });
+              return next;
+            });
+
+            const exitMonitor = yield* server.exitCode.pipe(
+              Effect.flatMap(() => lock.withPermits(1)(removeSharedLocalServer(lockKey, server))),
+              Effect.flatMap((removed) =>
+                removed ? Scope.close(removed.scope, Exit.void).pipe(Effect.ignore) : Effect.void,
+              ),
+              Effect.ignore,
+              Effect.forkIn(runtimeScope),
+            );
+            yield* Scope.addFinalizer(
+              serverScope,
+              Fiber.interrupt(exitMonitor).pipe(Effect.ignore),
+            );
+            yield* Scope.addFinalizer(callerScope, releaseSharedLocalServer(lockKey, server));
+
+            return {
+              url: server.url,
+              exitCode: server.exitCode,
+              external: false,
+            } satisfies OpenCodeServerConnection;
+          }),
+        ),
+      );
+    });
+  };
+
+  const retainExclusiveLocalServer = (
+    input: Omit<
+      Parameters<OpenCodeRuntimeShape["connectToOpenCodeServer"]>[0],
+      "serverUrl" | "reuseLocalServer"
+    >,
+  ): Effect.Effect<OpenCodeServerConnection, OpenCodeRuntimeError, Scope.Scope> => {
+    const lockKey = openCodeLocalServerLockKey({
+      binaryPath: input.binaryPath,
+      ...(input.environment !== undefined ? { environment: input.environment } : {}),
+    });
+
+    return Effect.gen(function* () {
+      const exclusiveScope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
+        Scope.close(scope, Exit.void).pipe(Effect.ignore),
+      );
+      yield* acquireExclusiveLocalServerLock(lockKey, exclusiveScope);
+
+      const serverScope = yield* Scope.make();
+      yield* Scope.addFinalizer(
+        exclusiveScope,
+        Scope.close(serverScope, Exit.void).pipe(Effect.ignore),
+      );
+      const server = yield* startOpenCodeServerProcess({
+        binaryPath: input.binaryPath,
+        ...(input.environment !== undefined ? { environment: input.environment } : {}),
+        ...(input.port !== undefined ? { port: input.port } : {}),
+        ...(input.hostname !== undefined ? { hostname: input.hostname } : {}),
+        ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+      }).pipe(Effect.provideService(Scope.Scope, serverScope));
+
+      return {
+        url: server.url,
+        exitCode: server.exitCode,
+        external: false,
+      } satisfies OpenCodeServerConnection;
+    });
+  };
+
   const connectToOpenCodeServer: OpenCodeRuntimeShape["connectToOpenCodeServer"] = (input) => {
     const serverUrl = input.serverUrl?.trim();
     if (serverUrl) {
@@ -508,19 +803,23 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       });
     }
 
-    return startOpenCodeServerProcess({
+    if (input.reuseLocalServer === false) {
+      return retainExclusiveLocalServer({
+        binaryPath: input.binaryPath,
+        ...(input.environment !== undefined ? { environment: input.environment } : {}),
+        ...(input.port !== undefined ? { port: input.port } : {}),
+        ...(input.hostname !== undefined ? { hostname: input.hostname } : {}),
+        ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+      });
+    }
+
+    return retainSharedLocalServer({
       binaryPath: input.binaryPath,
       ...(input.environment !== undefined ? { environment: input.environment } : {}),
       ...(input.port !== undefined ? { port: input.port } : {}),
       ...(input.hostname !== undefined ? { hostname: input.hostname } : {}),
       ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
-    }).pipe(
-      Effect.map((server) => ({
-        url: server.url,
-        exitCode: server.exitCode,
-        external: false,
-      })),
-    );
+    });
   };
 
   const createOpenCodeSdkClient: OpenCodeRuntimeShape["createOpenCodeSdkClient"] = (input) =>

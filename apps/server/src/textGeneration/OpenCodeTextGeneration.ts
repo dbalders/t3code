@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -32,13 +31,10 @@ import {
 import {
   OpenCodeRuntime,
   type OpenCodeServerConnection,
-  type OpenCodeServerProcess,
   openCodeRuntimeErrorDetail,
   parseOpenCodeModelSlug,
   toOpenCodeFileParts,
 } from "../provider/opencodeRuntime.ts";
-
-const OPENCODE_TEXT_GENERATION_IDLE_TTL = "30 seconds";
 
 function getOpenCodePromptErrorMessage(error: unknown): string | null {
   if (!error || typeof error !== "object") {
@@ -84,17 +80,15 @@ function getOpenCodeTextResponse(parts: ReadonlyArray<unknown> | undefined): str
 }
 
 interface SharedOpenCodeTextGenerationServerState {
-  server: OpenCodeServerProcess | null;
+  server: OpenCodeServerConnection | null;
   /**
-   * The scope that owns the shared server's lifetime. Closing this scope
-   * terminates the OpenCode child process and interrupts any fibers the
-   * runtime forked during startup. We don't hold a `close()` function on
-   * the server handle anymore — the scope is the only lifecycle handle.
+   * The scope that owns this text-generation lease. Closing this scope releases
+   * the runtime-managed OpenCode server; the runtime terminates the child only
+   * when no probes, chats, or text-generation calls still hold a lease.
    */
   serverScope: Scope.Closeable | null;
   binaryPath: string | null;
   activeRequests: number;
-  idleCloseFiber: Fiber.Fiber<void, never> | null;
 }
 
 export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration")(function* (
@@ -104,16 +98,12 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
   const serverConfig = yield* ServerConfig;
   const openCodeRuntime = yield* OpenCodeRuntime;
   const resolvedEnvironment = environment ?? process.env;
-  const idleFiberScope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
-    Scope.close(scope, Exit.void),
-  );
   const sharedServerMutex = yield* Semaphore.make(1);
   const sharedServerState: SharedOpenCodeTextGenerationServerState = {
     server: null,
     serverScope: null,
     binaryPath: null,
     activeRequests: 0,
-    idleCloseFiber: null,
   };
 
   const closeSharedServer = Effect.fn("closeSharedServer")(function* () {
@@ -126,35 +116,6 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
     }
   });
 
-  const cancelIdleCloseFiber = Effect.fn("cancelIdleCloseFiber")(function* () {
-    const idleCloseFiber = sharedServerState.idleCloseFiber;
-    sharedServerState.idleCloseFiber = null;
-    if (idleCloseFiber !== null) {
-      yield* Fiber.interrupt(idleCloseFiber).pipe(Effect.ignore);
-    }
-  });
-
-  const scheduleIdleClose = Effect.fn("scheduleIdleClose")(function* (
-    server: OpenCodeServerProcess,
-  ) {
-    yield* cancelIdleCloseFiber();
-    const fiber = yield* Effect.sleep(OPENCODE_TEXT_GENERATION_IDLE_TTL).pipe(
-      Effect.andThen(
-        sharedServerMutex.withPermit(
-          Effect.gen(function* () {
-            if (sharedServerState.server !== server || sharedServerState.activeRequests > 0) {
-              return;
-            }
-            sharedServerState.idleCloseFiber = null;
-            yield* closeSharedServer();
-          }),
-        ),
-      ),
-      Effect.forkIn(idleFiberScope),
-    );
-    sharedServerState.idleCloseFiber = fiber;
-  });
-
   const acquireSharedServer = (input: {
     readonly binaryPath: string;
     readonly operation:
@@ -165,8 +126,6 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
   }) =>
     sharedServerMutex.withPermit(
       Effect.gen(function* () {
-        yield* cancelIdleCloseFiber();
-
         const existingServer = sharedServerState.server;
         if (existingServer !== null) {
           if (
@@ -189,16 +148,15 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
           }
         }
 
-        // Create a fresh scope that owns this shared server. The runtime
-        // will attach its child-process and fiber finalizers to this scope;
-        // closing it kills the server and interrupts those fibers.
+        // Create a fresh scope that owns this text-generation lease. The
+        // runtime keeps the actual local OpenCode server alive while any
+        // probe, chat session, or text-generation call still holds a lease.
         //
         // The `Scope.make` / spawn / record-or-close transitions run inside
         // `uninterruptibleMask` so an interrupt arriving between any two
-        // steps can't orphan the scope (and the child process attached to
-        // it) before we either close it on failure or hand ownership to
-        // `sharedServerState`. `restore` keeps the actual spawn
-        // interruptible; an interrupt during the spawn is captured by
+        // steps can't orphan the scope before we either close it on failure
+        // or hand ownership to `sharedServerState`. `restore` keeps the
+        // runtime connection attempt interruptible; an interrupt is captured by
         // `Effect.exit` and drives us through the failure branch that
         // closes the fresh scope.
         return yield* Effect.uninterruptibleMask((restore) =>
@@ -207,7 +165,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
             const startedExit = yield* Effect.exit(
               restore(
                 openCodeRuntime
-                  .startOpenCodeServerProcess({
+                  .connectToOpenCodeServer({
                     binaryPath: input.binaryPath,
                     environment: resolvedEnvironment,
                   })
@@ -240,7 +198,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       }),
     );
 
-  const releaseSharedServer = (server: OpenCodeServerProcess) =>
+  const releaseSharedServer = (server: OpenCodeServerConnection) =>
     sharedServerMutex.withPermit(
       Effect.gen(function* () {
         if (sharedServerState.server !== server) {
@@ -248,18 +206,17 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
         }
         sharedServerState.activeRequests = Math.max(0, sharedServerState.activeRequests - 1);
         if (sharedServerState.activeRequests === 0) {
-          yield* scheduleIdleClose(server);
+          yield* closeSharedServer();
         }
       }),
     );
 
-  // Module-level finalizer: on layer shutdown, cancel the idle close fiber
-  // and close the shared server scope. Consumers therefore cannot leak
-  // the shared OpenCode server by forgetting to call anything.
+  // Module-level finalizer: on layer shutdown, close any active shared
+  // text-generation lease. Consumers therefore cannot leak the shared
+  // OpenCode server by forgetting to call anything.
   yield* Effect.addFinalizer(() =>
     sharedServerMutex.withPermit(
       Effect.gen(function* () {
-        yield* cancelIdleCloseFiber();
         sharedServerState.activeRequests = 0;
         yield* closeSharedServer();
       }),
