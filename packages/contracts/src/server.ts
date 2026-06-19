@@ -91,6 +91,36 @@ export const ServerProviderSkill = Schema.Struct({
 });
 export type ServerProviderSkill = typeof ServerProviderSkill.Type;
 
+export const ServerRemoveProviderSkillInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  skillPath: TrimmedNonEmptyString,
+});
+export type ServerRemoveProviderSkillInput = typeof ServerRemoveProviderSkillInput.Type;
+
+export const ServerSetProviderSkillPreferenceInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  skillPath: TrimmedNonEmptyString,
+  disabled: Schema.Boolean,
+});
+export type ServerSetProviderSkillPreferenceInput =
+  typeof ServerSetProviderSkillPreferenceInput.Type;
+
+export class ServerProviderSkillRemovalError extends Schema.TaggedErrorClass<ServerProviderSkillRemovalError>()(
+  "ServerProviderSkillRemovalError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
+export class ServerProviderSkillPreferenceError extends Schema.TaggedErrorClass<ServerProviderSkillPreferenceError>()(
+  "ServerProviderSkillPreferenceError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
 /**
  * Availability of a configured provider instance from the runtime's POV.
  *

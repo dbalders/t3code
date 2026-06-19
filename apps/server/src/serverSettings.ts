@@ -23,6 +23,7 @@ import {
   ProviderInstanceId,
   ServerSettings,
   ServerSettingsError,
+  type ServerSetProviderSkillPreferenceInput,
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
@@ -108,6 +109,32 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
   return { ...settings, providerInstances };
 }
 
+export function applyProviderSkillPreferenceUpdate(
+  settings: ServerSettings,
+  input: ServerSetProviderSkillPreferenceInput,
+): ServerSettings {
+  const currentProviderPreferences = settings.providerSkillPreferences[input.instanceId] ?? {};
+  const nextProviderPreferences = { ...currentProviderPreferences };
+
+  if (input.disabled) {
+    nextProviderPreferences[input.skillPath] = { disabled: true };
+  } else {
+    delete nextProviderPreferences[input.skillPath];
+  }
+
+  const providerSkillPreferences = { ...settings.providerSkillPreferences };
+  if (Object.keys(nextProviderPreferences).length === 0) {
+    delete providerSkillPreferences[input.instanceId];
+  } else {
+    providerSkillPreferences[input.instanceId] = nextProviderPreferences;
+  }
+
+  return {
+    ...settings,
+    providerSkillPreferences,
+  };
+}
+
 export interface ServerSettingsShape {
   /** Start the settings runtime and attach file watching. */
   readonly start: Effect.Effect<void, ServerSettingsError>;
@@ -121,6 +148,11 @@ export interface ServerSettingsShape {
   /** Patch settings and persist. Returns the new full settings object. */
   readonly updateSettings: (
     patch: ServerSettingsPatch,
+  ) => Effect.Effect<ServerSettings, ServerSettingsError>;
+
+  /** Update one provider skill preference and persist atomically. */
+  readonly updateProviderSkillPreference: (
+    input: ServerSetProviderSkillPreferenceInput,
   ) => Effect.Effect<ServerSettings, ServerSettingsError>;
 
   /** Stream of settings change events. */
@@ -152,6 +184,14 @@ export class ServerSettingsService extends Context.Service<
           updateSettings: (patch) =>
             Ref.get(currentSettingsRef).pipe(
               Effect.map((currentSettings) => applyServerSettingsPatch(currentSettings, patch)),
+              Effect.flatMap(normalizeServerSettings),
+              Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
+            ),
+          updateProviderSkillPreference: (input) =>
+            Ref.get(currentSettingsRef).pipe(
+              Effect.map((currentSettings) =>
+                applyProviderSkillPreferenceUpdate(currentSettings, input),
+              ),
               Effect.flatMap(normalizeServerSettings),
               Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
             ),
@@ -554,6 +594,22 @@ const makeServerSettings = Effect.gen(function* () {
           const nextPersisted = yield* persistProviderEnvironmentSecrets(
             current,
             applyServerSettingsPatch(current, patch),
+          );
+          const next = yield* normalizeServerSettings(nextPersisted);
+          yield* writeSettingsAtomically(next);
+          yield* Cache.set(settingsCache, cacheKey, next);
+          yield* emitChange(next);
+          const materialized = yield* materializeProviderEnvironmentSecrets(next);
+          return resolveTextGenerationProvider(materialized);
+        }),
+      ),
+    updateProviderSkillPreference: (input) =>
+      writeSemaphore.withPermits(1)(
+        Effect.gen(function* () {
+          const current = yield* getSettingsFromCache;
+          const nextPersisted = yield* persistProviderEnvironmentSecrets(
+            current,
+            applyProviderSkillPreferenceUpdate(current, input),
           );
           const next = yield* normalizeServerSettings(nextPersisted);
           yield* writeSettingsAtomically(next);

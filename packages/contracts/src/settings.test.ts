@@ -8,6 +8,55 @@ const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 
+describe("ServerSettings.providerSkillPreferences", () => {
+  it("defaults to an empty record", () => {
+    expect(DEFAULT_SERVER_SETTINGS.providerSkillPreferences).toEqual({});
+    expect(decodeServerSettings({}).providerSkillPreferences).toEqual({});
+  });
+
+  it("decodes per-provider skill visibility preferences", () => {
+    const decoded = decodeServerSettings({
+      providerSkillPreferences: {
+        opencode: {
+          "/Users/test/.agents/skills/release/SKILL.md": {
+            disabled: true,
+          },
+        },
+      },
+    });
+
+    expect(
+      decoded.providerSkillPreferences[ProviderInstanceId.make("opencode")]?.[
+        "/Users/test/.agents/skills/release/SKILL.md"
+      ],
+    ).toEqual({ disabled: true });
+  });
+});
+
+describe("ServerSettingsPatch.providerSkillPreferences", () => {
+  it("does not default omitted preferences on patches", () => {
+    expect(decodeServerSettingsPatch({}).providerSkillPreferences).toBeUndefined();
+  });
+
+  it("accepts provider skill preference replacements", () => {
+    const patch = decodeServerSettingsPatch({
+      providerSkillPreferences: {
+        opencode: {
+          "/Users/test/.agents/skills/release/SKILL.md": {
+            disabled: true,
+          },
+        },
+      },
+    });
+
+    expect(
+      patch.providerSkillPreferences?.[ProviderInstanceId.make("opencode")]?.[
+        "/Users/test/.agents/skills/release/SKILL.md"
+      ],
+    ).toEqual({ disabled: true });
+  });
+});
+
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   it("defaults to an empty record so legacy configs without the key still decode", () => {
     expect(DEFAULT_SERVER_SETTINGS.providerInstances).toEqual({});

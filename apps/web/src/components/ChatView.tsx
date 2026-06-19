@@ -207,6 +207,7 @@ import {
   useServerConfig,
   useServerKeybindings,
 } from "~/rpc/serverState";
+import { applyProvidersSkillPreferences } from "~/providerSkillPreferences";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
 import { RightPanelSheet } from "./RightPanelSheet";
@@ -1821,7 +1822,11 @@ function ChatViewContent(props: ChatViewProps) {
     versionMismatchDismissKey,
     versionMismatchServerLabel,
   ]);
-  const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
+  const rawProviderStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
+  const providerStatuses = useMemo(
+    () => applyProvidersSkillPreferences(rawProviderStatuses, settings.providerSkillPreferences),
+    [rawProviderStatuses, settings.providerSkillPreferences],
+  );
   const unlockedSelectedProvider = resolveSelectableProvider(
     providerStatuses,
     selectedProviderByThreadId ?? threadProvider ?? DEFAULT_PROVIDER_DRIVER_KIND,

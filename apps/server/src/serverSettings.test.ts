@@ -144,6 +144,47 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("updates provider skill preferences one skill at a time", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsService;
+      const instanceId = ProviderInstanceId.make("opencode");
+      const firstSkillPath = "/tmp/opencode/skills/first/SKILL.md";
+      const secondSkillPath = "/tmp/opencode/skills/second/SKILL.md";
+
+      yield* serverSettings.updateProviderSkillPreference({
+        instanceId,
+        skillPath: firstSkillPath,
+        disabled: true,
+      });
+
+      yield* serverSettings.updateProviderSkillPreference({
+        instanceId,
+        skillPath: secondSkillPath,
+        disabled: true,
+      });
+
+      const afterDisable = yield* serverSettings.updateProviderSkillPreference({
+        instanceId,
+        skillPath: firstSkillPath,
+        disabled: false,
+      });
+
+      assert.deepEqual(afterDisable.providerSkillPreferences, {
+        [instanceId]: {
+          [secondSkillPath]: { disabled: true },
+        },
+      });
+
+      const afterEnableAll = yield* serverSettings.updateProviderSkillPreference({
+        instanceId,
+        skillPath: secondSkillPath,
+        disabled: false,
+      });
+
+      assert.deepEqual(afterEnableAll.providerSkillPreferences, {});
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("preserves model when switching providers via textGenerationModelSelection", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsService;

@@ -45,6 +45,20 @@ export const SidebarThreadPreviewCount = Schema.Int.check(
 export type SidebarThreadPreviewCount = typeof SidebarThreadPreviewCount.Type;
 export const DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT: SidebarThreadPreviewCount = 6;
 
+const ProviderSkillPreferencesRecordSchema = Schema.Record(
+  ProviderInstanceId,
+  Schema.Record(
+    TrimmedNonEmptyString,
+    Schema.Struct({
+      disabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+    }),
+  ),
+);
+export const ProviderSkillPreferencesSchema = ProviderSkillPreferencesRecordSchema.pipe(
+  Schema.withDecodingDefault(Effect.succeed({})),
+);
+export type ProviderSkillPreferences = typeof ProviderSkillPreferencesSchema.Type;
+
 export const ClientSettingsSchema = Schema.Struct({
   autoOpenPlanSidebar: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -413,6 +427,7 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  providerSkillPreferences: ProviderSkillPreferencesSchema,
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
@@ -512,6 +527,7 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  providerSkillPreferences: Schema.optionalKey(ProviderSkillPreferencesRecordSchema),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
