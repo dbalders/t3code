@@ -455,7 +455,13 @@ export const ProviderRegistryLive = Layer.effect(
           skills: (matchedExistingSkill
             ? matchingProvider.skills.map((skill) =>
                 skill.path === input.skillPath || skill.name === input.skillName
-                  ? { ...skill, enabled: true, scope: skill.scope ?? "user" }
+                  ? {
+                      ...skill,
+                      name: input.skillName,
+                      path: input.skillPath,
+                      enabled: true,
+                      scope: skill.scope ?? "user",
+                    }
                   : skill,
               )
             : [...matchingProvider.skills, nextSkill]

@@ -1006,7 +1006,13 @@ export function mergeInstalledProviderSkill(input: {
       skills: (alreadyPresent
         ? provider.skills.map((skill) =>
             skill.path === input.skillPath || skill.name === input.skillName
-              ? { ...skill, enabled: true, scope: skill.scope ?? "user" }
+              ? {
+                  ...skill,
+                  name: input.skillName,
+                  path: input.skillPath,
+                  enabled: true,
+                  scope: skill.scope ?? "user",
+                }
               : skill,
           )
         : [...provider.skills, installedSkill]

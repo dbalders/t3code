@@ -877,7 +877,7 @@ it("mergeInstalledProviderSkill appends the installed skill to the target provid
     providers: [
       makeProvider({
         name: "linked-skill",
-        path: "/tmp/skills/linked-skill/SKILL.md",
+        path: "/tmp/skills/stale-linked-skill/SKILL.md",
         enabled: false,
         scope: "user",
       }),

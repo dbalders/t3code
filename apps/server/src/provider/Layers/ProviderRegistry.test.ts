@@ -684,6 +684,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
         Effect.gen(function* () {
           const codexInstanceId = ProviderInstanceId.make("codex");
           const codexDriver = ProviderDriverKind.make("codex");
+          const staleDisabledSkillPath = "/tmp/t3code-skills/stale-disabled-skill/SKILL.md";
           const disabledSkillPath = "/tmp/t3code-skills/disabled-skill/SKILL.md";
           const installedSkillPath = "/tmp/t3code-skills/ucsd-branding/SKILL.md";
           const initialProvider = {
@@ -700,7 +701,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             skills: [
               {
                 name: "disabled-skill",
-                path: disabledSkillPath,
+                path: staleDisabledSkillPath,
                 enabled: false,
                 scope: "user",
               },
