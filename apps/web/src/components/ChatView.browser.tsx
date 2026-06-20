@@ -7425,22 +7425,26 @@ describe("ChatView timeline estimator parity (full app)", () => {
         if (!provider) {
           throw new Error("Expected default provider in test fixture.");
         }
-        const mutableProvider = provider as {
-          driver: ServerConfig["providers"][number]["driver"];
-          instanceId: ServerConfig["providers"][number]["instanceId"];
-          skills: ServerConfig["providers"][number]["skills"];
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          providers: [
+            {
+              ...provider,
+              driver: ProviderDriverKind.make("opencode"),
+              instanceId: ProviderInstanceId.make("opencode"),
+              skills: [
+                {
+                  name: "agent-browser",
+                  displayName: "Agent Browser",
+                  description: "Open pages, click around, and inspect web apps.",
+                  path: "/Users/test/.agents/skills/agent-browser/SKILL.md",
+                  enabled: true,
+                },
+              ],
+            },
+            ...nextFixture.serverConfig.providers.slice(1),
+          ],
         };
-        mutableProvider.driver = ProviderDriverKind.make("opencode");
-        mutableProvider.instanceId = ProviderInstanceId.make("opencode");
-        mutableProvider.skills = [
-          {
-            name: "agent-browser",
-            displayName: "Agent Browser",
-            description: "Open pages, click around, and inspect web apps.",
-            path: "/Users/test/.agents/skills/agent-browser/SKILL.md",
-            enabled: true,
-          },
-        ];
       },
     });
 
