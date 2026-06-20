@@ -37,7 +37,7 @@ import {
 } from "../Services/OpenCodeExternalSessionSync.ts";
 
 const OPENCODE_PROVIDER = ProviderDriverKind.make("opencode");
-const T3_OWNED_SESSION_TITLE_PREFIX = "TritonAI Code ";
+const T3_OWNED_SESSION_TITLE_PREFIX = "TritonAI Harness ";
 const DEFAULT_SYNC_INTERVAL_MS = 60_000;
 const DEFAULT_SESSION_LIST_LIMIT = 200;
 

@@ -54,7 +54,7 @@ vi.mock("electron", () => ({
     getVersion: getVersionMock,
     isDefaultProtocolClient: isDefaultProtocolClientMock,
     isPackaged: true,
-    name: "TritonAI Code",
+    name: "TritonAI Harness",
     on: onMock,
     quit: quitMock,
     relaunch: relaunchMock,

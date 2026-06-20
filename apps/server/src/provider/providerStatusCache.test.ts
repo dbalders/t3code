@@ -159,7 +159,7 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
       version: null,
       status: "disabled",
       auth: { status: "unknown" },
-      message: "Codex is disabled in TritonAI Code settings.",
+      message: "Codex is disabled in TritonAI Harness settings.",
     });
 
     assert.deepStrictEqual(

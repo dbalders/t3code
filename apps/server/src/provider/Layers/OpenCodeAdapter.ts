@@ -1132,7 +1132,7 @@ export function makeOpenCodeAdapter(
                     )
                   : yield* runOpenCodeSdk("session.create", () =>
                       client.session.create({
-                        title: `TritonAI Code ${input.threadId}`,
+                        title: `TritonAI Harness ${input.threadId}`,
                         permission: buildOpenCodePermissionRules(input.runtimeMode),
                       }),
                     );

@@ -260,7 +260,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
               : {}),
           });
           const session = await client.session.create({
-            title: `TritonAI Code ${input.operation}`,
+            title: `TritonAI Harness ${input.operation}`,
             permission: [{ permission: "*", pattern: "*", action: "deny" }],
           });
           if (!session.data) {

@@ -120,7 +120,7 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
   const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
   if (!wasQuitting) {
     yield* electronDialog.showErrorBox(
-      "TritonAI Code failed to start",
+      "TritonAI Harness failed to start",
       `Stage: ${stage}\n${message}${detail}`,
     );
   }

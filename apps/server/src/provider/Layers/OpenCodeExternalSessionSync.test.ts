@@ -222,7 +222,7 @@ describe("OpenCodeExternalSessionSync", () => {
         makeSession({
           sessionId: "session-t3-owned",
           directory: KNOWN_PROJECT_ROOT,
-          title: `TritonAI Code ${ThreadId.make("existing-t3-thread")}`,
+          title: `TritonAI Harness ${ThreadId.make("existing-t3-thread")}`,
         }),
       ];
       const harness = makeHarnessLayer(sessions);

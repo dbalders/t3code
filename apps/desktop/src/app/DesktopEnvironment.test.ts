@@ -13,9 +13,9 @@ const defaultInput = {
   platform: "darwin",
   processArch: "arm64",
   appVersion: "0.0.22",
-  appPath: "/Applications/TritonAI Code.app/Contents/Resources/app.asar",
+  appPath: "/Applications/TritonAI Harness.app/Contents/Resources/app.asar",
   isPackaged: false,
-  resourcesPath: "/Applications/TritonAI Code.app/Contents/Resources",
+  resourcesPath: "/Applications/TritonAI Harness.app/Contents/Resources",
   runningUnderArm64Translation: false,
 } satisfies DesktopEnvironment.MakeDesktopEnvironmentInput;
 

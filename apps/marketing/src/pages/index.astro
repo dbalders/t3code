@@ -67,9 +67,10 @@ const mobileEndorsementRows = [
 
       <div class="hero-preview">
         <figure class="hero-screenshot-frame">
+          <span class="hero-screenshot-title" aria-hidden="true">TritonAI Harness</span>
           <img
             src="/updated-screenshot.webp"
-            alt="TritonAI Code app showing multiple coding agent threads in one workspace"
+            alt="TritonAI Harness app showing multiple coding agent threads in one workspace"
             width="2508"
             height="1682"
             loading="eager"
@@ -172,7 +173,7 @@ const mobileEndorsementRows = [
       <div class="section-head">
         <h2>Bring your own sub</h2>
         <p>
-          TritonAI Code doesn't resell tokens. Plug in Claude Code, Codex, OpenCode,
+          TritonAI Harness doesn't resell tokens. Plug in Claude Code, Codex, OpenCode,
           or Cursor with the credentials you already have — we orchestrate
           them, you keep your plan.
         </p>
@@ -298,7 +299,7 @@ const mobileEndorsementRows = [
             <div><span class="prompt">$</span> cd t3code &amp;&amp; vp install</div>
             <div class="dim">✓ 1 284 packages installed in 4.2s</div>
             <div><span class="prompt">$</span> vp run dev</div>
-            <div class="dim">▲ TritonAI Code dev server → <span class="accent">http://localhost:4001</span></div>
+            <div class="dim">▲ TritonAI Harness dev server → <span class="accent">http://localhost:4001</span></div>
             <div class="cursor"><span class="prompt">$</span><span class="caret"></span></div>
           </div>
         </div>
@@ -351,7 +352,7 @@ const mobileEndorsementRows = [
         Your agents deserve better than a terminal.
       </h2>
       <p class="cta-sub">
-        TritonAI Code is free, open source and fast. Install it, plug in the harness
+        TritonAI Harness is free, open source and fast. Install it, plug in the harness
         you already pay for, and let your agents get to work.
       </p>
       <div class="cta-actions">
@@ -741,6 +742,25 @@ const mobileEndorsementRows = [
     margin: -2px;
     object-fit: cover;
     object-position: center top;
+  }
+
+  .hero-screenshot-title {
+    position: absolute;
+    z-index: 1;
+    top: 1.25%;
+    left: 6.4%;
+    width: 18.5%;
+    height: 3.6%;
+    display: flex;
+    align-items: center;
+    padding-left: 0.4%;
+    background: linear-gradient(90deg, #202024 0%, #202024 82%, rgba(32, 32, 36, 0) 100%);
+    color: rgba(244, 244, 245, 0.72);
+    font-size: clamp(8px, 0.92vw, 12px);
+    font-weight: 650;
+    line-height: 1;
+    pointer-events: none;
+    white-space: nowrap;
   }
 
   /* ── Harnesses ─────────────────────────────────────────── */

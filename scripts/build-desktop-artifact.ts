@@ -51,7 +51,7 @@ const RepoRoot = Effect.service(Path.Path).pipe(
 const encodeJsonString = Schema.encodeEffect(Schema.UnknownFromJsonString);
 const decodeWorkspaceConfig = Schema.decodeEffect(fromYaml(WorkspaceConfig));
 const encodeStageWorkspaceConfig = Schema.encodeEffect(fromYaml(StageWorkspaceConfig));
-const TRITONAI_DESKTOP_PACKAGE_NAME = "tritonai-code";
+const TRITONAI_DESKTOP_PACKAGE_NAME = "tritonai-harness";
 const TRITONAI_DESKTOP_APP_ID = "edu.ucsd.ai.tritonai-code";
 const DEFAULT_DESKTOP_UPDATE_REPOSITORY = "dbalders/t3code";
 
@@ -738,8 +738,8 @@ export function resolveMockUpdateServerUrl(mockUpdateServerPort: number | undefi
 
 export function resolveDesktopProductName(version: string): string {
   return resolveDesktopUpdateChannel(version) === "nightly"
-    ? "TritonAI Code (Nightly)"
-    : (desktopPackageJson.productName ?? "TritonAI Code");
+    ? "TritonAI Harness (Nightly)"
+    : (desktopPackageJson.productName ?? "TritonAI Harness");
 }
 
 const createBuildConfig = Effect.fn("createBuildConfig")(function* (
@@ -753,7 +753,7 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const buildConfig: Record<string, unknown> = {
     appId: TRITONAI_DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    artifactName: "TritonAI-Harness-${version}-${arch}.${ext}",
     asarUnpack: [...DESKTOP_ASAR_UNPACK],
     directories: {
       buildResources: "apps/desktop/resources",
@@ -779,7 +779,7 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       category: "public.app-category.developer-tools",
       protocols: [
         {
-          name: "TritonAI Code",
+          name: "TritonAI Harness",
           schemes: ["t3code"],
         },
       ],
@@ -976,7 +976,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     t3codeCommitHash: commitHash,
     private: true,
     packageManager: rootPackageJson.packageManager,
-    description: "TritonAI Code desktop build",
+    description: "TritonAI Harness desktop build",
     author: "T3 Tools",
     main: "apps/desktop/dist-electron/main.cjs",
     build: yield* createBuildConfig(
@@ -1168,7 +1168,7 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
     Flag.optional,
   ),
 }).pipe(
-  Command.withDescription("Build a desktop artifact for TritonAI Code."),
+  Command.withDescription("Build a desktop artifact for TritonAI Harness."),
   Command.withHandler((input) => Effect.flatMap(resolveBuildOptions(input), buildDesktopArtifact)),
 );
 

@@ -15,8 +15,8 @@ export const tweets = [
   {
     handle: "teja2495",
     content:
-      "I’ve completely switched to TritonAI Code for all my workflows. I just switch between different subscriptions and harnesses depending on what I need.",
-    excerpt: "I’ve completely switched to TritonAI Code for all my workflows.",
+      "I’ve completely switched to TritonAI Harness for all my workflows. I just switch between different subscriptions and harnesses depending on what I need.",
+    excerpt: "I’ve completely switched to TritonAI Harness for all my workflows.",
     link: "https://x.com/teja2495/status/2052420254991581623",
   },
   {
@@ -27,28 +27,28 @@ export const tweets = [
   {
     handle: "tannerlinsley",
     content:
-      "The minute TritonAI Code supports Claude Code, it could potentially become my daily driver. There's something special there.",
+      "The minute TritonAI Harness supports Claude Code, it could potentially become my daily driver. There's something special there.",
     link: "https://x.com/tannerlinsley/status/2031102771529920966",
   },
   {
     handle: "aronprins",
     content:
-      "I already loved TritonAI Code by @theo and @jullerino, but their Connections implementation is next level epic and for this they should both earn maximum repect 🔥🫡",
+      "I already loved TritonAI Harness by @theo and @jullerino, but their Connections implementation is next level epic and for this they should both earn maximum repect 🔥🫡",
     excerpt:
-      "I already loved TritonAI Code, but their Connections implementation is next level epic.",
+      "I already loved TritonAI Harness, but their Connections implementation is next level epic.",
     link: "https://x.com/aronprins/status/2045102518196183109",
   },
   {
     handle: "BennettBuhner",
     content:
-      "TritonAI Code is literally Codex but better; all your favorite models and harnesses, accessible anywhere! The app is great but the website is even greater, so instead of needing to SSH into a machine, T3 IS my SSH!",
+      "TritonAI Harness is literally Codex but better; all your favorite models and harnesses, accessible anywhere! The app is great but the website is even greater, so instead of needing to SSH into a machine, T3 IS my SSH!",
     excerpt:
-      "TritonAI Code is literally Codex but better; all your favorite models and harnesses, accessible anywhere.",
+      "TritonAI Harness is literally Codex but better; all your favorite models and harnesses, accessible anywhere.",
     link: "https://x.com/BennettBuhner/status/2054667115697754387",
   },
   {
     handle: "ex0t1clol",
-    content: "TritonAI Code is proof electron apps don't have to suck",
+    content: "TritonAI Harness is proof electron apps don't have to suck",
     link: "https://x.com/ex0t1clol/status/2054666870008021197",
   },
   {
@@ -69,40 +69,40 @@ export const tweets = [
   },
   {
     handle: "_winter_wonders",
-    content: "Heartbreaking: AI-hater has to admit TritonAI Code is really good.",
+    content: "Heartbreaking: AI-hater has to admit TritonAI Harness is really good.",
     link: "https://x.com/_winter_wonders/status/2052350198764970434",
   },
   {
     handle: "kostyniuk00",
     content:
-      "I was not expecting a year ago, that my anti-AI colleagues would thank me a year later, for persuading them to try TritonAI Code Beta, that really helped them with organizing their workflows. \n\nFantastic product by @jullerino and @theo. Go try it out if you haven’t yet!",
+      "I was not expecting a year ago, that my anti-AI colleagues would thank me a year later, for persuading them to try TritonAI Harness Beta, that really helped them with organizing their workflows. \n\nFantastic product by @jullerino and @theo. Go try it out if you haven’t yet!",
     excerpt:
-      "My anti-AI colleagues thanked me for persuading them to try TritonAI Code Beta. Fantastic product.",
+      "My anti-AI colleagues thanked me for persuading them to try TritonAI Harness Beta. Fantastic product.",
     link: "https://x.com/kostyniuk00/status/2052041388179468521",
   },
   {
     handle: "gnukeith",
     content:
-      "I tried TritonAI Code it actually fixed issues that Opus couldn’t solve in Claude Code + Theo has replied with “UwU” under my post. Dario has not.",
+      "I tried TritonAI Harness it actually fixed issues that Opus couldn’t solve in Claude Code + Theo has replied with “UwU” under my post. Dario has not.",
     link: "https://x.com/gnukeith/status/2054670073579630730",
   },
   {
     handle: "peculiarnewbie",
-    content: "TritonAI Code is iOS and other harnesses are androids",
+    content: "TritonAI Harness is iOS and other harnesses are androids",
     link: "https://x.com/peculiarnewbie/status/2054671685027233827",
   },
   {
     handle: "leodev",
     content:
-      "TritonAI Code is probably the first coding gui that didn't suck performance wise and had a smart team behind it.",
+      "TritonAI Harness is probably the first coding gui that didn't suck performance wise and had a smart team behind it.",
     link: "https://x.com/leodev/status/2054679746353537042",
   },
   {
     handle: "pocarles",
     content:
-      "Only using Codex and T3 now.\n\nI thought all AI coding harnesses had roughly the same impact. Using TritonAI Code taught me how wrong I was. The interface between you and the model changes everything.",
+      "Only using Codex and T3 now.\n\nI thought all AI coding harnesses had roughly the same impact. Using TritonAI Harness taught me how wrong I was. The interface between you and the model changes everything.",
     excerpt:
-      "Using TritonAI Code taught me how wrong I was. The interface between you and the model changes everything.",
+      "Using TritonAI Harness taught me how wrong I was. The interface between you and the model changes everything.",
     link: "https://x.com/pocarles/status/2054673964274758046",
   },
   {

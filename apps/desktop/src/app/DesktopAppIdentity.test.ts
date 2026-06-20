@@ -19,9 +19,9 @@ const defaultEnvironmentInput = {
   platform: "darwin",
   processArch: "arm64",
   appVersion: "1.2.3",
-  appPath: "/Applications/TritonAI Code.app/Contents/Resources/app.asar",
+  appPath: "/Applications/TritonAI Harness.app/Contents/Resources/app.asar",
   isPackaged: true,
-  resourcesPath: "/Applications/TritonAI Code.app/Contents/Resources",
+  resourcesPath: "/Applications/TritonAI Harness.app/Contents/Resources",
   runningUnderArm64Translation: false,
 } satisfies DesktopEnvironment.MakeDesktopEnvironmentInput;
 
@@ -38,7 +38,7 @@ interface ElectronAppCalls {
 const makeElectronAppLayer = (calls: ElectronAppCalls) =>
   Layer.succeed(ElectronApp.ElectronApp, {
     metadata: Effect.die("unexpected metadata read"),
-    name: Effect.succeed("TritonAI Code"),
+    name: Effect.succeed("TritonAI Harness"),
     whenReady: Effect.void,
     quit: Effect.void,
     exit: () => Effect.void,
@@ -105,6 +105,7 @@ const withIdentity = <A, E, R>(
     readonly calls?: ElectronAppCalls;
     readonly environment?: TestEnvironmentInput;
     readonly legacyPathExists?: boolean;
+    readonly legacyPathNeedle?: string;
     readonly packageJson?: string;
     readonly pngIconPath?: Option.Option<string>;
   } = {},
@@ -121,7 +122,10 @@ const withIdentity = <A, E, R>(
         Layer.provideMerge(
           FileSystem.layerNoop({
             exists: (path) =>
-              Effect.succeed(input.legacyPathExists === true && path.includes("T3 Code")),
+              Effect.succeed(
+                input.legacyPathExists === true &&
+                  path.includes(input.legacyPathNeedle ?? "T3 Code"),
+              ),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
           }),
@@ -141,9 +145,20 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         const userDataPath = yield* identity.resolveUserDataPath;
 
+        assert.equal(userDataPath, "/Users/alice/Library/Application Support/TritonAI Harness");
+      }),
+    ),
+  );
+
+  it.effect("keeps using the legacy TritonAI Code userData path when it already exists", () =>
+    withIdentity(
+      Effect.gen(function* () {
+        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
+        const userDataPath = yield* identity.resolveUserDataPath;
+
         assert.equal(userDataPath, "/Users/alice/Library/Application Support/TritonAI Code");
       }),
-      { legacyPathExists: true },
+      { legacyPathExists: true, legacyPathNeedle: "TritonAI Code" },
     ),
   );
 
@@ -179,8 +194,8 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         yield* identity.configure;
 
-        assert.deepEqual(calls.setName, ["TritonAI Code"]);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "TritonAI Code");
+        assert.deepEqual(calls.setName, ["TritonAI Harness"]);
+        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "TritonAI Harness");
         assert.equal(calls.setAboutPanelOptions[0]?.applicationVersion, "1.2.3");
         assert.equal(calls.setAboutPanelOptions[0]?.version, "0123456789ab");
         assert.deepEqual(calls.setDockIcon, ["/icon.png"]);

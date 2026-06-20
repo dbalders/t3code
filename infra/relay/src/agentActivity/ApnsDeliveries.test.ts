@@ -73,7 +73,7 @@ const state: RelayAgentActivityState = {
 };
 
 const aggregate: RelayAgentActivityAggregateState = {
-  title: "T3 Code",
+  title: "TritonAI Harness",
   subtitle: "Agent work in progress",
   activeCount: 1,
   updatedAt: state.updatedAt,

@@ -13,9 +13,9 @@ import {
 } from "./firstRunOnboarding";
 
 describe("firstRunOnboarding", () => {
-  it("is scoped to the TritonAI Code brand", () => {
-    expect(isTritonAiCodeBrand("TritonAI Code")).toBe(true);
-    expect(isTritonAiCodeBrand("T3 Code")).toBe(false);
+  it("is scoped to the TritonAI Harness brand", () => {
+    expect(isTritonAiCodeBrand("TritonAI Harness")).toBe(true);
+    expect(isTritonAiCodeBrand("TritonAI Code")).toBe(false);
   });
 
   it("uses the installer-created TritonAI home workspace", () => {

@@ -30,7 +30,7 @@ const environmentInput = {
 
 const electronAppLayer = Layer.succeed(ElectronApp.ElectronApp, {
   metadata: Effect.die("unexpected metadata read"),
-  name: Effect.succeed("TritonAI Code"),
+  name: Effect.succeed("TritonAI Harness"),
   whenReady: Effect.void,
   quit: Effect.void,
   exit: () => Effect.void,

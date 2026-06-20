@@ -1,6 +1,6 @@
 # UCSD Skills Catalog
 
-Temporary Cloudflare Pages/static catalog for TritonAI Code skills.
+Temporary Cloudflare Pages/static catalog for TritonAI Harness skills.
 
 ## Shape
 

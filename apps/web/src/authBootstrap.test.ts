@@ -68,7 +68,7 @@ function installTestBrowser(url: string) {
   };
 
   vi.stubGlobal("window", testWindow);
-  vi.stubGlobal("document", { title: "TritonAI Code" });
+  vi.stubGlobal("document", { title: "TritonAI Harness" });
 
   return testWindow;
 }

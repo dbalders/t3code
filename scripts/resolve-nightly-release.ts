@@ -61,7 +61,7 @@ export const resolveNightlyReleaseMetadata = (
     baseVersion,
     version,
     tag: `v${version}`,
-    name: `TritonAI Code Nightly ${version} (${shortSha})`,
+    name: `TritonAI Harness Nightly ${version} (${shortSha})`,
     shortSha,
   };
 };

@@ -81,7 +81,7 @@ export class DesktopEnvironment extends Context.Service<
   DesktopEnvironmentShape
 >()("@t3tools/desktop/app/DesktopEnvironment") {}
 
-const APP_BASE_NAME = "TritonAI Code";
+const APP_BASE_NAME = "TritonAI Harness";
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
@@ -162,8 +162,8 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
   });
   const displayName = branding.displayName;
   const stateDir = path.join(baseDir, isDevelopment ? "dev" : "userdata");
-  const userDataDirName = isDevelopment ? "tritonai-code-dev" : "TritonAI Code";
-  const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : null;
+  const userDataDirName = isDevelopment ? "tritonai-code-dev" : "TritonAI Harness";
+  const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : "TritonAI Code";
   const resourcesPath = input.resourcesPath;
 
   return DesktopEnvironment.of({
