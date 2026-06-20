@@ -7,6 +7,11 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
+import {
+  registerUcsdOpenCodeSkillPath,
+  unregisterUcsdOpenCodeSkillPath,
+} from "./opencodeSkillConfig.ts";
+
 export interface ProviderSkillRemovalTarget {
   readonly skillDirectoryPath: string;
 }
@@ -58,15 +63,33 @@ export function resolveProviderSkillRemovalTarget(input: {
 
 export function removeProviderSkillFolder(
   target: ProviderSkillRemovalTarget,
-): Effect.Effect<void, ServerProviderSkillRemovalError, FileSystem.FileSystem> {
+): Effect.Effect<void, ServerProviderSkillRemovalError, FileSystem.FileSystem | Path.Path> {
   return Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
-    yield* fileSystem
-      .remove(target.skillDirectoryPath, { recursive: true })
-      .pipe(
-        Effect.mapError((cause) =>
-          removalError(`Failed to remove skill folder '${target.skillDirectoryPath}'.`, cause),
+    yield* unregisterUcsdOpenCodeSkillPath(target.skillDirectoryPath).pipe(
+      Effect.mapError((cause) =>
+        removalError(
+          `Failed to unregister skill folder '${target.skillDirectoryPath}' from OpenCode config.`,
+          cause,
         ),
-      );
+      ),
+    );
+
+    yield* fileSystem.remove(target.skillDirectoryPath, { recursive: true }).pipe(
+      Effect.mapError((cause) =>
+        removalError(`Failed to remove skill folder '${target.skillDirectoryPath}'.`, cause),
+      ),
+      Effect.catch((error) =>
+        registerUcsdOpenCodeSkillPath(target.skillDirectoryPath).pipe(
+          Effect.catch((rollbackCause) =>
+            removalError(
+              `${error.message} Failed to restore the OpenCode config after the removal failure.`,
+              rollbackCause,
+            ),
+          ),
+          Effect.andThen(Effect.fail(error)),
+        ),
+      ),
+    );
   });
 }

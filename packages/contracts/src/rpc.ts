@@ -114,6 +114,11 @@ import {
 import {
   ServerConfigStreamEvent,
   ServerConfig,
+  ServerInstallProviderSkillInput,
+  ServerInstallProviderSkillResult,
+  ServerListProviderSkillCatalogResult,
+  ServerProviderSkillCatalogError,
+  ServerProviderSkillInstallError,
   ServerProviderSkillPreferenceError,
   ServerProviderSkillRemovalError,
   ServerProviderUpdateError,
@@ -206,6 +211,8 @@ export const WS_METHODS = {
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
+  serverListProviderSkillCatalog: "server.listProviderSkillCatalog",
+  serverInstallProviderSkill: "server.installProviderSkill",
   serverRemoveProviderSkill: "server.removeProviderSkill",
   serverSetProviderSkillPreference: "server.setProviderSkillPreference",
   serverUpsertKeybinding: "server.upsertKeybinding",
@@ -274,6 +281,21 @@ export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvide
   payload: ServerProviderUpdateInput,
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([ServerProviderUpdateError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerListProviderSkillCatalogRpc = Rpc.make(
+  WS_METHODS.serverListProviderSkillCatalog,
+  {
+    payload: Schema.Struct({}),
+    success: ServerListProviderSkillCatalogResult,
+    error: Schema.Union([ServerProviderSkillCatalogError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerInstallProviderSkillRpc = Rpc.make(WS_METHODS.serverInstallProviderSkill, {
+  payload: ServerInstallProviderSkillInput,
+  success: ServerInstallProviderSkillResult,
+  error: Schema.Union([ServerProviderSkillInstallError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerRemoveProviderSkillRpc = Rpc.make(WS_METHODS.serverRemoveProviderSkill, {
@@ -707,6 +729,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
+  WsServerListProviderSkillCatalogRpc,
+  WsServerInstallProviderSkillRpc,
   WsServerRemoveProviderSkillRpc,
   WsServerSetProviderSkillPreferenceRpc,
   WsServerUpsertKeybindingRpc,

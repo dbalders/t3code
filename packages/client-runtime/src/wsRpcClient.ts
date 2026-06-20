@@ -155,6 +155,10 @@ export interface WsRpcClient {
       typeof WS_METHODS.serverDiscoverSourceControl
     >;
     readonly updateProvider: RpcUnaryMethod<typeof WS_METHODS.serverUpdateProvider>;
+    readonly listProviderSkillCatalog: RpcUnaryNoArgMethod<
+      typeof WS_METHODS.serverListProviderSkillCatalog
+    >;
+    readonly installProviderSkill: RpcUnaryMethod<typeof WS_METHODS.serverInstallProviderSkill>;
     readonly removeProviderSkill: RpcUnaryMethod<typeof WS_METHODS.serverRemoveProviderSkill>;
     readonly setProviderSkillPreference: RpcUnaryMethod<
       typeof WS_METHODS.serverSetProviderSkillPreference
@@ -362,6 +366,10 @@ export function createWsRpcClient(
         transport.request((client) => client[WS_METHODS.serverDiscoverSourceControl]({})),
       updateProvider: (input) =>
         transport.request((client) => client[WS_METHODS.serverUpdateProvider](input)),
+      listProviderSkillCatalog: () =>
+        transport.request((client) => client[WS_METHODS.serverListProviderSkillCatalog]({})),
+      installProviderSkill: (input) =>
+        transport.request((client) => client[WS_METHODS.serverInstallProviderSkill](input)),
       removeProviderSkill: (input) =>
         transport.request((client) => client[WS_METHODS.serverRemoveProviderSkill](input)),
       setProviderSkillPreference: (input) =>
