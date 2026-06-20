@@ -847,44 +847,37 @@ function resolveDefaultOpenCodeSkillsDirectory(input: {
     const fs = yield* FileSystem.FileSystem;
     const pathService = yield* Path.Path;
     const environment = input.environment ?? process.env;
-    const candidates: Array<{ readonly configPath: string; readonly skillsDirectory: string }> = [];
 
     const configuredPath = environment.OPENCODE_CONFIG?.trim();
     if (configuredPath) {
-      const skillsDirectory = yield* resolveUcsdConfigSkillsDirectory(configuredPath);
-      if (skillsDirectory) {
-        candidates.push({ configPath: pathService.resolve(configuredPath), skillsDirectory });
+      const configPath = pathService.resolve(configuredPath);
+      const skillsDirectory = yield* resolveUcsdConfigSkillsDirectory(configPath);
+      if (!skillsDirectory) {
+        return yield* installError(
+          `OPENCODE_CONFIG must point to a UCSD OpenCode config at 'ucsd/config/opencode/opencode.json'. Received ${configPath}.`,
+        );
       }
+
+      const exists = yield* fs
+        .exists(configPath)
+        .pipe(Effect.mapError((cause) => installError(`Failed to inspect ${configPath}.`, cause)));
+      if (!exists) {
+        return yield* installError(`Configured OpenCode config was not found at ${configPath}.`);
+      }
+      return skillsDirectory;
     }
 
     const home = environment.HOME?.trim() || NodeOS.homedir();
-    if (home) {
-      const ucsdDirectory = pathService.join(home, ".agents", "ucsd");
-      candidates.push({
-        configPath: pathService.join(ucsdDirectory, "config", "opencode", "opencode.json"),
-        skillsDirectory: pathService.join(ucsdDirectory, "skills"),
-      });
+    if (!home) {
+      return null;
     }
 
-    const seen = new Set<string>();
-    for (const candidate of candidates) {
-      if (seen.has(candidate.configPath)) {
-        continue;
-      }
-      seen.add(candidate.configPath);
-      const exists = yield* fs
-        .exists(candidate.configPath)
-        .pipe(
-          Effect.mapError((cause) =>
-            installError(`Failed to inspect ${candidate.configPath}.`, cause),
-          ),
-        );
-      if (exists) {
-        return candidate.skillsDirectory;
-      }
-    }
-
-    return null;
+    const ucsdDirectory = pathService.join(home, ".agents", "ucsd");
+    const configPath = pathService.join(ucsdDirectory, "config", "opencode", "opencode.json");
+    const exists = yield* fs
+      .exists(configPath)
+      .pipe(Effect.mapError((cause) => installError(`Failed to inspect ${configPath}.`, cause)));
+    return exists ? pathService.join(ucsdDirectory, "skills") : null;
   });
 }
 

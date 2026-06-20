@@ -184,6 +184,70 @@ it.layer(NodeServices.layer)("installProviderSkill", (it) => {
       }),
   );
 
+  it.effect("registers adopted UCSD catalog skill folders in OpenCode config", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3code-install-provider-skill-adopt-ucsd-",
+      });
+      const ucsdRoot = path.join(root, ".agents", "ucsd");
+      const existingDirectory = path.join(ucsdRoot, "skills", "existing-skill");
+      const adoptedDirectory = path.join(ucsdRoot, "skills", "tritonai-feedback");
+      const adoptedPath = path.join(adoptedDirectory, "SKILL.md");
+      const configPath = path.join(ucsdRoot, "config", "opencode", "opencode.json");
+
+      yield* fs.makeDirectory(existingDirectory, { recursive: true });
+      yield* fs.writeFileString(
+        path.join(existingDirectory, "SKILL.md"),
+        "---\nname: existing-skill\ndescription: Existing skill\n---\n",
+      );
+      yield* fs.makeDirectory(adoptedDirectory, { recursive: true });
+      yield* fs.writeFileString(
+        adoptedPath,
+        "---\nname: tritonai-feedback\ndescription: Existing catalog skill\n---\n\nAlready here.",
+      );
+      yield* fs.makeDirectory(path.dirname(configPath), { recursive: true });
+      yield* fs.writeFileString(
+        configPath,
+        encodeTestOpenCodeConfig({ skills: { paths: [existingDirectory] } }),
+      );
+
+      const installed = yield* installProviderSkill({
+        providers: [
+          makeProvider({
+            name: "existing-skill",
+            path: path.join(existingDirectory, "SKILL.md"),
+            enabled: true,
+            scope: "user",
+          }),
+        ],
+        request: {
+          instanceId: OPENCODE_INSTANCE_ID,
+          source: {
+            type: "catalog",
+            catalogEntryId: "tritonai-feedback",
+          },
+        },
+        environment: {
+          OPENCODE_CONFIG: configPath,
+          T3CODE_SKILL_CATALOG_URL: "https://skills.test/catalog.json",
+        },
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            makeHttpLayer(() => new Response("missing", { status: 500 })),
+            unusedGitLayer,
+          ),
+        ),
+      );
+
+      const config = decodeTestOpenCodeConfig(yield* fs.readFileString(configPath));
+      assert.equal(installed.skillPath, adoptedPath);
+      assert.deepStrictEqual(config.skills.paths, [existingDirectory, adoptedDirectory]);
+    }),
+  );
+
   it.effect("installs catalog skills into the UCSD config root when no skills are reported", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -228,6 +292,52 @@ it.layer(NodeServices.layer)("installProviderSkill", (it) => {
       assert.equal(installed.skillPath, expectedPath);
       assert.equal(yield* fs.exists(expectedPath), true);
       assert.deepStrictEqual(config.skills.paths, [expectedDirectory]);
+    }),
+  );
+
+  it.effect("does not fall back to HOME when OPENCODE_CONFIG is not UCSD-shaped", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3code-install-provider-skill-invalid-config-",
+      });
+      const homeUcsdRoot = path.join(root, ".agents", "ucsd");
+      const homeConfigPath = path.join(homeUcsdRoot, "config", "opencode", "opencode.json");
+      const invalidConfigPath = path.join(root, "not-ucsd", "opencode.json");
+
+      yield* fs.makeDirectory(path.dirname(homeConfigPath), { recursive: true });
+      yield* fs.writeFileString(
+        homeConfigPath,
+        encodeTestOpenCodeConfig({ skills: { paths: [] } }),
+      );
+
+      const error = yield* installProviderSkill({
+        providers: [makeProviderWithSkills([])],
+        request: {
+          instanceId: OPENCODE_INSTANCE_ID,
+          source: {
+            type: "catalog",
+            catalogEntryId: "tritonai-feedback",
+          },
+        },
+        environment: {
+          HOME: root,
+          OPENCODE_CONFIG: invalidConfigPath,
+          T3CODE_SKILL_CATALOG_URL: "https://skills.test/catalog.json",
+        },
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            makeHttpLayer(() => new Response("missing", { status: 500 })),
+            unusedGitLayer,
+          ),
+        ),
+        Effect.flip,
+      );
+
+      assert.match(error.message, /OPENCODE_CONFIG must point to a UCSD OpenCode config/iu);
+      assert.equal(yield* fs.exists(path.join(homeUcsdRoot, "skills", "tritonai-feedback")), false);
     }),
   );
 
