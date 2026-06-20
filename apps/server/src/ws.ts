@@ -1097,11 +1097,10 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
                     }),
                   ),
                 );
-              const refreshedProviders = yield* providerRegistry.refreshInstance(input.instanceId);
               return {
                 ...installed,
                 providers: mergeInstalledProviderSkill({
-                  providers: refreshedProviders,
+                  providers,
                   instanceId: input.instanceId,
                   skillName: installed.skillName,
                   skillPath: installed.skillPath,
