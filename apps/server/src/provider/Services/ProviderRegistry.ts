@@ -49,6 +49,18 @@ export interface ProviderRegistryShape {
   ) => Effect.Effect<ReadonlyArray<ServerProvider>>;
 
   /**
+   * Reflect a newly installed user skill in the cached provider snapshot.
+   * This is used after catalog/link installs update on-disk skill config,
+   * where an immediate driver refresh can still report the pre-install
+   * snapshot until the provider process observes its config change.
+   */
+  readonly recordInstalledProviderSkill: (input: {
+    readonly instanceId: ProviderInstanceId;
+    readonly skillName: string;
+    readonly skillPath: string;
+  }) => Effect.Effect<ReadonlyArray<ServerProvider>>;
+
+  /**
    * Resolve the maintenance capabilities owned by one live provider instance.
    * Falls back to manual-only capabilities when the instance is not live.
    */

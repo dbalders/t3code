@@ -427,6 +427,45 @@ export const ProviderRegistryLive = Layer.effect(
       },
     );
 
+    const recordInstalledProviderSkill = Effect.fn("recordInstalledProviderSkill")(
+      function* (input: {
+        readonly instanceId: ProviderInstanceId;
+        readonly skillName: string;
+        readonly skillPath: string;
+      }) {
+        const existingProviders = yield* Ref.get(providersRef);
+        const matchingProvider = existingProviders.find(
+          (candidate) => candidate.instanceId === input.instanceId,
+        );
+        if (!matchingProvider) {
+          return existingProviders;
+        }
+
+        const nextSkill: ServerProvider["skills"][number] = {
+          name: input.skillName,
+          path: input.skillPath,
+          enabled: true,
+          scope: "user",
+        };
+        const matchedExistingSkill = matchingProvider.skills.some(
+          (skill) => skill.path === input.skillPath || skill.name === input.skillName,
+        );
+        const nextProvider: ServerProvider = {
+          ...matchingProvider,
+          skills: (matchedExistingSkill
+            ? matchingProvider.skills.map((skill) =>
+                skill.path === input.skillPath || skill.name === input.skillName
+                  ? { ...skill, enabled: true, scope: skill.scope ?? "user" }
+                  : skill,
+              )
+            : [...matchingProvider.skills, nextSkill]
+          ).toSorted((left, right) => left.name.localeCompare(right.name)),
+        };
+
+        return yield* upsertProviders([nextProvider]);
+      },
+    );
+
     const refreshOneSource = Effect.fn("refreshOneSource")(function* (
       providerSource: ProviderSnapshotSource,
     ) {
@@ -688,6 +727,7 @@ export const ProviderRegistryLive = Layer.effect(
         refresh(provider).pipe(Effect.catchCause(recoverRefreshFailure)),
       refreshInstance: (instanceId: ProviderInstanceId) =>
         refreshInstance(instanceId).pipe(Effect.catchCause(recoverRefreshFailure)),
+      recordInstalledProviderSkill,
       getProviderMaintenanceCapabilitiesForInstance,
       setProviderMaintenanceActionState,
       get streamChanges() {

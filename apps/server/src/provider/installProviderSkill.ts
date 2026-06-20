@@ -1001,10 +1001,6 @@ export function mergeInstalledProviderSkill(input: {
     const alreadyPresent = provider.skills.some(
       (skill) => skill.path === input.skillPath || skill.name === input.skillName,
     );
-    if (alreadyPresent) {
-      return provider;
-    }
-
     const installedSkill: ServerProviderSkill = {
       name: input.skillName,
       path: input.skillPath,
@@ -1014,9 +1010,14 @@ export function mergeInstalledProviderSkill(input: {
 
     return {
       ...provider,
-      skills: [...provider.skills, installedSkill].toSorted((left, right) =>
-        left.name.localeCompare(right.name),
-      ),
+      skills: (alreadyPresent
+        ? provider.skills.map((skill) =>
+            skill.path === input.skillPath || skill.name === input.skillName
+              ? { ...skill, enabled: true, scope: skill.scope ?? "user" }
+              : skill,
+          )
+        : [...provider.skills, installedSkill]
+      ).toSorted((left, right) => left.name.localeCompare(right.name)),
     };
   });
 }

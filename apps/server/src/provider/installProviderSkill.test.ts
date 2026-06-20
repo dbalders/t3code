@@ -762,4 +762,27 @@ it("mergeInstalledProviderSkill appends the installed skill to the target provid
     mergedAgain[0]?.skills.map((skill) => skill.name),
     ["existing-skill", "linked-skill"],
   );
+
+  const reenabled = mergeInstalledProviderSkill({
+    providers: [
+      makeProvider({
+        name: "linked-skill",
+        path: "/tmp/skills/linked-skill/SKILL.md",
+        enabled: false,
+        scope: "user",
+      }),
+    ],
+    instanceId: OPENCODE_INSTANCE_ID,
+    skillName: "linked-skill",
+    skillPath: "/tmp/skills/linked-skill/SKILL.md",
+  });
+
+  assert.deepStrictEqual(reenabled[0]?.skills, [
+    {
+      name: "linked-skill",
+      path: "/tmp/skills/linked-skill/SKILL.md",
+      enabled: true,
+      scope: "user",
+    },
+  ]);
 });

@@ -78,11 +78,7 @@ import {
   removeProviderSkillFolder,
   resolveProviderSkillRemovalTarget,
 } from "./provider/removeProviderSkill.ts";
-import {
-  installProviderSkill,
-  listProviderSkillCatalog,
-  mergeInstalledProviderSkill,
-} from "./provider/installProviderSkill.ts";
+import { installProviderSkill, listProviderSkillCatalog } from "./provider/installProviderSkill.ts";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
 import { redactServerSettingsForClient, ServerSettingsService } from "./serverSettings.ts";
@@ -1097,14 +1093,14 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
                     }),
                   ),
                 );
+              const updatedProviders = yield* providerRegistry.recordInstalledProviderSkill({
+                instanceId: input.instanceId,
+                skillName: installed.skillName,
+                skillPath: installed.skillPath,
+              });
               return {
                 ...installed,
-                providers: mergeInstalledProviderSkill({
-                  providers,
-                  instanceId: input.instanceId,
-                  skillName: installed.skillName,
-                  skillPath: installed.skillPath,
-                }),
+                providers: updatedProviders,
               };
             }),
             {
