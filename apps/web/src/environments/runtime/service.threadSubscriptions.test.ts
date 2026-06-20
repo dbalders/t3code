@@ -175,6 +175,16 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
       getProcessDiagnostics: vi.fn(),
       getProcessResourceHistory: vi.fn(),
       signalProcess: vi.fn(),
+      scheduledTasks: {
+        list: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        runNow: vi.fn(),
+        listRuns: vi.fn(),
+      },
     },
   };
   return {

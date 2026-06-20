@@ -97,6 +97,7 @@ import {
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import { ServerLifecycleEvents, type ServerLifecycleEventsShape } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup, type ServerRuntimeStartupShape } from "./serverRuntimeStartup.ts";
+import { ScheduledTaskService } from "./scheduledTasks/ScheduledTaskService.ts";
 import { ServerSettingsService, type ServerSettingsShape } from "./serverSettings.ts";
 import { TerminalManager, type TerminalManagerShape } from "./terminal/Services/Manager.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -693,12 +694,26 @@ const buildAppUnderTest = (options?: {
         ),
       ),
       Layer.provide(
-        Layer.mock(OrchestrationEngineService)({
-          readEvents: () => Stream.empty,
-          dispatch: () => Effect.succeed({ sequence: 0 }),
-          streamDomainEvents: Stream.empty,
-          ...options?.layers?.orchestrationEngine,
-        }),
+        Layer.mergeAll(
+          Layer.mock(OrchestrationEngineService)({
+            readEvents: () => Stream.empty,
+            dispatch: () => Effect.succeed({ sequence: 0 }),
+            streamDomainEvents: Stream.empty,
+            ...options?.layers?.orchestrationEngine,
+          }),
+          Layer.mock(ScheduledTaskService)({
+            list: () => Effect.succeed({ tasks: [] }),
+            create: () => Effect.die("ScheduledTaskService.create not stubbed in this test"),
+            update: () => Effect.die("ScheduledTaskService.update not stubbed in this test"),
+            delete: ({ id }) => Effect.succeed({ id }),
+            pause: () => Effect.die("ScheduledTaskService.pause not stubbed in this test"),
+            resume: () => Effect.die("ScheduledTaskService.resume not stubbed in this test"),
+            runNow: () => Effect.die("ScheduledTaskService.runNow not stubbed in this test"),
+            listRuns: () => Effect.succeed({ runs: [] }),
+            runDueTasks: () => Effect.void,
+            reconcileOpenRuns: () => Effect.void,
+          }),
+        ),
       ),
       Layer.provide(
         Layer.mock(ProjectionSnapshotQuery)({

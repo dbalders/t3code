@@ -171,6 +171,40 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
         rpcClient
           ? rpcClient.server.signalProcess(input)
           : Promise.reject(unavailableLocalBackendError()),
+      scheduledTasks: {
+        list: () =>
+          rpcClient
+            ? rpcClient.server.scheduledTasks.list()
+            : Promise.reject(unavailableLocalBackendError()),
+        create: (input) =>
+          rpcClient
+            ? rpcClient.server.scheduledTasks.create(input)
+            : Promise.reject(unavailableLocalBackendError()),
+        update: (input) =>
+          rpcClient
+            ? rpcClient.server.scheduledTasks.update(input)
+            : Promise.reject(unavailableLocalBackendError()),
+        delete: (input) =>
+          rpcClient
+            ? rpcClient.server.scheduledTasks.delete(input)
+            : Promise.reject(unavailableLocalBackendError()),
+        pause: (input) =>
+          rpcClient
+            ? rpcClient.server.scheduledTasks.pause(input)
+            : Promise.reject(unavailableLocalBackendError()),
+        resume: (input) =>
+          rpcClient
+            ? rpcClient.server.scheduledTasks.resume(input)
+            : Promise.reject(unavailableLocalBackendError()),
+        runNow: (input) =>
+          rpcClient
+            ? rpcClient.server.scheduledTasks.runNow(input)
+            : Promise.reject(unavailableLocalBackendError()),
+        listRuns: (input) =>
+          rpcClient
+            ? rpcClient.server.scheduledTasks.listRuns(input)
+            : Promise.reject(unavailableLocalBackendError()),
+      },
     },
   };
 }

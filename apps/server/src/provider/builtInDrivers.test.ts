@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "@effect/vitest";
 
 import { BUILT_IN_DRIVERS } from "./builtInDrivers.ts";
 
