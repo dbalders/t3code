@@ -34,6 +34,9 @@ import type {
 import type { ProviderInstanceId } from "./providerInstance.ts";
 import type {
   ServerConfig,
+  ServerInstallProviderSkillInput,
+  ServerInstallProviderSkillResult,
+  ServerListProviderSkillCatalogResult,
   ServerProcessDiagnosticsResult,
   ServerProcessResourceHistoryInput,
   ServerProcessResourceHistoryResult,
@@ -1070,6 +1073,10 @@ export interface LocalApi {
       readonly instanceId?: ProviderInstanceId;
     }) => Promise<ServerProviderUpdatedPayload>;
     updateProvider: (input: ServerProviderUpdateInput) => Promise<ServerProviderUpdatedPayload>;
+    listProviderSkillCatalog: () => Promise<ServerListProviderSkillCatalogResult>;
+    installProviderSkill: (
+      input: ServerInstallProviderSkillInput,
+    ) => Promise<ServerInstallProviderSkillResult>;
     removeProviderSkill: (
       input: ServerRemoveProviderSkillInput,
     ) => Promise<ServerProviderUpdatedPayload>;

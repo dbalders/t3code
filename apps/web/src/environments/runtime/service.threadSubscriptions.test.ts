@@ -162,6 +162,8 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
       refreshProviders: vi.fn(),
       discoverSourceControl: vi.fn(),
       updateProvider: vi.fn(),
+      listProviderSkillCatalog: vi.fn(),
+      installProviderSkill: vi.fn(),
       removeProviderSkill: vi.fn(),
       setProviderSkillPreference: vi.fn(),
       upsertKeybinding: vi.fn(),

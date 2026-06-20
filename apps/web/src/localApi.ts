@@ -129,6 +129,14 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
         rpcClient
           ? rpcClient.server.updateProvider(input)
           : Promise.reject(unavailableLocalBackendError()),
+      listProviderSkillCatalog: () =>
+        rpcClient
+          ? rpcClient.server.listProviderSkillCatalog()
+          : Promise.reject(unavailableLocalBackendError()),
+      installProviderSkill: (input) =>
+        rpcClient
+          ? rpcClient.server.installProviderSkill(input)
+          : Promise.reject(unavailableLocalBackendError()),
       removeProviderSkill: (input) =>
         rpcClient
           ? rpcClient.server.removeProviderSkill(input)

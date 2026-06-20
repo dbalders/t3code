@@ -78,6 +78,11 @@ import {
   removeProviderSkillFolder,
   resolveProviderSkillRemovalTarget,
 } from "./provider/removeProviderSkill.ts";
+import {
+  installProviderSkill,
+  listProviderSkillCatalog,
+  mergeInstalledProviderSkill,
+} from "./provider/installProviderSkill.ts";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
 import { redactServerSettingsForClient, ServerSettingsService } from "./serverSettings.ts";
@@ -176,6 +181,8 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverGetConfig, AuthOrchestrationReadScope],
   [WS_METHODS.serverRefreshProviders, AuthOrchestrationOperateScope],
   [WS_METHODS.serverUpdateProvider, AuthOrchestrationOperateScope],
+  [WS_METHODS.serverListProviderSkillCatalog, AuthOrchestrationReadScope],
+  [WS_METHODS.serverInstallProviderSkill, AuthOrchestrationOperateScope],
   [WS_METHODS.serverRemoveProviderSkill, AuthOrchestrationOperateScope],
   [WS_METHODS.serverSetProviderSkillPreference, AuthOrchestrationOperateScope],
   [WS_METHODS.serverUpsertKeybinding, AuthOrchestrationOperateScope],
@@ -1060,6 +1067,47 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
           observeRpcEffect(
             WS_METHODS.serverUpdateProvider,
             providerMaintenanceRunner.updateProvider(input),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverListProviderSkillCatalog]: (_input) =>
+          observeRpcEffect(WS_METHODS.serverListProviderSkillCatalog, listProviderSkillCatalog(), {
+            "rpc.aggregate": "server",
+          }),
+        [WS_METHODS.serverInstallProviderSkill]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverInstallProviderSkill,
+            Effect.gen(function* () {
+              const providers = yield* providerRegistry.getProviders;
+              const installed = yield* installProviderSkill({
+                providers,
+                request: input,
+              });
+              yield* serverSettings
+                .updateProviderSkillPreference({
+                  instanceId: input.instanceId,
+                  skillPath: installed.skillPath,
+                  disabled: false,
+                })
+                .pipe(
+                  Effect.catch((error: ServerSettingsError) =>
+                    Effect.logWarning("failed to clear installed provider skill preference", {
+                      detail: error.detail,
+                    }),
+                  ),
+                );
+              const refreshedProviders = yield* providerRegistry.refreshInstance(input.instanceId);
+              return {
+                ...installed,
+                providers: mergeInstalledProviderSkill({
+                  providers: refreshedProviders,
+                  instanceId: input.instanceId,
+                  skillName: installed.skillName,
+                  skillPath: installed.skillPath,
+                }),
+              };
+            }),
             {
               "rpc.aggregate": "server",
             },

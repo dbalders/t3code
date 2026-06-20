@@ -91,6 +91,72 @@ export const ServerProviderSkill = Schema.Struct({
 });
 export type ServerProviderSkill = typeof ServerProviderSkill.Type;
 
+export const ServerProviderSkillCatalogTier = Schema.Literals(["core", "verified", "experimental"]);
+export type ServerProviderSkillCatalogTier = typeof ServerProviderSkillCatalogTier.Type;
+
+export const ServerProviderSkillCatalogSection = Schema.Literals(["recommended", "community"]);
+export type ServerProviderSkillCatalogSection = typeof ServerProviderSkillCatalogSection.Type;
+
+export const ServerProviderSkillCatalogSourceKind = Schema.Literals([
+  "cloudflare",
+  "github",
+  "url",
+]);
+export type ServerProviderSkillCatalogSourceKind = typeof ServerProviderSkillCatalogSourceKind.Type;
+
+export const ServerProviderSkillCatalogEntry = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  description: TrimmedNonEmptyString,
+  category: TrimmedNonEmptyString,
+  tier: ServerProviderSkillCatalogTier,
+  section: ServerProviderSkillCatalogSection,
+  owner: Schema.optional(TrimmedNonEmptyString),
+  updated: Schema.optional(TrimmedNonEmptyString),
+  sourceKind: ServerProviderSkillCatalogSourceKind.pipe(
+    Schema.withDecodingDefault(Effect.succeed("cloudflare" as const)),
+  ),
+  sourceUrl: TrimmedNonEmptyString,
+  readmeUrl: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerProviderSkillCatalogEntry = typeof ServerProviderSkillCatalogEntry.Type;
+
+export const ServerProviderSkillCatalogSourceStatus = Schema.Literals([
+  "remote",
+  "bundled-fallback",
+]);
+export type ServerProviderSkillCatalogSourceStatus =
+  typeof ServerProviderSkillCatalogSourceStatus.Type;
+
+export const ServerProviderSkillCatalog = Schema.Struct({
+  version: Schema.Literal(1),
+  generatedAt: IsoDateTime,
+  sourceStatus: ServerProviderSkillCatalogSourceStatus.pipe(
+    Schema.withDecodingDefault(Effect.succeed("remote" as const)),
+  ),
+  entries: Schema.Array(ServerProviderSkillCatalogEntry),
+});
+export type ServerProviderSkillCatalog = typeof ServerProviderSkillCatalog.Type;
+
+export const ServerListProviderSkillCatalogResult = Schema.Struct({
+  catalog: ServerProviderSkillCatalog,
+});
+export type ServerListProviderSkillCatalogResult = typeof ServerListProviderSkillCatalogResult.Type;
+
+export const ServerProviderSkillBundleFile = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  content: Schema.String,
+});
+export type ServerProviderSkillBundleFile = typeof ServerProviderSkillBundleFile.Type;
+
+export const ServerProviderSkillBundle = Schema.Struct({
+  version: Schema.Literal(1),
+  skillId: TrimmedNonEmptyString,
+  files: Schema.Array(ServerProviderSkillBundleFile),
+});
+export type ServerProviderSkillBundle = typeof ServerProviderSkillBundle.Type;
+
 export const ServerRemoveProviderSkillInput = Schema.Struct({
   instanceId: ProviderInstanceId,
   skillPath: TrimmedNonEmptyString,
@@ -105,6 +171,24 @@ export const ServerSetProviderSkillPreferenceInput = Schema.Struct({
 export type ServerSetProviderSkillPreferenceInput =
   typeof ServerSetProviderSkillPreferenceInput.Type;
 
+export const ServerInstallProviderSkillSource = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("catalog"),
+    catalogEntryId: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("url"),
+    url: TrimmedNonEmptyString,
+  }),
+]);
+export type ServerInstallProviderSkillSource = typeof ServerInstallProviderSkillSource.Type;
+
+export const ServerInstallProviderSkillInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  source: ServerInstallProviderSkillSource,
+});
+export type ServerInstallProviderSkillInput = typeof ServerInstallProviderSkillInput.Type;
+
 export class ServerProviderSkillRemovalError extends Schema.TaggedErrorClass<ServerProviderSkillRemovalError>()(
   "ServerProviderSkillRemovalError",
   {
@@ -115,6 +199,22 @@ export class ServerProviderSkillRemovalError extends Schema.TaggedErrorClass<Ser
 
 export class ServerProviderSkillPreferenceError extends Schema.TaggedErrorClass<ServerProviderSkillPreferenceError>()(
   "ServerProviderSkillPreferenceError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
+export class ServerProviderSkillCatalogError extends Schema.TaggedErrorClass<ServerProviderSkillCatalogError>()(
+  "ServerProviderSkillCatalogError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
+export class ServerProviderSkillInstallError extends Schema.TaggedErrorClass<ServerProviderSkillInstallError>()(
+  "ServerProviderSkillInstallError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect()),
@@ -570,6 +670,13 @@ export const ServerProviderUpdatedPayload = Schema.Struct({
   providers: ServerProviders,
 });
 export type ServerProviderUpdatedPayload = typeof ServerProviderUpdatedPayload.Type;
+
+export const ServerInstallProviderSkillResult = Schema.Struct({
+  providers: ServerProviders,
+  skillName: TrimmedNonEmptyString,
+  skillPath: TrimmedNonEmptyString,
+});
+export type ServerInstallProviderSkillResult = typeof ServerInstallProviderSkillResult.Type;
 
 export const ServerProviderUpdateInput = Schema.Struct({
   provider: ProviderDriverKind,

@@ -115,6 +115,8 @@ const rpcClientMock = {
     getConfig: vi.fn(),
     refreshProviders: vi.fn(),
     updateProvider: vi.fn(),
+    listProviderSkillCatalog: vi.fn(),
+    installProviderSkill: vi.fn(),
     removeProviderSkill: vi.fn(),
     setProviderSkillPreference: vi.fn(),
     upsertKeybinding: vi.fn(),
@@ -606,6 +608,52 @@ describe("wsApi", () => {
     expect(rpcClientMock.server.updateProvider).toHaveBeenCalledWith({
       provider: ProviderDriverKind.make("codex"),
     });
+  });
+
+  it("forwards skill catalog requests directly to the RPC client", async () => {
+    const catalogResult = {
+      catalog: {
+        version: 1,
+        generatedAt: "2026-06-19T00:00:00.000Z",
+        sourceStatus: "bundled-fallback",
+        entries: [],
+      },
+    } as const;
+    rpcClientMock.server.listProviderSkillCatalog.mockResolvedValue(catalogResult);
+    const { createLocalApi } = await import("./localApi");
+
+    const api = createLocalApi(rpcClientMock as never);
+
+    await expect(api.server.listProviderSkillCatalog()).resolves.toEqual(catalogResult);
+    expect(rpcClientMock.server.listProviderSkillCatalog).toHaveBeenCalledWith();
+  });
+
+  it("forwards skill installs directly to the RPC client", async () => {
+    const nextProviders: ReadonlyArray<ServerProvider> = [
+      {
+        ...defaultProviders[0]!,
+        checkedAt: "2026-06-19T00:00:00.000Z",
+      },
+    ];
+    const input = {
+      instanceId: ProviderInstanceId.make("opencode"),
+      source: {
+        type: "catalog",
+        catalogEntryId: "tritonai-feedback",
+      },
+    } as const;
+    const result = {
+      providers: nextProviders,
+      skillName: "tritonai-feedback",
+      skillPath: "/Users/test/.agents/skills/tritonai-feedback/SKILL.md",
+    };
+    rpcClientMock.server.installProviderSkill.mockResolvedValue(result);
+    const { createLocalApi } = await import("./localApi");
+
+    const api = createLocalApi(rpcClientMock as never);
+
+    await expect(api.server.installProviderSkill(input)).resolves.toEqual(result);
+    expect(rpcClientMock.server.installProviderSkill).toHaveBeenCalledWith(input);
   });
 
   it("forwards server settings updates directly to the RPC client", async () => {
