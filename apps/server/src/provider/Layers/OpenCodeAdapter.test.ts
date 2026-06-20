@@ -55,6 +55,9 @@ const runtimeMock = {
     startCalls: [] as string[],
     connectReuseLocalServer: [] as Array<boolean | undefined>,
     sessionCreateUrls: [] as string[],
+    sessionGetCalls: [] as string[],
+    sessionGetBarrierTarget: 0,
+    sessionGetBarrierWaiters: [] as Array<() => void>,
     authHeaders: [] as Array<string | null>,
     abortCalls: [] as string[],
     closeCalls: [] as string[],
@@ -69,6 +72,9 @@ const runtimeMock = {
     this.state.startCalls.length = 0;
     this.state.connectReuseLocalServer.length = 0;
     this.state.sessionCreateUrls.length = 0;
+    this.state.sessionGetCalls.length = 0;
+    this.state.sessionGetBarrierTarget = 0;
+    this.state.sessionGetBarrierWaiters.length = 0;
     this.state.authHeaders.length = 0;
     this.state.abortCalls.length = 0;
     this.state.closeCalls.length = 0;
@@ -80,6 +86,28 @@ const runtimeMock = {
     this.state.subscribedEvents = [];
   },
 };
+
+function releaseSessionGetBarrierIfReady() {
+  const target = runtimeMock.state.sessionGetBarrierTarget;
+  if (target <= 0 || runtimeMock.state.sessionGetCalls.length < target) {
+    return;
+  }
+  runtimeMock.state.sessionGetBarrierTarget = 0;
+  for (const resolve of runtimeMock.state.sessionGetBarrierWaiters.splice(0)) {
+    resolve();
+  }
+}
+
+function waitForSessionGetBarrier() {
+  releaseSessionGetBarrierIfReady();
+  if (runtimeMock.state.sessionGetBarrierTarget <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    runtimeMock.state.sessionGetBarrierWaiters.push(resolve);
+    releaseSessionGetBarrierIfReady();
+  });
+}
 
 const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
   startOpenCodeServerProcess: ({ binaryPath }) =>
@@ -132,6 +160,11 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
             serverPassword ? `Basic ${btoa(`opencode:${serverPassword}`)}` : null,
           );
           return { data: { id: `${baseUrl}/session` } };
+        },
+        get: async ({ sessionID }: { sessionID: string }) => {
+          runtimeMock.state.sessionGetCalls.push(sessionID);
+          await waitForSessionGetBarrier();
+          return { data: { id: sessionID } };
         },
         abort: async ({ sessionID }: { sessionID: string }) => {
           runtimeMock.state.abortCalls.push(sessionID);
@@ -289,6 +322,46 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       assert.deepEqual(runtimeMock.state.connectReuseLocalServer, [false]);
       assert.deepEqual(runtimeMock.state.sessionCreateUrls, ["http://127.0.0.1:4301"]);
     }).pipe(Effect.provide(OpenCodeAdapterLocalServerTestLayer)),
+  );
+
+  it.effect("does not abort a resumed OpenCode session when concurrent starts race", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-opencode-concurrent-resume");
+      const resumeCursor = { sessionID: "shared-opencode-session" };
+      runtimeMock.state.sessionGetBarrierTarget = 2;
+
+      const [first, second] = yield* Effect.all(
+        [
+          adapter.startSession({
+            provider: ProviderDriverKind.make("opencode"),
+            threadId,
+            runtimeMode: "full-access",
+            resumeCursor,
+          }),
+          adapter.startSession({
+            provider: ProviderDriverKind.make("opencode"),
+            threadId,
+            runtimeMode: "full-access",
+            resumeCursor,
+          }),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      assert.deepEqual(runtimeMock.state.sessionGetCalls, [
+        "shared-opencode-session",
+        "shared-opencode-session",
+      ]);
+      assert.deepEqual(runtimeMock.state.sessionCreateUrls, []);
+      assert.deepEqual(runtimeMock.state.abortCalls, []);
+      assert.deepEqual(first.resumeCursor, { sessionID: "shared-opencode-session" });
+      assert.deepEqual(second.resumeCursor, { sessionID: "shared-opencode-session" });
+      const sessions = yield* adapter.listSessions();
+      assert.equal(sessions.filter((session) => session.threadId === threadId).length, 1);
+      assert.deepEqual(runtimeMock.state.closeCalls, ["http://127.0.0.1:9999"]);
+      yield* adapter.stopSession(threadId);
+    }),
   );
 
   it.effect("stops a configured-server session without trying to own server lifecycle", () =>
