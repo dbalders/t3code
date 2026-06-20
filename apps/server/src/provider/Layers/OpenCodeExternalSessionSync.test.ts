@@ -66,7 +66,10 @@ function makeSession(input: {
 
 function makeFakeOpenCodeAdapter(input: {
   readonly sessions: ReadonlyArray<OpenCodeExternalSessionSummary>;
-  readonly calls: Array<ReadonlyArray<string>>;
+  readonly calls: Array<{
+    readonly directories: ReadonlyArray<string>;
+    readonly limit: number | undefined;
+  }>;
 }): OpenCodeAdapterShape {
   return {
     provider: OPENCODE_DRIVER,
@@ -78,9 +81,9 @@ function makeFakeOpenCodeAdapter(input: {
     respondToUserInput: unsupported,
     stopSession: unsupported,
     listSessions: () => Effect.succeed([]),
-    listExternalSessions: ({ directories }) =>
+    listExternalSessions: ({ directories, limit }) =>
       Effect.sync(() => {
-        input.calls.push([...directories]);
+        input.calls.push({ directories: [...directories], limit });
         return input.sessions;
       }),
     hasSession: () => Effect.succeed(false),
@@ -108,7 +111,10 @@ function makeFakeProviderInstance(adapter: OpenCodeAdapterShape): ProviderInstan
 }
 
 function makeHarnessLayer(sessions: ReadonlyArray<OpenCodeExternalSessionSummary>) {
-  const calls: Array<ReadonlyArray<string>> = [];
+  const calls: Array<{
+    readonly directories: ReadonlyArray<string>;
+    readonly limit: number | undefined;
+  }> = [];
   const adapter = makeFakeOpenCodeAdapter({ sessions, calls });
   const instance = makeFakeProviderInstance(adapter);
   const registryLayer = Layer.succeed(ProviderInstanceRegistry, {
@@ -265,7 +271,7 @@ describe("OpenCodeExternalSessionSync", () => {
         expect(Option.getOrUndefined(binding)?.resumeCursor).toEqual({
           sessionID: "session-known-root",
         });
-        expect(harness.calls).toEqual([[KNOWN_PROJECT_ROOT]]);
+        expect(harness.calls).toEqual([{ directories: [KNOWN_PROJECT_ROOT], limit: 50 }]);
       }).pipe(Effect.provide(harness.layer));
     },
   );

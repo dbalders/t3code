@@ -124,11 +124,11 @@ export function selectInstallerManagedOpenCodeVersionDirectory(
       Boolean(candidate),
     )
     .toSorted((left, right) => {
-      const versionComparison = compareSemverVersions(left.version, right.version);
-      return versionComparison !== 0 ? versionComparison : left.entry.localeCompare(right.entry);
+      const versionComparison = compareSemverVersions(right.version, left.version);
+      return versionComparison !== 0 ? versionComparison : right.entry.localeCompare(left.entry);
     });
 
-  return candidates.at(-1)?.entry ?? null;
+  return candidates[0]?.entry ?? null;
 }
 
 export function resolveInstallerManagedOpenCodeBinaryPath(input: {
@@ -218,7 +218,10 @@ const findInstallerManagedOpenCodeRuntime = Effect.fn("findInstallerManagedOpenC
       .filter((entry): entry is { readonly entry: string; readonly version: string } =>
         Boolean(entry),
       )
-      .toSorted((left, right) => compareSemverVersions(right.version, left.version));
+      .toSorted((left, right) => {
+        const versionComparison = compareSemverVersions(right.version, left.version);
+        return versionComparison !== 0 ? versionComparison : right.entry.localeCompare(left.entry);
+      });
 
     for (const entry of sortedEntries) {
       const packageDir = path.join(runtimeHome, entry.entry);

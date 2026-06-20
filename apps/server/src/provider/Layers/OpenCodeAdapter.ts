@@ -1141,7 +1141,7 @@ export function makeOpenCodeAdapter(
                   operation: resumeSessionId !== undefined ? "session.get" : "session.create",
                   detail:
                     resumeSessionId !== undefined
-                      ? "OpenCode session.get returned no session payload."
+                      ? `OpenCode session '${resumeSessionId}' was not found or no longer exists.`
                       : "OpenCode session.create returned no session payload.",
                 });
               }

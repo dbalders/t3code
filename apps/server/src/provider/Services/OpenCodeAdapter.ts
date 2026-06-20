@@ -40,7 +40,9 @@ export interface OpenCodeAdapterShape extends ProviderAdapterShape<ProviderAdapt
    *
    * This intentionally does not expose a global OpenCode history scan; callers
    * provide the exact project roots T3 already knows about and apply their own
-   * projection/import policy.
+   * projection/import policy. `limit` is applied per requested directory before
+   * deduplication, so the returned total can exceed `limit` when multiple
+   * directories are scanned.
    */
   readonly listExternalSessions: (input: {
     readonly directories: ReadonlyArray<string>;
