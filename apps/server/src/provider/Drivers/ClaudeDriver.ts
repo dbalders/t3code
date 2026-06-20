@@ -199,6 +199,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         displayName,
         accentColor,
         enabled,
+        environment: processEnv,
         snapshot,
         adapter,
         textGeneration,

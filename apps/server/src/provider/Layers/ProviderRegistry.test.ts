@@ -637,6 +637,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             },
             displayName: undefined,
             enabled: true,
+            environment: {},
             snapshot: {
               maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
                 provider: codexDriver,
@@ -716,6 +717,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             },
             displayName: undefined,
             enabled: true,
+            environment: {},
             snapshot: {
               maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
                 provider: codexDriver,
@@ -892,6 +894,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             },
             displayName: undefined,
             enabled: true,
+            environment: {},
             snapshot: {
               maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
                 provider: cursorDriver,
@@ -986,6 +989,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             },
             displayName: undefined,
             enabled: true,
+            environment: {},
             snapshot: {
               maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
                 provider: codexDriver,
@@ -1075,6 +1079,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             },
             displayName: undefined,
             enabled: true,
+            environment: {},
             snapshot: {
               maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
                 provider: provider.driver,

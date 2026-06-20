@@ -935,11 +935,11 @@ function installSkillBundle(input: {
         );
       }
 
-      yield* registerUcsdOpenCodeSkillPath(skillDirectory).pipe(
-        Effect.mapError((cause) =>
-          installError(`Failed to register '${skillName}' in OpenCode skill config.`, cause),
-        ),
-      );
+      yield* writeSkillBundleFiles({
+        files: bundle.files,
+        skillDirectory,
+      });
+      yield* registerInstalledSkillDirectory({ skillName, skillDirectory });
       return { skillName, skillPath };
     }
 
@@ -948,26 +948,11 @@ function installSkillBundle(input: {
       .pipe(Effect.mapError((cause) => installError(`Failed to create ${skillDirectory}.`, cause)));
 
     yield* Effect.gen(function* () {
-      for (const file of bundle.files) {
-        const normalizedPath = yield* validateBundlePath(file.path);
-        const targetPath = pathService.join(skillDirectory, normalizedPath);
-        yield* fs
-          .makeDirectory(pathService.dirname(targetPath), { recursive: true })
-          .pipe(
-            Effect.mapError((cause) =>
-              installError(`Failed to create directory for ${targetPath}.`, cause),
-            ),
-          );
-        yield* fs
-          .writeFileString(targetPath, file.content)
-          .pipe(Effect.mapError((cause) => installError(`Failed to write ${targetPath}.`, cause)));
-      }
-
-      yield* registerUcsdOpenCodeSkillPath(skillDirectory).pipe(
-        Effect.mapError((cause) =>
-          installError(`Failed to register '${skillName}' in OpenCode skill config.`, cause),
-        ),
-      );
+      yield* writeSkillBundleFiles({
+        files: bundle.files,
+        skillDirectory,
+      });
+      yield* registerInstalledSkillDirectory({ skillName, skillDirectory });
     }).pipe(
       Effect.catch((error) =>
         fs
@@ -978,6 +963,42 @@ function installSkillBundle(input: {
 
     return { skillName, skillPath };
   });
+}
+
+function writeSkillBundleFiles(input: {
+  readonly files: ReadonlyArray<ServerProviderSkillBundleFile>;
+  readonly skillDirectory: string;
+}): Effect.Effect<void, ServerProviderSkillInstallError, FileSystem.FileSystem | Path.Path> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const pathService = yield* Path.Path;
+
+    for (const file of input.files) {
+      const normalizedPath = yield* validateBundlePath(file.path);
+      const targetPath = pathService.join(input.skillDirectory, normalizedPath);
+      yield* fs
+        .makeDirectory(pathService.dirname(targetPath), { recursive: true })
+        .pipe(
+          Effect.mapError((cause) =>
+            installError(`Failed to create directory for ${targetPath}.`, cause),
+          ),
+        );
+      yield* fs
+        .writeFileString(targetPath, file.content)
+        .pipe(Effect.mapError((cause) => installError(`Failed to write ${targetPath}.`, cause)));
+    }
+  });
+}
+
+function registerInstalledSkillDirectory(input: {
+  readonly skillName: string;
+  readonly skillDirectory: string;
+}): Effect.Effect<void, ServerProviderSkillInstallError, FileSystem.FileSystem | Path.Path> {
+  return registerUcsdOpenCodeSkillPath(input.skillDirectory).pipe(
+    Effect.mapError((cause) =>
+      installError(`Failed to register '${input.skillName}' in OpenCode skill config.`, cause),
+    ),
+  );
 }
 
 export function mergeInstalledProviderSkill(input: {

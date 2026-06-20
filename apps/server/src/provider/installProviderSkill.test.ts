@@ -3,6 +3,7 @@ import { assert, it } from "@effect/vitest";
 import {
   ProviderDriverKind,
   ProviderInstanceId,
+  ServerProviderSkillBundle,
   ServerProviderSkillCatalog,
   type ServerProvider,
   type ServerProviderSkill,
@@ -37,6 +38,7 @@ const encodeTestOpenCodeConfig = Schema.encodeSync(TestOpenCodeConfigJson);
 const decodeTestOpenCodeConfig = Schema.decodeUnknownSync(TestOpenCodeConfigJson);
 const encodeMalformedOpenCodeConfig = Schema.encodeSync(MalformedOpenCodeConfigJson);
 const encodeTestSkillCatalog = Schema.encodeSync(fromJsonStringPretty(ServerProviderSkillCatalog));
+const encodeTestSkillBundle = Schema.encodeSync(fromJsonStringPretty(ServerProviderSkillBundle));
 
 const unusedGitLayer = Layer.mock(VcsProcess.VcsProcess)({
   run: () => Effect.die("Git should not be used in this installer test"),
@@ -143,7 +145,7 @@ it.layer(NodeServices.layer)("installProviderSkill", (it) => {
   );
 
   it.effect(
-    "adopts an existing matching catalog skill folder that the provider did not report",
+    "refreshes an existing matching catalog skill folder that the provider did not report",
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
@@ -180,11 +182,71 @@ it.layer(NodeServices.layer)("installProviderSkill", (it) => {
 
         assert.equal(installed.skillName, "tritonai-feedback");
         assert.equal(installed.skillPath, existingPath);
-        assert.equal(yield* fs.readFileString(existingPath), existingContent);
+        assert.notEqual(yield* fs.readFileString(existingPath), existingContent);
+        assert.match(yield* fs.readFileString(existingPath), /# TritonAI Feedback/u);
       }),
   );
 
-  it.effect("registers adopted UCSD catalog skill folders in OpenCode config", () =>
+  it.effect("refreshes an existing linked skill folder with fetched bundle files", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const { root, provider } = yield* installTestSkillRoot();
+      const existingDirectory = path.join(root, "skills", "linked-skill");
+      const existingPath = path.join(existingDirectory, "SKILL.md");
+      const freshSkill = "---\nname: linked-skill\ndescription: Fresh linked skill\n---\n\nFresh.";
+      const bundle = encodeTestSkillBundle({
+        version: 1,
+        skillId: "linked-skill",
+        files: [
+          {
+            path: "SKILL.md",
+            content: freshSkill,
+          },
+          {
+            path: "references/guide.md",
+            content: "fresh guide",
+          },
+        ],
+      });
+
+      yield* fs.makeDirectory(existingDirectory, { recursive: true });
+      yield* fs.writeFileString(
+        existingPath,
+        "---\nname: linked-skill\ndescription: Stale linked skill\n---\n\nStale.",
+      );
+
+      const installed = yield* installProviderSkill({
+        providers: [provider],
+        request: {
+          instanceId: OPENCODE_INSTANCE_ID,
+          source: {
+            type: "url",
+            url: "https://skills.test/linked-skill.json",
+          },
+        },
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            makeHttpLayer(
+              () => new Response(bundle, { headers: { "content-type": "application/json" } }),
+            ),
+            unusedGitLayer,
+          ),
+        ),
+      );
+
+      assert.equal(installed.skillName, "linked-skill");
+      assert.equal(installed.skillPath, existingPath);
+      assert.equal(yield* fs.readFileString(existingPath), freshSkill);
+      assert.equal(
+        yield* fs.readFileString(path.join(existingDirectory, "references", "guide.md")),
+        "fresh guide",
+      );
+    }),
+  );
+
+  it.effect("registers refreshed UCSD catalog skill folders in OpenCode config", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;

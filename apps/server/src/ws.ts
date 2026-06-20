@@ -73,6 +73,7 @@ import {
   observeRpcStreamEffect as instrumentRpcStreamEffect,
 } from "./observability/RpcInstrumentation.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
+import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import {
   removeProviderSkillFolder,
@@ -300,6 +301,7 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
       const previewManager = yield* PreviewManager.PreviewManager;
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry;
+      const providerInstanceRegistry = yield* ProviderInstanceRegistry;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const config = yield* ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents;
@@ -1076,9 +1078,15 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
             WS_METHODS.serverInstallProviderSkill,
             Effect.gen(function* () {
               const providers = yield* providerRegistry.getProviders;
+              const providerInstance = yield* providerInstanceRegistry.getInstance(
+                input.instanceId,
+              );
               const installed = yield* installProviderSkill({
                 providers,
                 request: input,
+                ...(providerInstance?.environment !== undefined
+                  ? { environment: providerInstance.environment }
+                  : {}),
               });
               yield* serverSettings
                 .updateProviderSkillPreference({
