@@ -71,6 +71,7 @@ const fakeOpenCodeAdapter: OpenCodeAdapterShape = {
   respondToUserInput: vi.fn(),
   stopSession: vi.fn(),
   listSessions: vi.fn(),
+  listExternalSessions: vi.fn(),
   hasSession: vi.fn(),
   readThread: vi.fn(),
   rollbackThread: vi.fn(),
