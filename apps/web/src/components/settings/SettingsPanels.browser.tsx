@@ -1073,7 +1073,7 @@ describe("GeneralSettingsPanel observability", () => {
     await expect.element(page.getByText("Enable network access?")).toBeInTheDocument();
     await expect
       .element(
-        page.getByText("TritonAI Code will restart to expose this environment over the network."),
+        page.getByText("TritonAI Harness will restart to expose this environment over the network."),
       )
       .toBeInTheDocument();
     await page.getByRole("button", { name: "Restart and enable", exact: true }).click();

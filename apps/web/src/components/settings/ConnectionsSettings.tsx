@@ -3035,8 +3035,8 @@ export function ConnectionsSettings() {
                 </AlertDialogTitle>
                 <AlertDialogDescription>
                   {pendingDesktopServerExposureMode === "network-accessible"
-                    ? "TritonAI Code will restart to expose this environment over the network."
-                    : "TritonAI Code will restart and limit this environment back to this machine."}
+                    ? "TritonAI Harness will restart to expose this environment over the network."
+                    : "TritonAI Harness will restart and limit this environment back to this machine."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -3080,7 +3080,7 @@ export function ConnectionsSettings() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Disable Tailscale HTTPS?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  TritonAI Code will restart the local backend without Tailscale Serve.
+                  TritonAI Harness will restart the local backend without Tailscale Serve.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -3118,7 +3118,7 @@ export function ConnectionsSettings() {
               <DialogHeader>
                 <DialogTitle>Set up Tailscale HTTPS?</DialogTitle>
                 <DialogDescription>
-                  TritonAI Code will restart the local backend with Tailscale Serve enabled and ask
+                  TritonAI Harness will restart the local backend with Tailscale Serve enabled and ask
                   Tailscale to proxy HTTPS traffic to this backend.
                 </DialogDescription>
               </DialogHeader>

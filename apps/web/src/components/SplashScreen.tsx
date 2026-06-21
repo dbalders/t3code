@@ -3,9 +3,9 @@ export function SplashScreen() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div
         className="flex size-24 items-center justify-center"
-        aria-label="TritonAI Code splash screen"
+        aria-label="TritonAI Harness splash screen"
       >
-        <img alt="TritonAI Code" className="size-16 object-contain" src="/apple-touch-icon.png" />
+        <img alt="TritonAI Harness" className="size-16 object-contain" src="/apple-touch-icon.png" />
       </div>
     </div>
   );

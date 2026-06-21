@@ -81,7 +81,7 @@ export class DesktopEnvironment extends Context.Service<
   DesktopEnvironmentShape
 >()("@t3tools/desktop/app/DesktopEnvironment") {}
 
-const APP_BASE_NAME = "TritonAI Code";
+const APP_BASE_NAME = "TritonAI Harness";
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;

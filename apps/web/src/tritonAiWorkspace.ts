@@ -1,9 +1,10 @@
-export const TRITONAI_FIRST_RUN_PROMPT = "How does TritonAI Code work, and how can it help me?";
+export const TRITONAI_FIRST_RUN_PROMPT =
+  "How does TritonAI Harness work, and how can it help me?";
 export const TRITONAI_FIRST_RUN_WORKSPACE = "~/TritonAI";
 export const TRITONAI_CHATS_WORKSPACE = "~/.agents/ucsd/state/tritonai-code/chats";
 export const TRITONAI_CHATS_PROJECT_TITLE = "Chats";
 
-const TRITONAI_APP_BASE_NAME = "TritonAI Code";
+const TRITONAI_APP_BASE_NAME = "TritonAI Harness";
 
 export function isTritonAiCodeBrand(appBaseName: string): boolean {
   return appBaseName.trim() === TRITONAI_APP_BASE_NAME;

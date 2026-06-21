@@ -40,7 +40,7 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
       headline: "Disabled",
       detail:
         provider.message ??
-        "This provider is installed but disabled for new sessions in TritonAI Code.",
+        "This provider is installed but disabled for new sessions in TritonAI Harness.",
     };
   }
   if (!provider.installed) {
