@@ -418,8 +418,8 @@ export const makePendingOpenCodeProvider = (
             auth: { status: "unknown" },
             message:
               openCodeSettings.serverUrl.trim().length > 0
-                ? "OpenCode is disabled in TritonAI Code settings. A server URL is configured."
-                : "OpenCode is disabled in TritonAI Code settings.",
+                ? "OpenCode is disabled in TritonAI Harness settings. A server URL is configured."
+                : "OpenCode is disabled in TritonAI Harness settings.",
           },
         }),
         openCodeSettings,
@@ -495,8 +495,8 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
           status: "warning",
           auth: { status: "unknown" },
           message: isExternalServer
-            ? "OpenCode is disabled in TritonAI Code settings. A server URL is configured."
-            : "OpenCode is disabled in TritonAI Code settings.",
+            ? "OpenCode is disabled in TritonAI Harness settings. A server URL is configured."
+            : "OpenCode is disabled in TritonAI Harness settings.",
         },
       }),
       openCodeSettings,
@@ -532,7 +532,7 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
           [
             "Unable to determine OpenCode version from `opencode --version` output.",
             commandDetail ? `Output: ${commandDetail}` : null,
-            `TritonAI Code requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
+            `TritonAI Harness requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
           ]
             .filter(Boolean)
             .join(" "),

@@ -536,7 +536,7 @@ export function GeneralSettingsPanel() {
       <SettingsSection title="General">
         <SettingsRow
           title="Theme"
-          description="Choose how TritonAI Code looks across the app."
+          description="Choose how TritonAI Harness looks across the app."
           resetAction={
             theme !== DEFAULT_THEME ? (
               <SettingResetButton label="theme" onClick={() => setTheme(DEFAULT_THEME)} />

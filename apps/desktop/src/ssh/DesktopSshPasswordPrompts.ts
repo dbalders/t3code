@@ -16,7 +16,8 @@ import * as IpcChannels from "../ipc/channels.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 
 const DEFAULT_SSH_PASSWORD_PROMPT_TIMEOUT_MS = 3 * 60 * 1000;
-const WINDOW_UNAVAILABLE_MESSAGE = "TritonAI Code window is not available for SSH authentication.";
+const WINDOW_UNAVAILABLE_MESSAGE =
+  "TritonAI Harness window is not available for SSH authentication.";
 
 type DesktopSshPasswordPromptResolutionInput =
   typeof DesktopSshPasswordPromptResolutionInputSchema.Type;

@@ -1,4 +1,4 @@
-// This file mostly exists because we want dev mode to say "TritonAI Code (Dev)" instead of "electron"
+// This file mostly exists because we want dev mode to say "TritonAI Harness (Dev)" instead of "electron"
 
 import { spawnSync } from "node:child_process";
 import {
@@ -26,7 +26,7 @@ const repoRoot = resolve(desktopDir, "..", "..");
 const devBundleIdSuffix = basename(repoRoot)
   .toLowerCase()
   .replaceAll(/[^a-z0-9]+/g, "");
-export const APP_DISPLAY_NAME = isDevelopment ? "TritonAI Code (Dev)" : "TritonAI Code";
+export const APP_DISPLAY_NAME = isDevelopment ? "TritonAI Harness (Dev)" : "TritonAI Harness";
 export const APP_BUNDLE_ID = isDevelopment
   ? `edu.ucsd.ai.tritonai-code.dev.${devBundleIdSuffix || "local"}`
   : "edu.ucsd.ai.tritonai-code";

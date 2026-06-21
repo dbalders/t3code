@@ -85,7 +85,7 @@ export function buildInitialCursorProviderSnapshot(
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Cursor is disabled in TritonAI Code settings.",
+          message: "Cursor is disabled in TritonAI Harness settings.",
         },
       });
     }
@@ -990,7 +990,7 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Cursor is disabled in TritonAI Code settings.",
+        message: "Cursor is disabled in TritonAI Harness settings.",
       },
     });
   }

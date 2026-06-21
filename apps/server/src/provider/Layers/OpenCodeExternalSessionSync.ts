@@ -37,7 +37,7 @@ import {
 } from "../Services/OpenCodeExternalSessionSync.ts";
 
 const OPENCODE_PROVIDER = ProviderDriverKind.make("opencode");
-const T3_OWNED_SESSION_TITLE_PREFIX = "TritonAI Code ";
+const T3_OWNED_SESSION_TITLE_PREFIXES = ["TritonAI Harness ", "TritonAI Code "] as const;
 const DEFAULT_SYNC_INTERVAL_MS = 60_000;
 const DEFAULT_SESSION_LIST_LIMIT = 200;
 
@@ -109,7 +109,7 @@ export function matchOpenCodeSessionToProject(
 }
 
 export function isT3OwnedOpenCodeSession(session: OpenCodeExternalSessionSummary): boolean {
-  return session.title.startsWith(T3_OWNED_SESSION_TITLE_PREFIX);
+  return T3_OWNED_SESSION_TITLE_PREFIXES.some((prefix) => session.title.startsWith(prefix));
 }
 
 export function externalThreadIdForOpenCodeSession(input: {

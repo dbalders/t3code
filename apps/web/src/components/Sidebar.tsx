@@ -2681,7 +2681,7 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
                 TritonAI
               </span>
               <span className="tritonai-wordmark-badge rounded-full px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] transition-colors">
-                Code
+                Harness
               </span>
             </Link>
           }
