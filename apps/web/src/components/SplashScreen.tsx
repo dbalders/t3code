@@ -5,7 +5,11 @@ export function SplashScreen() {
         className="flex size-24 items-center justify-center"
         aria-label="TritonAI Harness splash screen"
       >
-        <img alt="TritonAI Harness" className="size-16 object-contain" src="/apple-touch-icon.png" />
+        <img
+          alt="TritonAI Harness"
+          className="size-16 object-contain"
+          src="/apple-touch-icon.png"
+        />
       </div>
     </div>
   );

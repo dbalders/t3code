@@ -1,5 +1,4 @@
-export const TRITONAI_FIRST_RUN_PROMPT =
-  "How does TritonAI Harness work, and how can it help me?";
+export const TRITONAI_FIRST_RUN_PROMPT = "How does TritonAI Harness work, and how can it help me?";
 export const TRITONAI_FIRST_RUN_WORKSPACE = "~/TritonAI";
 export const TRITONAI_CHATS_WORKSPACE = "~/.agents/ucsd/state/tritonai-code/chats";
 export const TRITONAI_CHATS_PROJECT_TITLE = "Chats";
