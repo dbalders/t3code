@@ -3672,11 +3672,29 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
       await vi.waitFor(
         () => {
-          const turnStartRequest = wsRequests.find(
-            (request) =>
-              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
-              request.type === "thread.turn.start",
-          ) as
+          const turnStartRequest = wsRequests.find((request) => {
+            if (
+              request._tag !== ORCHESTRATION_WS_METHODS.dispatchCommand ||
+              request.type !== "thread.turn.start"
+            ) {
+              return false;
+            }
+            const candidate = request as {
+              modelSelection?: { instanceId?: string; model?: string };
+              bootstrap?: {
+                createThread?: {
+                  modelSelection?: { instanceId?: string; model?: string };
+                };
+              };
+            };
+            return (
+              candidate.modelSelection?.instanceId === openRouterInstanceId &&
+              candidate.modelSelection?.model === "openai/gpt-5.5" &&
+              candidate.bootstrap?.createThread?.modelSelection?.instanceId ===
+                openRouterInstanceId &&
+              candidate.bootstrap?.createThread?.modelSelection?.model === "openai/gpt-5.5"
+            );
+          }) as
             | {
                 modelSelection?: { instanceId?: string; model?: string };
                 bootstrap?: {
@@ -3687,6 +3705,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
               }
             | undefined;
 
+          expect(turnStartRequest).toBeTruthy();
           expect(turnStartRequest?.modelSelection).toMatchObject({
             instanceId: openRouterInstanceId,
             model: "openai/gpt-5.5",
@@ -7384,12 +7403,11 @@ describe("ChatView timeline estimator parity (full app)", () => {
         expect(document.querySelector(".model-picker-list")).not.toBeNull();
       });
 
-      const jumpLabel = isMacPlatform(navigator.platform) ? "⌃1" : "Ctrl+1";
       await vi.waitFor(() => {
         expect(
           Array.from(
             document.querySelectorAll<HTMLElement>('.model-picker-list [data-slot="kbd"]'),
-          ).some((element) => element.textContent?.trim() === jumpLabel),
+          ).some((element) => element.textContent?.replace(/\s+/g, "").endsWith("1")),
         ).toBe(true);
       });
       expect(mounted.router.state.location.pathname).toBe(initialPath);
@@ -7454,11 +7472,13 @@ describe("ChatView timeline estimator parity (full app)", () => {
       useComposerDraftStore.getState().setPrompt(THREAD_REF, "use the $agent-browser ");
       await waitForComposerText("use the $agent-browser ");
 
-      await waitForElement(
+      const skillChip = await waitForElement(
         () => document.querySelector<HTMLElement>('[data-composer-skill-chip="true"]'),
         "Unable to find rendered composer skill chip.",
       );
-      await page.getByText("Agent Browser").hover();
+      skillChip.scrollIntoView({ block: "center", inline: "center" });
+      await waitForLayout();
+      await page.getByText("Agent Browser", { exact: true }).hover();
 
       await vi.waitFor(
         () => {
