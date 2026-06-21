@@ -224,6 +224,11 @@ describe("OpenCodeExternalSessionSync", () => {
           directory: KNOWN_PROJECT_ROOT,
           title: `TritonAI Harness ${ThreadId.make("existing-t3-thread")}`,
         }),
+        makeSession({
+          sessionId: "session-legacy-t3-owned",
+          directory: KNOWN_PROJECT_ROOT,
+          title: `TritonAI Code ${ThreadId.make("legacy-t3-thread")}`,
+        }),
       ];
       const harness = makeHarnessLayer(sessions);
       return Effect.gen(function* () {
@@ -231,9 +236,9 @@ describe("OpenCodeExternalSessionSync", () => {
         const sync = yield* OpenCodeExternalSessionSync;
         const result = yield* sync.syncOnce;
         expect(result).toMatchObject({
-          discoveredCount: 4,
+          discoveredCount: 5,
           importedCount: 2,
-          skippedCount: 2,
+          skippedCount: 3,
           failedInstanceCount: 0,
         });
 
