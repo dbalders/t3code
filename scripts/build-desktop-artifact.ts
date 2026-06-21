@@ -753,7 +753,7 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const buildConfig: Record<string, unknown> = {
     appId: TRITONAI_DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    artifactName: "TritonAI-Harness-${version}-${arch}.${ext}",
     asarUnpack: [...DESKTOP_ASAR_UNPACK],
     directories: {
       buildResources: "apps/desktop/resources",
