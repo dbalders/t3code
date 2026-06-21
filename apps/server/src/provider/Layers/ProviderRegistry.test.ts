@@ -609,6 +609,38 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
         ]);
       });
 
+      it("does not preserve missing user skills without a recent install record", () => {
+        const installedSkill = {
+          name: "ucsd-branding",
+          path: "/tmp/t3code-skills/ucsd-branding/SKILL.md",
+          enabled: true,
+          scope: "user",
+        } as const;
+        const previousProvider = {
+          instanceId: ProviderInstanceId.make("opencode"),
+          driver: ProviderDriverKind.make("opencode"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          version: "1.0.0",
+          models: [],
+          slashCommands: [],
+          skills: [installedSkill],
+        } as const satisfies ServerProvider;
+        const refreshedProvider = {
+          ...previousProvider,
+          checkedAt: "2026-04-14T00:01:00.000Z",
+          skills: [],
+        } satisfies ServerProvider;
+
+        assert.deepStrictEqual(
+          mergeProviderSnapshot(previousProvider, refreshedProvider).skills,
+          [],
+        );
+      });
+
       it.effect("does not run provider probes during layer construction", () =>
         Effect.gen(function* () {
           const codexDriver = ProviderDriverKind.make("codex");
@@ -781,6 +813,57 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
               ["disabled-skill", "ucsd-branding"],
             );
             assert.deepStrictEqual(yield* registry.getProviders, updatedProviders);
+
+            const staleRefreshProviders = yield* registry.refreshInstance(codexInstanceId);
+            assert.deepStrictEqual(staleRefreshProviders[0]?.skills, [
+              {
+                name: "disabled-skill",
+                path: disabledSkillPath,
+                enabled: true,
+                scope: "user",
+              },
+              {
+                name: "ucsd-branding",
+                path: installedSkillPath,
+                enabled: true,
+                scope: "user",
+              },
+            ]);
+
+            const secondStaleRefreshProviders = yield* registry.refreshInstance(codexInstanceId);
+            assert.deepStrictEqual(secondStaleRefreshProviders[0]?.skills, [
+              {
+                name: "disabled-skill",
+                path: disabledSkillPath,
+                enabled: true,
+                scope: "user",
+              },
+              {
+                name: "ucsd-branding",
+                path: installedSkillPath,
+                enabled: true,
+                scope: "user",
+              },
+            ]);
+
+            const removedProviders = yield* registry.recordRemovedProviderSkill({
+              instanceId: codexInstanceId,
+              skillPath: installedSkillPath,
+            });
+            assert.deepStrictEqual(
+              removedProviders[0]?.skills.map((skill) => skill.name),
+              ["disabled-skill"],
+            );
+            assert.deepStrictEqual(yield* registry.getProviders, removedProviders);
+
+            const removedDisabledProviders = yield* registry.recordRemovedProviderSkill({
+              instanceId: codexInstanceId,
+              skillPath: disabledSkillPath,
+            });
+            assert.deepStrictEqual(removedDisabledProviders[0]?.skills, []);
+
+            const staleRemovalRefreshProviders = yield* registry.refreshInstance(codexInstanceId);
+            assert.deepStrictEqual(staleRemovalRefreshProviders[0]?.skills, []);
           }).pipe(Effect.provide(runtimeServices));
         }),
       );

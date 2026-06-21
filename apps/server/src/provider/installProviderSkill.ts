@@ -935,11 +935,11 @@ function installSkillBundle(input: {
         );
       }
 
-      yield* writeSkillBundleFiles({
+      yield* refreshExistingSkillBundleFiles({
         files: bundle.files,
+        skillName,
         skillDirectory,
       });
-      yield* registerInstalledSkillDirectory({ skillName, skillDirectory });
       return { skillName, skillPath };
     }
 
@@ -988,6 +988,67 @@ function writeSkillBundleFiles(input: {
         .pipe(Effect.mapError((cause) => installError(`Failed to write ${targetPath}.`, cause)));
     }
   });
+}
+
+function refreshExistingSkillBundleFiles(input: {
+  readonly files: ReadonlyArray<ServerProviderSkillBundleFile>;
+  readonly skillName: string;
+  readonly skillDirectory: string;
+}): Effect.Effect<void, ServerProviderSkillInstallError, FileSystem.FileSystem | Path.Path> {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const pathService = yield* Path.Path;
+      const parentDirectory = pathService.dirname(input.skillDirectory);
+      const backupRoot = yield* fs
+        .makeTempDirectoryScoped({
+          directory: parentDirectory,
+          prefix: `${pathService.basename(input.skillDirectory)}.backup.`,
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            installError(`Failed to prepare backup for ${input.skillDirectory}.`, cause),
+          ),
+        );
+      const backupDirectory = pathService.join(backupRoot, "skill");
+      yield* fs
+        .copy(input.skillDirectory, backupDirectory)
+        .pipe(
+          Effect.mapError((cause) =>
+            installError(`Failed to back up ${input.skillDirectory}.`, cause),
+          ),
+        );
+
+      yield* Effect.gen(function* () {
+        yield* fs
+          .remove(input.skillDirectory, { recursive: true, force: true })
+          .pipe(
+            Effect.mapError((cause) =>
+              installError(`Failed to clear ${input.skillDirectory}.`, cause),
+            ),
+          );
+        yield* writeSkillBundleFiles({
+          files: input.files,
+          skillDirectory: input.skillDirectory,
+        });
+        yield* registerInstalledSkillDirectory({
+          skillName: input.skillName,
+          skillDirectory: input.skillDirectory,
+        });
+      }).pipe(
+        Effect.catch((error) =>
+          fs
+            .remove(input.skillDirectory, { recursive: true, force: true })
+            .pipe(
+              Effect.ignore,
+              Effect.andThen(fs.copy(backupDirectory, input.skillDirectory, { overwrite: true })),
+              Effect.ignore,
+              Effect.andThen(Effect.fail(error)),
+            ),
+        ),
+      );
+    }),
+  );
 }
 
 function registerInstalledSkillDirectory(input: {

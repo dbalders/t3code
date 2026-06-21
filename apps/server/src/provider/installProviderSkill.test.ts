@@ -215,6 +215,8 @@ it.layer(NodeServices.layer)("installProviderSkill", (it) => {
         existingPath,
         "---\nname: linked-skill\ndescription: Stale linked skill\n---\n\nStale.",
       );
+      yield* fs.makeDirectory(path.join(existingDirectory, "references"), { recursive: true });
+      yield* fs.writeFileString(path.join(existingDirectory, "references", "stale.md"), "stale");
 
       const installed = yield* installProviderSkill({
         providers: [provider],
@@ -243,6 +245,7 @@ it.layer(NodeServices.layer)("installProviderSkill", (it) => {
         yield* fs.readFileString(path.join(existingDirectory, "references", "guide.md")),
         "fresh guide",
       );
+      assert.equal(yield* fs.exists(path.join(existingDirectory, "references", "stale.md")), false);
     }),
   );
 
@@ -307,6 +310,76 @@ it.layer(NodeServices.layer)("installProviderSkill", (it) => {
       const config = decodeTestOpenCodeConfig(yield* fs.readFileString(configPath));
       assert.equal(installed.skillPath, adoptedPath);
       assert.deepStrictEqual(config.skills.paths, [existingDirectory, adoptedDirectory]);
+    }),
+  );
+
+  it.effect("restores an existing UCSD skill folder when refresh registration fails", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3code-install-provider-skill-rollback-",
+      });
+      const ucsdRoot = path.join(root, ".agents", "ucsd");
+      const existingDirectory = path.join(ucsdRoot, "skills", "linked-skill");
+      const existingPath = path.join(existingDirectory, "SKILL.md");
+      const configPath = path.join(ucsdRoot, "config", "opencode", "opencode.json");
+      const existingContent =
+        "---\nname: linked-skill\ndescription: Existing linked skill\n---\n\nKeep this.";
+      const bundle = encodeTestSkillBundle({
+        version: 1,
+        skillId: "linked-skill",
+        files: [
+          {
+            path: "SKILL.md",
+            content: "---\nname: linked-skill\ndescription: Fresh linked skill\n---\n\nFresh.",
+          },
+          {
+            path: "references/fresh.md",
+            content: "fresh reference",
+          },
+        ],
+      });
+
+      yield* fs.makeDirectory(existingDirectory, { recursive: true });
+      yield* fs.writeFileString(existingPath, existingContent);
+      yield* fs.makeDirectory(path.dirname(configPath), { recursive: true });
+      yield* fs.writeFileString(
+        configPath,
+        encodeMalformedOpenCodeConfig({ skills: { paths: "not-array" } }),
+      );
+
+      const error = yield* installProviderSkill({
+        providers: [
+          makeProvider({
+            name: "linked-skill",
+            path: existingPath,
+            enabled: true,
+            scope: "user",
+          }),
+        ],
+        request: {
+          instanceId: OPENCODE_INSTANCE_ID,
+          source: {
+            type: "url",
+            url: "https://skills.test/linked-skill.json",
+          },
+        },
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            makeHttpLayer(
+              () => new Response(bundle, { headers: { "content-type": "application/json" } }),
+            ),
+            unusedGitLayer,
+          ),
+        ),
+        Effect.flip,
+      );
+
+      assert.match(error.message, /OpenCode skill config/iu);
+      assert.equal(yield* fs.readFileString(existingPath), existingContent);
+      assert.equal(yield* fs.exists(path.join(existingDirectory, "references", "fresh.md")), false);
     }),
   );
 

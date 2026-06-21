@@ -1138,6 +1138,10 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
                     }),
                   ),
                 );
+              yield* providerRegistry.recordRemovedProviderSkill({
+                instanceId: input.instanceId,
+                skillPath: input.skillPath,
+              });
               const refreshedProviders = yield* providerRegistry.refreshInstance(input.instanceId);
               return { providers: refreshedProviders };
             }),
