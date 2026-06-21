@@ -180,6 +180,16 @@ export interface WsRpcClient {
       typeof WS_METHODS.serverGetProcessResourceHistory
     >;
     readonly signalProcess: RpcUnaryMethod<typeof WS_METHODS.serverSignalProcess>;
+    readonly scheduledTasks: {
+      readonly list: RpcUnaryNoArgMethod<typeof WS_METHODS.scheduledTasksList>;
+      readonly create: RpcUnaryMethod<typeof WS_METHODS.scheduledTasksCreate>;
+      readonly update: RpcUnaryMethod<typeof WS_METHODS.scheduledTasksUpdate>;
+      readonly delete: RpcUnaryMethod<typeof WS_METHODS.scheduledTasksDelete>;
+      readonly pause: RpcUnaryMethod<typeof WS_METHODS.scheduledTasksPause>;
+      readonly resume: RpcUnaryMethod<typeof WS_METHODS.scheduledTasksResume>;
+      readonly runNow: RpcUnaryMethod<typeof WS_METHODS.scheduledTasksRunNow>;
+      readonly listRuns: RpcUnaryMethod<typeof WS_METHODS.scheduledTaskRunsList>;
+    };
   };
   readonly cloud: {
     readonly getRelayClientStatus: RpcUnaryNoArgMethod<typeof WS_METHODS.cloudGetRelayClientStatus>;
@@ -407,6 +417,23 @@ export function createWsRpcClient(
         transport.request((client) => client[WS_METHODS.serverGetProcessResourceHistory](input)),
       signalProcess: (input) =>
         transport.request((client) => client[WS_METHODS.serverSignalProcess](input)),
+      scheduledTasks: {
+        list: () => transport.request((client) => client[WS_METHODS.scheduledTasksList]({})),
+        create: (input) =>
+          transport.request((client) => client[WS_METHODS.scheduledTasksCreate](input)),
+        update: (input) =>
+          transport.request((client) => client[WS_METHODS.scheduledTasksUpdate](input)),
+        delete: (input) =>
+          transport.request((client) => client[WS_METHODS.scheduledTasksDelete](input)),
+        pause: (input) =>
+          transport.request((client) => client[WS_METHODS.scheduledTasksPause](input)),
+        resume: (input) =>
+          transport.request((client) => client[WS_METHODS.scheduledTasksResume](input)),
+        runNow: (input) =>
+          transport.request((client) => client[WS_METHODS.scheduledTasksRunNow](input)),
+        listRuns: (input) =>
+          transport.request((client) => client[WS_METHODS.scheduledTaskRunsList](input)),
+      },
     },
     cloud: {
       getRelayClientStatus: () =>

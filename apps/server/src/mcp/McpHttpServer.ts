@@ -13,6 +13,8 @@ import packageJson from "../../package.json" with { type: "json" };
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
+import { AutomationToolkitHandlersLive } from "./toolkits/automations/handlers.ts";
+import { AutomationToolkit } from "./toolkits/automations/tools.ts";
 import {
   PreviewSnapshotToolkitHandlersLive,
   PreviewStandardToolkitHandlersLive,
@@ -179,13 +181,22 @@ export const PreviewToolkitRegistrationLive = Layer.mergeAll(
   PreviewSnapshotRegistrationLive,
 );
 
+const AutomationToolkitRegistrationLive = McpServer.toolkit(AutomationToolkit).pipe(
+  Layer.provide(AutomationToolkitHandlersLive),
+);
+
+export const ToolkitRegistrationLive = Layer.mergeAll(
+  PreviewToolkitRegistrationLive,
+  AutomationToolkitRegistrationLive,
+);
+
 const McpTransportLive = McpServer.layerHttp({
   name: "TritonAI Harness",
   version: packageJson.version,
   path: "/mcp",
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
 
-export const layer = PreviewToolkitRegistrationLive.pipe(
+export const layer = ToolkitRegistrationLive.pipe(
   Layer.provideMerge(McpTransportLive),
   Layer.provide(PreviewAutomationBroker.layer),
 );

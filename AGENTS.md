@@ -6,6 +6,10 @@
   - If changing native mobile code, `vp run lint:mobile` must also pass.
 - Use `vp test` for the built-in Vite+ test command and `vp run test` when you specifically need the `test` package script.
 
+## Pull Requests
+
+- Open every pull request for this repository against the `tritongpt` branch, not `main`, unless the user explicitly asks for a different base branch.
+
 ## Project Snapshot
 
 T3 Code is a minimal web GUI for using coding agents like Codex and Claude.

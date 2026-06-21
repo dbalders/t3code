@@ -4,6 +4,7 @@ import {
   ArrowLeftIcon,
   BookOpenIcon,
   BotIcon,
+  Clock3Icon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -30,6 +31,7 @@ export type SettingsSectionPath =
   | "/settings/providers"
   | "/settings/plugins"
   | "/settings/skills"
+  | "/settings/automations"
   | "/settings/source-control"
   | "/settings/connections"
   | "/settings/archived";
@@ -44,6 +46,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: "Providers", to: "/settings/providers", icon: BotIcon },
   { label: "Plugins", to: "/settings/plugins", icon: PuzzleIcon },
   { label: "Skills", to: "/settings/skills", icon: BookOpenIcon },
+  { label: "Automations", to: "/settings/automations", icon: Clock3Icon },
   { label: "Source Control", to: "/settings/source-control", icon: GitBranchIcon },
   { label: "Connections", to: "/settings/connections", icon: Link2Icon },
   { label: "Archive", to: "/settings/archived", icon: ArchiveIcon },

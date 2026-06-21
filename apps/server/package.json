@@ -31,7 +31,8 @@
     "@opencode-ai/sdk": "^1.17.8",
     "@pierre/diffs": "catalog:",
     "effect": "catalog:",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "rrule-es": "1.0.0"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",

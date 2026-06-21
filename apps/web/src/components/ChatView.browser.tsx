@@ -7327,6 +7327,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
               ...nextFixture.serverConfig.providers[0]!,
               driver: ProviderDriverKind.make("opencode"),
               instanceId: ProviderInstanceId.make("opencode"),
+              displayName: "OpenCode",
               models: [
                 {
                   slug: "gpt-5.1-codex-max",
@@ -7432,6 +7433,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
               ...provider,
               driver: ProviderDriverKind.make("opencode"),
               instanceId: ProviderInstanceId.make("opencode"),
+              displayName: "OpenCode",
               skills: [
                 {
                   name: "agent-browser",

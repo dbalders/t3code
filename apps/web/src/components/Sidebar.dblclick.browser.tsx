@@ -108,6 +108,7 @@ function Harness() {
           isActive={false}
           jumpLabel={null}
           appSettingsConfirmThreadArchive={false}
+          automationCount={0}
           renamingThreadKey={renamingThreadKey}
           renamingTitle={renamingTitle}
           setRenamingTitle={setRenamingTitle}
