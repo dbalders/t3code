@@ -609,6 +609,38 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
         ]);
       });
 
+      it("does not preserve missing user skills without a recent install record", () => {
+        const installedSkill = {
+          name: "ucsd-branding",
+          path: "/tmp/t3code-skills/ucsd-branding/SKILL.md",
+          enabled: true,
+          scope: "user",
+        } as const;
+        const previousProvider = {
+          instanceId: ProviderInstanceId.make("opencode"),
+          driver: ProviderDriverKind.make("opencode"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-04-14T00:00:00.000Z",
+          version: "1.0.0",
+          models: [],
+          slashCommands: [],
+          skills: [installedSkill],
+        } as const satisfies ServerProvider;
+        const refreshedProvider = {
+          ...previousProvider,
+          checkedAt: "2026-04-14T00:01:00.000Z",
+          skills: [],
+        } satisfies ServerProvider;
+
+        assert.deepStrictEqual(
+          mergeProviderSnapshot(previousProvider, refreshedProvider).skills,
+          [],
+        );
+      });
+
       it.effect("does not run provider probes during layer construction", () =>
         Effect.gen(function* () {
           const codexDriver = ProviderDriverKind.make("codex");
@@ -637,6 +669,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             },
             displayName: undefined,
             enabled: true,
+            environment: {},
             snapshot: {
               maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
                 provider: codexDriver,
@@ -676,6 +709,161 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             const registry = yield* ProviderRegistry;
             assert.deepStrictEqual(yield* registry.getProviders, [initialProvider]);
             assert.strictEqual(yield* Ref.get(refreshCalls), 0);
+          }).pipe(Effect.provide(runtimeServices));
+        }),
+      );
+
+      it.effect("records installed provider skills in the cached snapshot", () =>
+        Effect.gen(function* () {
+          const codexInstanceId = ProviderInstanceId.make("codex");
+          const codexDriver = ProviderDriverKind.make("codex");
+          const staleDisabledSkillPath = "/tmp/t3code-skills/stale-disabled-skill/SKILL.md";
+          const disabledSkillPath = "/tmp/t3code-skills/disabled-skill/SKILL.md";
+          const installedSkillPath = "/tmp/t3code-skills/ucsd-branding/SKILL.md";
+          const initialProvider = {
+            instanceId: codexInstanceId,
+            driver: codexDriver,
+            status: "ready",
+            enabled: true,
+            installed: true,
+            auth: { status: "authenticated" },
+            checkedAt: "2026-04-14T00:00:00.000Z",
+            version: "1.0.0",
+            models: [],
+            slashCommands: [],
+            skills: [
+              {
+                name: "disabled-skill",
+                path: staleDisabledSkillPath,
+                enabled: false,
+                scope: "user",
+              },
+            ],
+          } satisfies ServerProvider;
+          const instance = {
+            instanceId: codexInstanceId,
+            driverKind: codexDriver,
+            continuationIdentity: {
+              driverKind: codexDriver,
+              continuationKey: "codex:instance:codex",
+            },
+            displayName: undefined,
+            enabled: true,
+            environment: {},
+            snapshot: {
+              maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
+                provider: codexDriver,
+                packageName: null,
+              }),
+              getSnapshot: Effect.succeed(initialProvider),
+              refresh: Effect.succeed(initialProvider),
+              streamChanges: Stream.empty,
+            },
+            adapter: {} as ProviderInstance["adapter"],
+            textGeneration: {} as ProviderInstance["textGeneration"],
+          } satisfies ProviderInstance;
+          const instanceRegistryLayer = Layer.succeed(ProviderInstanceRegistry, {
+            getInstance: (instanceId) =>
+              Effect.succeed(instanceId === codexInstanceId ? instance : undefined),
+            listInstances: Effect.succeed([instance]),
+            listUnavailable: Effect.succeed([]),
+            streamChanges: Stream.empty,
+            subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), (pubsub) =>
+              PubSub.subscribe(pubsub),
+            ),
+          });
+          const scope = yield* Scope.make();
+          yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
+          const runtimeServices = yield* Layer.build(
+            ProviderRegistryLive.pipe(
+              Layer.provideMerge(instanceRegistryLayer),
+              Layer.provideMerge(
+                ServerConfig.layerTest(process.cwd(), {
+                  prefix: "t3-provider-registry-skill-install-",
+                }),
+              ),
+              Layer.provideMerge(NodeServices.layer),
+            ),
+          ).pipe(Scope.provide(scope));
+
+          yield* Effect.gen(function* () {
+            const registry = yield* ProviderRegistry;
+
+            const reenabledProviders = yield* registry.recordInstalledProviderSkill({
+              instanceId: codexInstanceId,
+              skillName: "disabled-skill",
+              skillPath: disabledSkillPath,
+            });
+            assert.deepStrictEqual(reenabledProviders[0]?.skills, [
+              {
+                name: "disabled-skill",
+                path: disabledSkillPath,
+                enabled: true,
+                scope: "user",
+              },
+            ]);
+
+            const updatedProviders = yield* registry.recordInstalledProviderSkill({
+              instanceId: codexInstanceId,
+              skillName: "ucsd-branding",
+              skillPath: installedSkillPath,
+            });
+            assert.deepStrictEqual(
+              updatedProviders[0]?.skills.map((skill) => skill.name),
+              ["disabled-skill", "ucsd-branding"],
+            );
+            assert.deepStrictEqual(yield* registry.getProviders, updatedProviders);
+
+            const staleRefreshProviders = yield* registry.refreshInstance(codexInstanceId);
+            assert.deepStrictEqual(staleRefreshProviders[0]?.skills, [
+              {
+                name: "disabled-skill",
+                path: disabledSkillPath,
+                enabled: true,
+                scope: "user",
+              },
+              {
+                name: "ucsd-branding",
+                path: installedSkillPath,
+                enabled: true,
+                scope: "user",
+              },
+            ]);
+
+            const secondStaleRefreshProviders = yield* registry.refreshInstance(codexInstanceId);
+            assert.deepStrictEqual(secondStaleRefreshProviders[0]?.skills, [
+              {
+                name: "disabled-skill",
+                path: disabledSkillPath,
+                enabled: true,
+                scope: "user",
+              },
+              {
+                name: "ucsd-branding",
+                path: installedSkillPath,
+                enabled: true,
+                scope: "user",
+              },
+            ]);
+
+            const removedProviders = yield* registry.recordRemovedProviderSkill({
+              instanceId: codexInstanceId,
+              skillPath: installedSkillPath,
+            });
+            assert.deepStrictEqual(
+              removedProviders[0]?.skills.map((skill) => skill.name),
+              ["disabled-skill"],
+            );
+            assert.deepStrictEqual(yield* registry.getProviders, removedProviders);
+
+            const removedDisabledProviders = yield* registry.recordRemovedProviderSkill({
+              instanceId: codexInstanceId,
+              skillPath: disabledSkillPath,
+            });
+            assert.deepStrictEqual(removedDisabledProviders[0]?.skills, []);
+
+            const staleRemovalRefreshProviders = yield* registry.refreshInstance(codexInstanceId);
+            assert.deepStrictEqual(staleRemovalRefreshProviders[0]?.skills, []);
           }).pipe(Effect.provide(runtimeServices));
         }),
       );
@@ -789,6 +977,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             },
             displayName: undefined,
             enabled: true,
+            environment: {},
             snapshot: {
               maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
                 provider: cursorDriver,
@@ -883,6 +1072,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             },
             displayName: undefined,
             enabled: true,
+            environment: {},
             snapshot: {
               maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
                 provider: codexDriver,
@@ -972,6 +1162,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             },
             displayName: undefined,
             enabled: true,
+            environment: {},
             snapshot: {
               maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
                 provider: provider.driver,

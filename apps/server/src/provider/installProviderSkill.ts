@@ -20,6 +20,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
+import * as NodeOS from "node:os";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import {
@@ -768,7 +769,8 @@ function providerSkillsDirectoryRank(root: string): number {
 function resolveProviderSkillsDirectory(input: {
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly instanceId: ProviderInstanceId;
-}): Effect.Effect<string, ServerProviderSkillInstallError, Path.Path> {
+  readonly environment?: NodeJS.ProcessEnv;
+}): Effect.Effect<string, ServerProviderSkillInstallError, FileSystem.FileSystem | Path.Path> {
   return Effect.gen(function* () {
     const pathService = yield* Path.Path;
     const provider = input.providers.find((candidate) => candidate.instanceId === input.instanceId);
@@ -799,11 +801,83 @@ function resolveProviderSkillsDirectory(input: {
     );
     const selected = candidates[0];
     if (!selected) {
+      const defaultDirectory = yield* resolveDefaultOpenCodeSkillsDirectory(
+        input.environment !== undefined ? { environment: input.environment } : {},
+      );
+      if (defaultDirectory) {
+        return defaultDirectory;
+      }
       return yield* installError(
-        "No provider-reported skills directory is available. Install or enable one OpenCode skill first so TritonAI Code can pick the target folder.",
+        "No provider-reported skills directory is available, and no UCSD OpenCode config was found to select a default skills folder.",
       );
     }
     return selected;
+  });
+}
+
+function resolveUcsdConfigSkillsDirectory(
+  configPath: string,
+): Effect.Effect<string | null, never, Path.Path> {
+  return Effect.gen(function* () {
+    const pathService = yield* Path.Path;
+    const normalized = pathService.resolve(configPath);
+    const opencodeDirectory = pathService.dirname(normalized);
+    const configDirectory = pathService.dirname(opencodeDirectory);
+    const ucsdDirectory = pathService.dirname(configDirectory);
+    if (
+      pathService.basename(normalized) !== "opencode.json" ||
+      pathService.basename(opencodeDirectory) !== "opencode" ||
+      pathService.basename(configDirectory) !== "config" ||
+      pathService.basename(ucsdDirectory) !== "ucsd"
+    ) {
+      return null;
+    }
+    return pathService.join(ucsdDirectory, "skills");
+  });
+}
+
+function resolveDefaultOpenCodeSkillsDirectory(input: {
+  readonly environment?: NodeJS.ProcessEnv;
+}): Effect.Effect<
+  string | null,
+  ServerProviderSkillInstallError,
+  FileSystem.FileSystem | Path.Path
+> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const pathService = yield* Path.Path;
+    const environment = input.environment ?? process.env;
+
+    const configuredPath = environment.OPENCODE_CONFIG?.trim();
+    if (configuredPath) {
+      const configPath = pathService.resolve(configuredPath);
+      const skillsDirectory = yield* resolveUcsdConfigSkillsDirectory(configPath);
+      if (!skillsDirectory) {
+        return yield* installError(
+          `OPENCODE_CONFIG must point to a UCSD OpenCode config at 'ucsd/config/opencode/opencode.json'. Received ${configPath}.`,
+        );
+      }
+
+      const exists = yield* fs
+        .exists(configPath)
+        .pipe(Effect.mapError((cause) => installError(`Failed to inspect ${configPath}.`, cause)));
+      if (!exists) {
+        return yield* installError(`Configured OpenCode config was not found at ${configPath}.`);
+      }
+      return skillsDirectory;
+    }
+
+    const home = environment.HOME?.trim() || NodeOS.homedir();
+    if (!home) {
+      return null;
+    }
+
+    const ucsdDirectory = pathService.join(home, ".agents", "ucsd");
+    const configPath = pathService.join(ucsdDirectory, "config", "opencode", "opencode.json");
+    const exists = yield* fs
+      .exists(configPath)
+      .pipe(Effect.mapError((cause) => installError(`Failed to inspect ${configPath}.`, cause)));
+    return exists ? pathService.join(ucsdDirectory, "skills") : null;
   });
 }
 
@@ -811,6 +885,7 @@ function installSkillBundle(input: {
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly instanceId: ProviderInstanceId;
   readonly bundle: ServerProviderSkillBundleData;
+  readonly environment?: NodeJS.ProcessEnv;
 }): Effect.Effect<
   { readonly skillName: string; readonly skillPath: string },
   ServerProviderSkillInstallError,
@@ -830,6 +905,7 @@ function installSkillBundle(input: {
     const skillsDirectory = yield* resolveProviderSkillsDirectory({
       providers: input.providers,
       instanceId: input.instanceId,
+      ...(input.environment !== undefined ? { environment: input.environment } : {}),
     });
     const skillDirectory = pathService.join(skillsDirectory, skillName);
     const skillPath = pathService.join(skillDirectory, "SKILL.md");
@@ -840,9 +916,31 @@ function installSkillBundle(input: {
         Effect.mapError((cause) => installError(`Failed to inspect ${skillDirectory}.`, cause)),
       );
     if (skillDirectoryExists) {
-      return yield* installError(
-        `Skill '${skillName}' is already installed at ${skillDirectory}. Remove it before reinstalling.`,
-      );
+      const existingEntrypoint = yield* fs
+        .exists(skillPath)
+        .pipe(Effect.mapError((cause) => installError(`Failed to inspect ${skillPath}.`, cause)));
+      if (!existingEntrypoint) {
+        return yield* installError(
+          `Skill '${skillName}' cannot be installed because ${skillDirectory} already exists without a SKILL.md file.`,
+        );
+      }
+
+      const existingContent = yield* fs
+        .readFileString(skillPath)
+        .pipe(Effect.mapError((cause) => installError(`Failed to read ${skillPath}.`, cause)));
+      const existingFrontmatter = yield* extractFrontmatter(existingContent);
+      if (existingFrontmatter.name !== skillName) {
+        return yield* installError(
+          `Skill '${skillName}' cannot be installed because ${skillDirectory} already contains skill '${existingFrontmatter.name}'.`,
+        );
+      }
+
+      yield* refreshExistingSkillBundleFiles({
+        files: bundle.files,
+        skillName,
+        skillDirectory,
+      });
+      return { skillName, skillPath };
     }
 
     yield* fs
@@ -850,26 +948,11 @@ function installSkillBundle(input: {
       .pipe(Effect.mapError((cause) => installError(`Failed to create ${skillDirectory}.`, cause)));
 
     yield* Effect.gen(function* () {
-      for (const file of bundle.files) {
-        const normalizedPath = yield* validateBundlePath(file.path);
-        const targetPath = pathService.join(skillDirectory, normalizedPath);
-        yield* fs
-          .makeDirectory(pathService.dirname(targetPath), { recursive: true })
-          .pipe(
-            Effect.mapError((cause) =>
-              installError(`Failed to create directory for ${targetPath}.`, cause),
-            ),
-          );
-        yield* fs
-          .writeFileString(targetPath, file.content)
-          .pipe(Effect.mapError((cause) => installError(`Failed to write ${targetPath}.`, cause)));
-      }
-
-      yield* registerUcsdOpenCodeSkillPath(skillDirectory).pipe(
-        Effect.mapError((cause) =>
-          installError(`Failed to register '${skillName}' in OpenCode skill config.`, cause),
-        ),
-      );
+      yield* writeSkillBundleFiles({
+        files: bundle.files,
+        skillDirectory,
+      });
+      yield* registerInstalledSkillDirectory({ skillName, skillDirectory });
     }).pipe(
       Effect.catch((error) =>
         fs
@@ -880,6 +963,103 @@ function installSkillBundle(input: {
 
     return { skillName, skillPath };
   });
+}
+
+function writeSkillBundleFiles(input: {
+  readonly files: ReadonlyArray<ServerProviderSkillBundleFile>;
+  readonly skillDirectory: string;
+}): Effect.Effect<void, ServerProviderSkillInstallError, FileSystem.FileSystem | Path.Path> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const pathService = yield* Path.Path;
+
+    for (const file of input.files) {
+      const normalizedPath = yield* validateBundlePath(file.path);
+      const targetPath = pathService.join(input.skillDirectory, normalizedPath);
+      yield* fs
+        .makeDirectory(pathService.dirname(targetPath), { recursive: true })
+        .pipe(
+          Effect.mapError((cause) =>
+            installError(`Failed to create directory for ${targetPath}.`, cause),
+          ),
+        );
+      yield* fs
+        .writeFileString(targetPath, file.content)
+        .pipe(Effect.mapError((cause) => installError(`Failed to write ${targetPath}.`, cause)));
+    }
+  });
+}
+
+function refreshExistingSkillBundleFiles(input: {
+  readonly files: ReadonlyArray<ServerProviderSkillBundleFile>;
+  readonly skillName: string;
+  readonly skillDirectory: string;
+}): Effect.Effect<void, ServerProviderSkillInstallError, FileSystem.FileSystem | Path.Path> {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const pathService = yield* Path.Path;
+      const parentDirectory = pathService.dirname(input.skillDirectory);
+      const backupRoot = yield* fs
+        .makeTempDirectoryScoped({
+          directory: parentDirectory,
+          prefix: `${pathService.basename(input.skillDirectory)}.backup.`,
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            installError(`Failed to prepare backup for ${input.skillDirectory}.`, cause),
+          ),
+        );
+      const backupDirectory = pathService.join(backupRoot, "skill");
+      yield* fs
+        .copy(input.skillDirectory, backupDirectory)
+        .pipe(
+          Effect.mapError((cause) =>
+            installError(`Failed to back up ${input.skillDirectory}.`, cause),
+          ),
+        );
+
+      yield* Effect.gen(function* () {
+        yield* fs
+          .remove(input.skillDirectory, { recursive: true, force: true })
+          .pipe(
+            Effect.mapError((cause) =>
+              installError(`Failed to clear ${input.skillDirectory}.`, cause),
+            ),
+          );
+        yield* writeSkillBundleFiles({
+          files: input.files,
+          skillDirectory: input.skillDirectory,
+        });
+        yield* registerInstalledSkillDirectory({
+          skillName: input.skillName,
+          skillDirectory: input.skillDirectory,
+        });
+      }).pipe(
+        Effect.catch((error) =>
+          fs
+            .remove(input.skillDirectory, { recursive: true, force: true })
+            .pipe(
+              Effect.ignore,
+              Effect.andThen(fs.copy(backupDirectory, input.skillDirectory, { overwrite: true })),
+              Effect.ignore,
+              Effect.andThen(Effect.fail(error)),
+            ),
+        ),
+      );
+    }),
+  );
+}
+
+function registerInstalledSkillDirectory(input: {
+  readonly skillName: string;
+  readonly skillDirectory: string;
+}): Effect.Effect<void, ServerProviderSkillInstallError, FileSystem.FileSystem | Path.Path> {
+  return registerUcsdOpenCodeSkillPath(input.skillDirectory).pipe(
+    Effect.mapError((cause) =>
+      installError(`Failed to register '${input.skillName}' in OpenCode skill config.`, cause),
+    ),
+  );
 }
 
 export function mergeInstalledProviderSkill(input: {
@@ -896,10 +1076,6 @@ export function mergeInstalledProviderSkill(input: {
     const alreadyPresent = provider.skills.some(
       (skill) => skill.path === input.skillPath || skill.name === input.skillName,
     );
-    if (alreadyPresent) {
-      return provider;
-    }
-
     const installedSkill: ServerProviderSkill = {
       name: input.skillName,
       path: input.skillPath,
@@ -909,9 +1085,20 @@ export function mergeInstalledProviderSkill(input: {
 
     return {
       ...provider,
-      skills: [...provider.skills, installedSkill].toSorted((left, right) =>
-        left.name.localeCompare(right.name),
-      ),
+      skills: (alreadyPresent
+        ? provider.skills.map((skill) =>
+            skill.path === input.skillPath || skill.name === input.skillName
+              ? {
+                  ...skill,
+                  name: input.skillName,
+                  path: input.skillPath,
+                  enabled: true,
+                  scope: skill.scope ?? "user",
+                }
+              : skill,
+          )
+        : [...provider.skills, installedSkill]
+      ).toSorted((left, right) => left.name.localeCompare(right.name)),
     };
   });
 }
@@ -938,5 +1125,6 @@ export const installProviderSkill = Effect.fn("installProviderSkill")(function* 
     providers: input.providers,
     instanceId: request.instanceId,
     bundle,
+    ...(input.environment !== undefined ? { environment: input.environment } : {}),
   });
 });

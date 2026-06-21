@@ -374,6 +374,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         displayName,
         accentColor,
         enabled,
+        environment: processEnv,
         snapshot,
         adapter,
         textGeneration,

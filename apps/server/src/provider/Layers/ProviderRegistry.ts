@@ -101,6 +101,57 @@ const mergeProviderModels = (
   return [...mergedModels, ...previousModels.filter((model) => !nextSlugs.has(model.slug))];
 };
 
+const isSameProviderSkill = (
+  left: ServerProvider["skills"][number],
+  right: ServerProvider["skills"][number],
+): boolean => left.path === right.path || left.name === right.name;
+
+const sortProviderSkills = (
+  skills: ReadonlyArray<ServerProvider["skills"][number]>,
+): ReadonlyArray<ServerProvider["skills"][number]> =>
+  [...skills].toSorted((left, right) => left.name.localeCompare(right.name));
+
+const applySkillInstallOverlay = (
+  provider: ServerProvider,
+  installedSkills: ReadonlyArray<ServerProvider["skills"][number]>,
+): ServerProvider => {
+  if (installedSkills.length === 0) {
+    return provider;
+  }
+
+  let changed = false;
+  const skills = provider.skills.map((skill) => {
+    const installedSkill = installedSkills.find((candidate) =>
+      isSameProviderSkill(skill, candidate),
+    );
+    if (!installedSkill) {
+      return skill;
+    }
+    changed = true;
+    return {
+      ...skill,
+      name: installedSkill.name,
+      path: installedSkill.path,
+      enabled: true,
+      scope: skill.scope ?? installedSkill.scope,
+    };
+  });
+  const missingInstalledSkills = installedSkills.filter(
+    (installedSkill) =>
+      !provider.skills.some((skill) => isSameProviderSkill(skill, installedSkill)),
+  );
+  if (missingInstalledSkills.length > 0) {
+    changed = true;
+  }
+
+  return changed
+    ? {
+        ...provider,
+        skills: sortProviderSkills([...skills, ...missingInstalledSkills]),
+      }
+    : provider;
+};
+
 export const mergeProviderSnapshot = (
   previousProvider: ServerProvider | undefined,
   nextProvider: ServerProvider,
@@ -270,6 +321,12 @@ export const ProviderRegistryLive = Layer.effect(
     const maintenanceActionStatesRef = yield* Ref.make<
       ReadonlyMap<ProviderInstanceId, { readonly update?: ServerProviderUpdateState | undefined }>
     >(new Map());
+    const recentlyInstalledSkillsRef = yield* Ref.make<
+      ReadonlyMap<ProviderInstanceId, ReadonlyMap<string, ServerProvider["skills"][number]>>
+    >(new Map());
+    const recentlyRemovedSkillsRef = yield* Ref.make<
+      ReadonlyMap<ProviderInstanceId, ReadonlyMap<string, ServerProvider["skills"][number]>>
+    >(new Map());
 
     // Live-source registry — the dynamic counterpart to the boot-time
     // `bootSources`. Keyed by `instanceId`; the stored `ProviderInstance`
@@ -322,12 +379,174 @@ export const ProviderRegistryLive = Layer.effect(
       };
     });
 
+    const rememberRecentlyInstalledSkill = (input: {
+      readonly instanceId: ProviderInstanceId;
+      readonly skill: ServerProvider["skills"][number];
+    }) =>
+      Ref.update(recentlyInstalledSkillsRef, (previous) => {
+        const next = new Map(previous);
+        const providerSkills = new Map(next.get(input.instanceId) ?? new Map());
+        for (const [path, skill] of providerSkills) {
+          if (skill.name === input.skill.name) {
+            providerSkills.delete(path);
+          }
+        }
+        providerSkills.set(input.skill.path, input.skill);
+        next.set(input.instanceId, providerSkills);
+        return next;
+      });
+
+    const forgetRecentlyInstalledSkill = (input: {
+      readonly instanceId: ProviderInstanceId;
+      readonly skillPath: string;
+    }) =>
+      Ref.update(recentlyInstalledSkillsRef, (previous) => {
+        const providerSkills = previous.get(input.instanceId);
+        if (!providerSkills?.has(input.skillPath)) {
+          return previous;
+        }
+        const nextProviderSkills = new Map(providerSkills);
+        nextProviderSkills.delete(input.skillPath);
+        const next = new Map(previous);
+        if (nextProviderSkills.size === 0) {
+          next.delete(input.instanceId);
+        } else {
+          next.set(input.instanceId, nextProviderSkills);
+        }
+        return next;
+      });
+
+    const rememberRecentlyRemovedSkill = (input: {
+      readonly instanceId: ProviderInstanceId;
+      readonly skill: ServerProvider["skills"][number];
+    }) =>
+      Ref.update(recentlyRemovedSkillsRef, (previous) => {
+        const next = new Map(previous);
+        const providerSkills = new Map(next.get(input.instanceId) ?? new Map());
+        for (const [path, skill] of providerSkills) {
+          if (skill.name === input.skill.name) {
+            providerSkills.delete(path);
+          }
+        }
+        providerSkills.set(input.skill.path, input.skill);
+        next.set(input.instanceId, providerSkills);
+        return next;
+      });
+
+    const forgetRecentlyRemovedSkill = (input: {
+      readonly instanceId: ProviderInstanceId;
+      readonly skillPath: string;
+      readonly skillName?: string;
+    }) =>
+      Ref.update(recentlyRemovedSkillsRef, (previous) => {
+        const providerSkills = previous.get(input.instanceId);
+        if (
+          !providerSkills?.has(input.skillPath) &&
+          ![...(providerSkills?.values() ?? [])].some((skill) => skill.name === input.skillName)
+        ) {
+          return previous;
+        }
+        const nextProviderSkills = new Map(providerSkills);
+        for (const [path, skill] of nextProviderSkills) {
+          if (path === input.skillPath || skill.name === input.skillName) {
+            nextProviderSkills.delete(path);
+          }
+        }
+        const next = new Map(previous);
+        if (nextProviderSkills.size === 0) {
+          next.delete(input.instanceId);
+        } else {
+          next.set(input.instanceId, nextProviderSkills);
+        }
+        return next;
+      });
+
+    const applyRecentlyInstalledSkills = Effect.fn("applyRecentlyInstalledSkills")(function* (
+      provider: ServerProvider,
+    ) {
+      const recentlyInstalledSkills = yield* Ref.get(recentlyInstalledSkillsRef);
+      const installedSkills = [
+        ...(recentlyInstalledSkills.get(provider.instanceId)?.values() ?? []),
+      ];
+      const observedInstalledSkills = installedSkills.filter((installedSkill) =>
+        provider.skills.some(
+          (skill) => skill.path === installedSkill.path && skill.enabled === true,
+        ),
+      );
+      if (observedInstalledSkills.length > 0) {
+        yield* Ref.update(recentlyInstalledSkillsRef, (previous) => {
+          const providerSkills = previous.get(provider.instanceId);
+          if (!providerSkills) {
+            return previous;
+          }
+          const nextProviderSkills = new Map(providerSkills);
+          for (const skill of observedInstalledSkills) {
+            nextProviderSkills.delete(skill.path);
+          }
+          const next = new Map(previous);
+          if (nextProviderSkills.size === 0) {
+            next.delete(provider.instanceId);
+          } else {
+            next.set(provider.instanceId, nextProviderSkills);
+          }
+          return next;
+        });
+      }
+      return applySkillInstallOverlay(provider, installedSkills);
+    });
+
+    const applyRecentlyRemovedSkills = Effect.fn("applyRecentlyRemovedSkills")(function* (
+      provider: ServerProvider,
+    ) {
+      const recentlyRemovedSkills = yield* Ref.get(recentlyRemovedSkillsRef);
+      const removedSkills = [...(recentlyRemovedSkills.get(provider.instanceId)?.values() ?? [])];
+      if (removedSkills.length === 0) {
+        return provider;
+      }
+
+      const observedRemovedSkills = removedSkills.filter(
+        (removedSkill) =>
+          !provider.skills.some((skill) => isSameProviderSkill(skill, removedSkill)),
+      );
+      if (observedRemovedSkills.length > 0) {
+        yield* Ref.update(recentlyRemovedSkillsRef, (previous) => {
+          const providerSkills = previous.get(provider.instanceId);
+          if (!providerSkills) {
+            return previous;
+          }
+          const nextProviderSkills = new Map(providerSkills);
+          for (const skill of observedRemovedSkills) {
+            nextProviderSkills.delete(skill.path);
+          }
+          const next = new Map(previous);
+          if (nextProviderSkills.size === 0) {
+            next.delete(provider.instanceId);
+          } else {
+            next.set(provider.instanceId, nextProviderSkills);
+          }
+          return next;
+        });
+      }
+
+      const nextSkills = provider.skills.filter(
+        (skill) => !removedSkills.some((removedSkill) => isSameProviderSkill(skill, removedSkill)),
+      );
+      return nextSkills.length === provider.skills.length
+        ? provider
+        : {
+            ...provider,
+            skills: nextSkills,
+          };
+    });
+
     const upsertProviders = Effect.fn("upsertProviders")(function* (
       nextProviders: ReadonlyArray<ServerProvider>,
       options?: {
         readonly publish?: boolean;
         readonly persist?: boolean;
         readonly replace?: boolean;
+        readonly applyRecentInstalls?: boolean;
+        readonly applyRecentRemovals?: boolean;
       },
     ) {
       const nextProvidersWithUpdateState = yield* Effect.forEach(
@@ -337,6 +556,18 @@ export const ProviderRegistryLive = Layer.effect(
           concurrency: "unbounded",
         },
       );
+      const nextProvidersWithRecentInstalls =
+        options?.applyRecentInstalls === false
+          ? nextProvidersWithUpdateState
+          : yield* Effect.forEach(nextProvidersWithUpdateState, applyRecentlyInstalledSkills, {
+              concurrency: "unbounded",
+            });
+      const nextProvidersWithRecentRemovals =
+        options?.applyRecentRemovals === false
+          ? nextProvidersWithRecentInstalls
+          : yield* Effect.forEach(nextProvidersWithRecentInstalls, applyRecentlyRemovedSkills, {
+              concurrency: "unbounded",
+            });
       const [previousProviders, providers, providersToPersist] = yield* Ref.modify(
         providersRef,
         (previousProviders) => {
@@ -345,7 +576,7 @@ export const ProviderRegistryLive = Layer.effect(
           );
           const updatedKeys = new Set<ProviderInstanceId>();
 
-          for (const provider of nextProvidersWithUpdateState) {
+          for (const provider of nextProvidersWithRecentRemovals) {
             const key = snapshotInstanceKey(provider);
             updatedKeys.add(key);
             mergedProviders.set(
@@ -426,6 +657,98 @@ export const ProviderRegistryLive = Layer.effect(
         });
       },
     );
+
+    const recordInstalledProviderSkill = Effect.fn("recordInstalledProviderSkill")(
+      function* (input: {
+        readonly instanceId: ProviderInstanceId;
+        readonly skillName: string;
+        readonly skillPath: string;
+      }) {
+        const existingProviders = yield* Ref.get(providersRef);
+        const matchingProvider = existingProviders.find(
+          (candidate) => candidate.instanceId === input.instanceId,
+        );
+        if (!matchingProvider) {
+          return existingProviders;
+        }
+
+        const nextSkill: ServerProvider["skills"][number] = {
+          name: input.skillName,
+          path: input.skillPath,
+          enabled: true,
+          scope: "user",
+        };
+        const matchedExistingSkill = matchingProvider.skills.some(
+          (skill) => skill.path === input.skillPath || skill.name === input.skillName,
+        );
+        const nextProvider: ServerProvider = {
+          ...matchingProvider,
+          skills: (matchedExistingSkill
+            ? matchingProvider.skills.map((skill) =>
+                skill.path === input.skillPath || skill.name === input.skillName
+                  ? {
+                      ...skill,
+                      name: input.skillName,
+                      path: input.skillPath,
+                      enabled: true,
+                      scope: skill.scope ?? "user",
+                    }
+                  : skill,
+              )
+            : [...matchingProvider.skills, nextSkill]
+          ).toSorted((left, right) => left.name.localeCompare(right.name)),
+        };
+
+        yield* forgetRecentlyRemovedSkill({
+          instanceId: input.instanceId,
+          skillPath: input.skillPath,
+          skillName: input.skillName,
+        });
+        const updatedProviders = yield* upsertProviders([nextProvider], {
+          applyRecentInstalls: false,
+        });
+        yield* rememberRecentlyInstalledSkill({
+          instanceId: input.instanceId,
+          skill: nextSkill,
+        });
+        return updatedProviders;
+      },
+    );
+
+    const recordRemovedProviderSkill = Effect.fn("recordRemovedProviderSkill")(function* (input: {
+      readonly instanceId: ProviderInstanceId;
+      readonly skillPath: string;
+    }) {
+      const existingProviders = yield* Ref.get(providersRef);
+      const matchingProvider = existingProviders.find(
+        (candidate) => candidate.instanceId === input.instanceId,
+      );
+      if (!matchingProvider) {
+        return existingProviders;
+      }
+      const removedSkill = matchingProvider.skills.find((skill) => skill.path === input.skillPath);
+      yield* forgetRecentlyInstalledSkill({
+        instanceId: input.instanceId,
+        skillPath: input.skillPath,
+      });
+      if (removedSkill) {
+        yield* rememberRecentlyRemovedSkill({
+          instanceId: input.instanceId,
+          skill: removedSkill,
+        });
+      }
+
+      const nextProvider: ServerProvider = {
+        ...matchingProvider,
+        skills: matchingProvider.skills.filter((skill) => skill.path !== input.skillPath),
+      };
+
+      return yield* upsertProviders([nextProvider], {
+        replace: true,
+        applyRecentInstalls: false,
+        applyRecentRemovals: false,
+      });
+    });
 
     const refreshOneSource = Effect.fn("refreshOneSource")(function* (
       providerSource: ProviderSnapshotSource,
@@ -688,6 +1011,8 @@ export const ProviderRegistryLive = Layer.effect(
         refresh(provider).pipe(Effect.catchCause(recoverRefreshFailure)),
       refreshInstance: (instanceId: ProviderInstanceId) =>
         refreshInstance(instanceId).pipe(Effect.catchCause(recoverRefreshFailure)),
+      recordInstalledProviderSkill,
+      recordRemovedProviderSkill,
       getProviderMaintenanceCapabilitiesForInstance,
       setProviderMaintenanceActionState,
       get streamChanges() {

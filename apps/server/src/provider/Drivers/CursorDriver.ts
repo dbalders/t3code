@@ -169,6 +169,7 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         displayName,
         accentColor,
         enabled,
+        environment: processEnv,
         snapshot,
         adapter,
         textGeneration,

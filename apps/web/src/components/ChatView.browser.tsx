@@ -3580,7 +3580,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
   it("keeps custom provider instance ids when bootstrapping a local draft thread", async () => {
     setDraftThreadWithoutWorktree();
-    const openRouterInstanceId = ProviderInstanceId.make("claude_openrouter");
+    const openRouterInstanceId = ProviderInstanceId.make("opencode_openrouter");
     const openRouterSelection = createModelSelection(openRouterInstanceId, "openai/gpt-5.5");
     useComposerDraftStore.getState().setModelSelection(THREAD_REF, openRouterSelection);
 
@@ -3593,18 +3593,18 @@ describe("ChatView timeline estimator parity (full app)", () => {
           providers: [
             ...nextFixture.serverConfig.providers,
             {
-              driver: ProviderDriverKind.make("claudeAgent"),
-              instanceId: ProviderInstanceId.make("claudeAgent"),
+              driver: ProviderDriverKind.make("opencode"),
+              instanceId: ProviderInstanceId.make("opencode"),
               enabled: true,
               installed: true,
-              version: "2.1.117",
+              version: "1.2.3",
               status: "ready",
               auth: { status: "authenticated" },
               checkedAt: NOW_ISO,
               models: [
                 {
-                  slug: "claude-opus-4-7",
-                  name: "Claude Opus 4.7",
+                  slug: "github-copilot/claude-opus-4.8",
+                  name: "Claude Opus 4.8",
                   isCustom: false,
                   capabilities: createModelCapabilities({ optionDescriptors: [] }),
                 },
@@ -3613,19 +3613,19 @@ describe("ChatView timeline estimator parity (full app)", () => {
               skills: [],
             },
             {
-              driver: ProviderDriverKind.make("claudeAgent"),
+              driver: ProviderDriverKind.make("opencode"),
               instanceId: openRouterInstanceId,
-              displayName: "Claude OpenRouter",
+              displayName: "OpenRouter",
               enabled: true,
               installed: true,
-              version: "2.1.117",
+              version: "1.2.3",
               status: "ready",
               auth: { status: "authenticated" },
               checkedAt: NOW_ISO,
               models: [
                 {
-                  slug: "claude-opus-4-7",
-                  name: "Claude Opus 4.7",
+                  slug: "github-copilot/claude-opus-4.8",
+                  name: "Claude Opus 4.8",
                   isCustom: false,
                   capabilities: createModelCapabilities({ optionDescriptors: [] }),
                 },
@@ -3639,8 +3639,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
             providerInstances: {
               ...nextFixture.serverConfig.settings.providerInstances,
               [openRouterInstanceId]: {
-                driver: ProviderDriverKind.make("claudeAgent"),
-                displayName: "Claude OpenRouter",
+                driver: ProviderDriverKind.make("opencode"),
+                displayName: "OpenRouter",
                 config: { customModels: ["openai/gpt-5.5"] },
               },
             },
@@ -3658,6 +3658,11 @@ describe("ChatView timeline estimator parity (full app)", () => {
     });
 
     try {
+      await waitForServerConfigToApply();
+      useComposerDraftStore.getState().setModelSelection(THREAD_REF, openRouterSelection);
+      await vi.waitFor(() => {
+        expect(findComposerProviderModelPicker()?.textContent).toContain("openai/gpt-5.5");
+      });
       useComposerDraftStore.getState().setPrompt(THREAD_REF, "Hello there");
       await waitForLayout();
 
@@ -7257,7 +7262,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
           project.id === PROJECT_ID
             ? Object.assign({}, project, {
                 defaultModelSelection: {
-                  instanceId: ProviderInstanceId.make("codex"),
+                  instanceId: ProviderInstanceId.make("opencode"),
                   model: "gpt-5.4",
                 },
               })
@@ -7266,7 +7271,10 @@ describe("ChatView timeline estimator parity (full app)", () => {
         threads: snapshot.threads.map((thread) =>
           thread.id === THREAD_ID
             ? Object.assign({}, thread, {
-                modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+                modelSelection: {
+                  instanceId: ProviderInstanceId.make("opencode"),
+                  model: "gpt-5.4",
+                },
               })
             : thread,
         ),
@@ -7317,6 +7325,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
           providers: [
             {
               ...nextFixture.serverConfig.providers[0]!,
+              driver: ProviderDriverKind.make("opencode"),
+              instanceId: ProviderInstanceId.make("opencode"),
               models: [
                 {
                   slug: "gpt-5.1-codex-max",
@@ -7415,23 +7425,32 @@ describe("ChatView timeline estimator parity (full app)", () => {
         if (!provider) {
           throw new Error("Expected default provider in test fixture.");
         }
-        (
-          provider as {
-            skills: ServerConfig["providers"][number]["skills"];
-          }
-        ).skills = [
-          {
-            name: "agent-browser",
-            displayName: "Agent Browser",
-            description: "Open pages, click around, and inspect web apps.",
-            path: "/Users/test/.agents/skills/agent-browser/SKILL.md",
-            enabled: true,
-          },
-        ];
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          providers: [
+            {
+              ...provider,
+              driver: ProviderDriverKind.make("opencode"),
+              instanceId: ProviderInstanceId.make("opencode"),
+              skills: [
+                {
+                  name: "agent-browser",
+                  displayName: "Agent Browser",
+                  description: "Open pages, click around, and inspect web apps.",
+                  path: "/Users/test/.agents/skills/agent-browser/SKILL.md",
+                  enabled: true,
+                },
+              ],
+            },
+            ...nextFixture.serverConfig.providers.slice(1),
+          ],
+        };
       },
     });
 
     try {
+      await waitForServerConfigToApply();
+      await waitForComposerEditor();
       useComposerDraftStore.getState().setPrompt(THREAD_REF, "use the $agent-browser ");
       await waitForComposerText("use the $agent-browser ");
 

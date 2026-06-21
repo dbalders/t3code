@@ -36,6 +36,7 @@ const makeStubInstance = (
     },
     displayName: undefined,
     enabled: true,
+    environment: {},
     snapshot: {} as ProviderInstance["snapshot"],
     adapter: {} as ProviderInstance["adapter"],
     textGeneration,

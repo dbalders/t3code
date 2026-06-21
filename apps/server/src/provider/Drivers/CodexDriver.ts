@@ -196,6 +196,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         displayName,
         accentColor,
         enabled,
+        environment: processEnv,
         snapshot,
         adapter,
         textGeneration,

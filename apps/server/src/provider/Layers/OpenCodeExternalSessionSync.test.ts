@@ -104,6 +104,7 @@ function makeFakeProviderInstance(adapter: OpenCodeAdapterShape): ProviderInstan
     },
     displayName: undefined,
     enabled: true,
+    environment: {},
     snapshot: {} as ProviderInstance["snapshot"],
     adapter,
     textGeneration: {} as ProviderInstance["textGeneration"],

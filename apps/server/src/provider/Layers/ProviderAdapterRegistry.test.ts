@@ -115,6 +115,7 @@ const makeFakeInstance = (
     },
     displayName: undefined,
     enabled: true,
+    environment: {},
     snapshot: {
       maintenanceCapabilities: makeManualOnlyProviderMaintenanceCapabilities({
         provider: driverKind,
