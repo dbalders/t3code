@@ -2,6 +2,7 @@ import {
   ArchiveIcon,
   ArrowUpDownIcon,
   ChevronRightIcon,
+  Clock3Icon,
   CloudIcon,
   FolderPlusIcon,
   Globe2Icon,
@@ -234,6 +235,21 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
 const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-muted-foreground/60 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
 const CHAT_PROJECT_CREATE_WAIT_TIMEOUT_MS = 5_000;
+const THREAD_AUTOMATION_REFRESH_INTERVAL_MS = 10_000;
+
+async function loadThreadAutomationCountById(): Promise<ReadonlyMap<ThreadId, number> | null> {
+  const api = readLocalApi();
+  if (!api) return null;
+  const result = await api.server.scheduledTasks.list();
+  const counts = new Map<ThreadId, number>();
+  for (const task of result.tasks) {
+    if (task.status === "deleted" || task.kind !== "thread" || task.targetThreadId === null) {
+      continue;
+    }
+    counts.set(task.targetThreadId, (counts.get(task.targetThreadId) ?? 0) + 1);
+  }
+  return counts;
+}
 
 function projectMemberPhysicalKeys(project: SidebarProjectSnapshot): string[] {
   return project.memberProjects.map((member) => member.physicalProjectKey);
@@ -335,6 +351,7 @@ interface SidebarThreadRowProps {
   isActive: boolean;
   jumpLabel: string | null;
   appSettingsConfirmThreadArchive: boolean;
+  automationCount: number;
   renamingThreadKey: string | null;
   renamingTitle: string;
   setRenamingTitle: (title: string) => void;
@@ -372,6 +389,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
     isActive,
     jumpLabel,
     appSettingsConfirmThreadArchive,
+    automationCount,
     renamingThreadKey,
     renamingTitle,
     setRenamingTitle,
@@ -808,6 +826,27 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
                     <TooltipPopup side="top">{threadEnvironmentLabel}</TooltipPopup>
                   </Tooltip>
                 )}
+                {automationCount > 0 ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <span
+                          aria-label={`${automationCount} thread automation${
+                            automationCount === 1 ? "" : "s"
+                          }`}
+                          className="inline-flex items-center justify-center text-muted-foreground/55"
+                        />
+                      }
+                    >
+                      <Clock3Icon className="size-3" />
+                    </TooltipTrigger>
+                    <TooltipPopup side="top">
+                      {automationCount === 1
+                        ? "Thread has a scheduled automation"
+                        : `${automationCount} scheduled automations on this thread`}
+                    </TooltipPopup>
+                  </Tooltip>
+                ) : null}
                 {jumpLabel ? (
                   <Tooltip>
                     <TooltipTrigger
@@ -859,6 +898,7 @@ interface SidebarProjectThreadListProps {
   activeRouteThreadKey: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   appSettingsConfirmThreadArchive: boolean;
+  threadAutomationCountById: ReadonlyMap<ThreadId, number>;
   renamingThreadKey: string | null;
   renamingTitle: string;
   setRenamingTitle: (title: string) => void;
@@ -911,6 +951,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     activeRouteThreadKey,
     threadJumpLabelByKey,
     appSettingsConfirmThreadArchive,
+    threadAutomationCountById,
     renamingThreadKey,
     renamingTitle,
     setRenamingTitle,
@@ -963,6 +1004,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               isActive={activeRouteThreadKey === threadKey}
               jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
               appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
+              automationCount={threadAutomationCountById.get(thread.id) ?? 0}
               renamingThreadKey={renamingThreadKey}
               renamingTitle={renamingTitle}
               setRenamingTitle={setRenamingTitle}
@@ -1034,6 +1076,7 @@ interface SidebarProjectItemProps {
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
   threadJumpLabelByKey: ReadonlyMap<string, string>;
+  threadAutomationCountById: ReadonlyMap<ThreadId, number>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
@@ -1057,6 +1100,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     archiveThread,
     deleteThread,
     threadJumpLabelByKey,
+    threadAutomationCountById,
     attachThreadListAutoAnimateRef,
     expandThreadListForProject,
     collapseThreadListForProject,
@@ -2298,6 +2342,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         projectCwd={project.cwd}
         activeRouteThreadKey={activeRouteThreadKey}
         threadJumpLabelByKey={threadJumpLabelByKey}
+        threadAutomationCountById={threadAutomationCountById}
         appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
         renamingThreadKey={renamingThreadKey}
         renamingTitle={renamingTitle}
@@ -2764,6 +2809,7 @@ interface SidebarProjectsContentProps {
   newThreadShortcutLabel: string | null;
   commandPaletteShortcutLabel: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
+  threadAutomationCountById: ReadonlyMap<ThreadId, number>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
@@ -2807,6 +2853,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     newThreadShortcutLabel,
     commandPaletteShortcutLabel,
     threadJumpLabelByKey,
+    threadAutomationCountById,
     attachThreadListAutoAnimateRef,
     expandThreadListForProject,
     collapseThreadListForProject,
@@ -2868,6 +2915,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                   archiveThread={archiveThread}
                   deleteThread={deleteThread}
                   threadJumpLabelByKey={threadJumpLabelByKey}
+                  threadAutomationCountById={threadAutomationCountById}
                   attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
                   expandThreadListForProject={expandThreadListForProject}
                   collapseThreadListForProject={collapseThreadListForProject}
@@ -3006,6 +3054,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                       archiveThread={archiveThread}
                       deleteThread={deleteThread}
                       threadJumpLabelByKey={threadJumpLabelByKey}
+                      threadAutomationCountById={threadAutomationCountById}
                       attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
                       expandThreadListForProject={expandThreadListForProject}
                       collapseThreadListForProject={collapseThreadListForProject}
@@ -3068,6 +3117,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               archiveThread={archiveThread}
               deleteThread={deleteThread}
               threadJumpLabelByKey={threadJumpLabelByKey}
+              threadAutomationCountById={threadAutomationCountById}
               attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
               expandThreadListForProject={expandThreadListForProject}
               collapseThreadListForProject={collapseThreadListForProject}
@@ -3127,6 +3177,9 @@ export default function Sidebar() {
   const suppressProjectClickAfterDragRef = useRef(false);
   const suppressProjectClickForContextMenuRef = useRef(false);
   const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null);
+  const [threadAutomationCountById, setThreadAutomationCountById] = useState<
+    ReadonlyMap<ThreadId, number>
+  >(() => new Map());
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
   const platform = navigator.platform;
@@ -3135,6 +3188,46 @@ export default function Sidebar() {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const savedEnvironmentRegistry = useSavedEnvironmentRegistryStore((s) => s.byId);
   const savedEnvironmentRuntimeById = useSavedEnvironmentRuntimeStore((s) => s.byId);
+  const refreshThreadAutomationCounts = useCallback(async () => {
+    const counts = await loadThreadAutomationCountById();
+    if (counts) {
+      setThreadAutomationCountById(counts);
+    }
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    const refresh = () => {
+      void loadThreadAutomationCountById()
+        .then((counts) => {
+          if (!disposed && counts) {
+            setThreadAutomationCountById(counts);
+          }
+        })
+        .catch(() => undefined);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+    };
+
+    refresh();
+    const intervalId = window.setInterval(refresh, THREAD_AUTOMATION_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    void refreshThreadAutomationCounts().catch(() => undefined);
+  }, [refreshThreadAutomationCounts, sidebarThreads]);
   const orderedProjects = useMemo(() => {
     return orderItemsByPreferredIds({
       items: projects,
@@ -3915,6 +4008,7 @@ export default function Sidebar() {
             newThreadShortcutLabel={newThreadShortcutLabel}
             commandPaletteShortcutLabel={commandPaletteShortcutLabel}
             threadJumpLabelByKey={visibleThreadJumpLabelByKey}
+            threadAutomationCountById={threadAutomationCountById}
             attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
             expandThreadListForProject={expandThreadListForProject}
             collapseThreadListForProject={collapseThreadListForProject}

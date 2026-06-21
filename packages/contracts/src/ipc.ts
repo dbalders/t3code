@@ -100,6 +100,18 @@ import type {
   OrchestrationSubscribeThreadInput,
   OrchestrationThreadStreamItem,
 } from "./orchestration.ts";
+import type {
+  ScheduledTaskCreateInput,
+  ScheduledTaskDeleteResult,
+  ScheduledTaskIdInput,
+  ScheduledTaskMutationResult,
+  ScheduledTaskRunNowInput,
+  ScheduledTaskRunNowResult,
+  ScheduledTaskRunsListInput,
+  ScheduledTaskRunsListResult,
+  ScheduledTasksListResult,
+  ScheduledTaskUpdateInput,
+} from "./scheduledTasks.ts";
 import { EnvironmentId } from "./baseSchemas.ts";
 import { AuthAccessTokenResult, AuthSessionState, AuthWebSocketTicketResult } from "./auth.ts";
 import { AdvertisedEndpoint } from "./remoteAccess.ts";
@@ -1094,6 +1106,16 @@ export interface LocalApi {
       input: ServerProcessResourceHistoryInput,
     ) => Promise<ServerProcessResourceHistoryResult>;
     signalProcess: (input: ServerSignalProcessInput) => Promise<ServerSignalProcessResult>;
+    scheduledTasks: {
+      list: () => Promise<ScheduledTasksListResult>;
+      create: (input: ScheduledTaskCreateInput) => Promise<ScheduledTaskMutationResult>;
+      update: (input: ScheduledTaskUpdateInput) => Promise<ScheduledTaskMutationResult>;
+      delete: (input: ScheduledTaskIdInput) => Promise<ScheduledTaskDeleteResult>;
+      pause: (input: ScheduledTaskIdInput) => Promise<ScheduledTaskMutationResult>;
+      resume: (input: ScheduledTaskIdInput) => Promise<ScheduledTaskMutationResult>;
+      runNow: (input: ScheduledTaskRunNowInput) => Promise<ScheduledTaskRunNowResult>;
+      listRuns: (input: ScheduledTaskRunsListInput) => Promise<ScheduledTaskRunsListResult>;
+    };
   };
 }
 
