@@ -745,10 +745,18 @@ function AutomationDetail({
   readonly onUpdate: (task: ScheduledTask, patch: ScheduledTaskUpdateInput["patch"]) => void;
 }) {
   const active = task.status === "active";
-  const [nameDraft, setNameDraft] = useState(task.name);
-  const [promptDraft, setPromptDraft] = useState(task.prompt);
+  const [nameDraftState, setNameDraftState] = useState(() => ({
+    taskId: task.id,
+    value: task.name,
+  }));
+  const [promptDraftState, setPromptDraftState] = useState(() => ({
+    taskId: task.id,
+    value: task.prompt,
+  }));
   const [scheduleDraft, setScheduleDraft] = useState(() => formStateFromTask(task));
   const scheduleDraftRef = useRef(scheduleDraft);
+  const nameDraft = nameDraftState.taskId === task.id ? nameDraftState.value : task.name;
+  const promptDraft = promptDraftState.taskId === task.id ? promptDraftState.value : task.prompt;
   const projectName =
     projects.find((project) => project.id === task.projectId)?.name ?? String(task.projectId);
   const projectThreads = useMemo(
@@ -760,8 +768,8 @@ function AutomationDetail({
     : null;
 
   useEffect(() => {
-    setNameDraft(task.name);
-    setPromptDraft(task.prompt);
+    setNameDraftState({ taskId: task.id, value: task.name });
+    setPromptDraftState({ taskId: task.id, value: task.prompt });
   }, [task.id]);
 
   useEffect(() => {
@@ -771,7 +779,8 @@ function AutomationDetail({
   }, [task.catchUp, task.id, task.scheduleKind, task.scheduleValue, task.timezone]);
 
   const saveNameDraft = useCallback(
-    (value: string) => {
+    (taskId: ScheduledTask["id"], value: string) => {
+      if (taskId !== task.id) return;
       const name = value.trim();
       if (!name || name === task.name) return;
       onUpdate(task, { name });
@@ -780,7 +789,8 @@ function AutomationDetail({
   );
 
   const savePromptDraft = useCallback(
-    (value: string) => {
+    (taskId: ScheduledTask["id"], value: string) => {
+      if (taskId !== task.id) return;
       const prompt = value.trim();
       if (!prompt || prompt === task.prompt) return;
       onUpdate(task, { prompt });
@@ -789,14 +799,20 @@ function AutomationDetail({
   );
 
   useEffect(() => {
-    const handle = window.setTimeout(() => saveNameDraft(nameDraft), 600);
+    if (nameDraftState.taskId !== task.id) return;
+    const handle = window.setTimeout(() => {
+      saveNameDraft(nameDraftState.taskId, nameDraftState.value);
+    }, 600);
     return () => window.clearTimeout(handle);
-  }, [nameDraft, saveNameDraft]);
+  }, [nameDraftState, saveNameDraft, task.id]);
 
   useEffect(() => {
-    const handle = window.setTimeout(() => savePromptDraft(promptDraft), 600);
+    if (promptDraftState.taskId !== task.id) return;
+    const handle = window.setTimeout(() => {
+      savePromptDraft(promptDraftState.taskId, promptDraftState.value);
+    }, 600);
     return () => window.clearTimeout(handle);
-  }, [promptDraft, savePromptDraft]);
+  }, [promptDraftState, savePromptDraft, task.id]);
 
   const saveScheduleDraft = useCallback(
     (next: AutomationFormState) => {
@@ -895,15 +911,19 @@ function AutomationDetail({
             <input
               aria-label="Automation title"
               value={nameDraft}
-              onBlur={() => saveNameDraft(nameDraft)}
-              onChange={(event) => setNameDraft(event.currentTarget.value)}
+              onBlur={() => saveNameDraft(task.id, nameDraft)}
+              onChange={(event) =>
+                setNameDraftState({ taskId: task.id, value: event.currentTarget.value })
+              }
               className="w-full max-w-4xl rounded-md bg-transparent px-0 py-1 text-4xl font-semibold tracking-[-0.04em] text-foreground outline-none placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
             />
             <textarea
               aria-label="Automation prompt"
               value={promptDraft}
-              onBlur={() => savePromptDraft(promptDraft)}
-              onChange={(event) => setPromptDraft(event.currentTarget.value)}
+              onBlur={() => savePromptDraft(task.id, promptDraft)}
+              onChange={(event) =>
+                setPromptDraftState({ taskId: task.id, value: event.currentTarget.value })
+              }
               className="min-h-72 w-full max-w-3xl resize-y rounded-md bg-transparent px-0 py-1 text-lg leading-8 text-foreground/90 outline-none placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
@@ -1126,8 +1146,8 @@ function AutomationDetail({
                   selection={preferredSelection}
                   settings={settings}
                   onPromptChange={(prompt) => {
-                    setPromptDraft(prompt);
-                    savePromptDraft(prompt);
+                    setPromptDraftState({ taskId: task.id, value: prompt });
+                    savePromptDraft(task.id, prompt);
                   }}
                   onSelectionChange={(modelSelection) => onUpdate(task, { modelSelection })}
                 />
@@ -1546,7 +1566,12 @@ export function AutomationsSettingsPanel() {
   const [runsByTaskId, setRunsByTaskId] = useState<Record<string, ReadonlyArray<ScheduledTaskRun>>>(
     {},
   );
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskIdState] = useState<string | null>(null);
+  const selectedTaskIdRef = useRef<string | null>(selectedTaskId);
+  const setSelectedTaskId = useCallback((taskId: string | null) => {
+    selectedTaskIdRef.current = taskId;
+    setSelectedTaskIdState(taskId);
+  }, []);
   const [createOpen, setCreateOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1625,7 +1650,7 @@ export function AutomationsSettingsPanel() {
     ) {
       setSelectedTaskId(null);
     }
-  }, [selectedTaskId, tasks]);
+  }, [selectedTaskId, setSelectedTaskId, tasks]);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -1660,7 +1685,7 @@ export function AutomationsSettingsPanel() {
       setSelectedTaskId(task.id);
       void loadRuns(task.id);
     },
-    [loadRuns],
+    [loadRuns, setSelectedTaskId],
   );
 
   const submitCreate = useCallback(async () => {
@@ -1696,7 +1721,7 @@ export function AutomationsSettingsPanel() {
     } finally {
       setSaving(false);
     }
-  }, [effectiveFormModelSelection, form, loadRuns, loadTasks, timezone]);
+  }, [effectiveFormModelSelection, form, loadRuns, loadTasks, setSelectedTaskId, timezone]);
 
   const enqueueTaskOperation = useCallback(
     (taskId: ScheduledTask["id"], operation: () => Promise<void>) => {
@@ -1753,7 +1778,7 @@ export function AutomationsSettingsPanel() {
           if (action === "run") await api.runNow({ id: task.id });
           if (action === "delete") await api.delete({ id: task.id });
           await loadTasks();
-          if (selectedTaskId === task.id) {
+          if (selectedTaskIdRef.current === task.id) {
             if (action === "delete") setSelectedTaskId(null);
             else await loadRuns(task.id);
           }
@@ -1764,7 +1789,7 @@ export function AutomationsSettingsPanel() {
         setMutatingTaskId(null);
       }
     },
-    [enqueueTaskOperation, loadRuns, loadTasks, selectedTaskId],
+    [enqueueTaskOperation, loadRuns, loadTasks, setSelectedTaskId],
   );
 
   const confirmDeleteTask = useCallback(async () => {
