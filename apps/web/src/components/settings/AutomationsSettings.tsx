@@ -12,6 +12,7 @@ import {
   type ScheduledTask,
   type ScheduledTaskRRuleConfig,
   type ScheduledTaskRun,
+  type ScheduledTaskUpdateInput,
   type ScheduledTaskWeekday,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -21,18 +22,19 @@ import { useRouter } from "@tanstack/react-router";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
+  CirclePauseIcon,
+  CirclePlayIcon,
   Clock3Icon,
   FolderIcon,
   InfoIcon,
   MoreHorizontalIcon,
-  PauseCircleIcon,
-  PauseIcon,
   PlayIcon,
   PlusIcon,
+  SquarePenIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
@@ -57,6 +59,15 @@ import { selectProjectsForEnvironment, selectThreadsForEnvironment, useStore } f
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Dialog, DialogPanel, DialogPopup } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -357,6 +368,35 @@ function buildSchedule(form: AutomationFormState): {
   };
 }
 
+function formStateFromTask(task: ScheduledTask): AutomationFormState {
+  const config = parseRRuleConfig(task);
+  const cadence: Cadence = task.scheduleKind === "once" ? "once" : (config?.frequency ?? "daily");
+  const startAtIso = task.scheduleKind === "once" ? task.scheduleValue : config?.dtStart;
+  const startAtDate = startAtIso ? new Date(startAtIso) : new Date();
+  const fallbackStartAt = Number.isNaN(startAtDate.getTime())
+    ? defaultStartAt()
+    : toDatetimeLocalInputValue(startAtDate);
+  const monthDay =
+    config?.byMonthDay?.[0] ??
+    (Number.isNaN(startAtDate.getTime()) ? new Date().getDate() : startAtDate.getDate());
+
+  return {
+    name: task.name,
+    kind: task.kind,
+    projectId: task.projectId,
+    targetThreadId: task.targetThreadId ?? "",
+    cadence,
+    startAt: fallbackStartAt,
+    interval: String(config?.interval ?? 1),
+    weekdays: config?.byDay ?? ["MO", "TU", "WE", "TH", "FR"],
+    monthDay: String(monthDay),
+    timezone: task.timezone,
+    prompt: task.prompt,
+    catchUp: task.catchUp,
+    modelSelection: task.modelSelection,
+  };
+}
+
 function AutomationField({
   label,
   className,
@@ -523,6 +563,7 @@ function AutomationRow({
   selected,
   busy,
   onSelect,
+  onEdit,
   onRun,
   onPauseResume,
   onDelete,
@@ -533,6 +574,7 @@ function AutomationRow({
   readonly selected: boolean;
   readonly busy: boolean;
   readonly onSelect: () => void;
+  readonly onEdit: () => void;
   readonly onRun: () => void;
   readonly onPauseResume: () => void;
   readonly onDelete: () => void;
@@ -574,12 +616,19 @@ function AutomationRow({
       </span>
       <span className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="hidden min-w-32 justify-end sm:flex">{formatSchedule(task)}</span>
-        <span className="hidden items-center gap-1 opacity-0 transition-opacity group-hover:flex group-focus-visible:flex sm:flex group-hover:opacity-100 group-focus-visible:opacity-100">
+        <span className="hidden items-center gap-1 opacity-0 transition-opacity group-hover:flex group-focus-within:flex group-focus-visible:flex sm:flex group-hover:opacity-100 group-focus-within:opacity-100 group-focus-visible:opacity-100">
           <IconButton disabled={busy} label="Run now" onClick={onRun}>
             <PlayIcon className="size-4" />
           </IconButton>
+          <IconButton label="Edit" onClick={onEdit}>
+            <SquarePenIcon className="size-4" />
+          </IconButton>
           <IconButton disabled={busy} label={active ? "Pause" : "Resume"} onClick={onPauseResume}>
-            {active ? <PauseIcon className="size-4" /> : <PlayIcon className="size-4" />}
+            {active ? (
+              <CirclePauseIcon className="size-4" />
+            ) : (
+              <CirclePlayIcon className="size-4" />
+            )}
           </IconButton>
           <IconButton disabled={busy} label="Delete" onClick={onDelete}>
             <Trash2Icon className="size-4" />
@@ -599,6 +648,7 @@ function AutomationListSection({
   mutatingTaskId,
   onSelect,
   onMutate,
+  onDelete,
 }: {
   readonly title: string;
   readonly tasks: ReadonlyArray<ScheduledTask>;
@@ -607,7 +657,8 @@ function AutomationListSection({
   readonly threadById: Map<ThreadId, { readonly title: string }>;
   readonly mutatingTaskId: string | null;
   readonly onSelect: (task: ScheduledTask) => void;
-  readonly onMutate: (task: ScheduledTask, action: "pause" | "resume" | "run" | "delete") => void;
+  readonly onMutate: (task: ScheduledTask, action: "pause" | "resume" | "run") => void;
+  readonly onDelete: (task: ScheduledTask) => void;
 }) {
   if (tasks.length === 0) return null;
   return (
@@ -629,9 +680,10 @@ function AutomationListSection({
               selected={selectedTaskId === task.id}
               busy={busy}
               onSelect={() => onSelect(task)}
+              onEdit={() => onSelect(task)}
               onRun={() => onMutate(task, "run")}
               onPauseResume={() => onMutate(task, task.status === "active" ? "pause" : "resume")}
-              onDelete={() => onMutate(task, "delete")}
+              onDelete={() => onDelete(task)}
             />
           );
         })}
@@ -660,8 +712,8 @@ function DetailRow({
 function AutomationDetail({
   task,
   runs,
-  projectName,
-  threadTitle,
+  projects,
+  threads,
   preferredSelection,
   providerEntries,
   modelOptionsByInstance,
@@ -670,12 +722,17 @@ function AutomationDetail({
   busy,
   onBack,
   onMutate,
-  onUpdateModelSelection,
+  onDelete,
+  onUpdate,
 }: {
   readonly task: ScheduledTask;
   readonly runs: ReadonlyArray<ScheduledTaskRun>;
-  readonly projectName: string;
-  readonly threadTitle: string | null;
+  readonly projects: ReadonlyArray<{ readonly id: ProjectId; readonly name: string }>;
+  readonly threads: ReadonlyArray<{
+    readonly id: ThreadId;
+    readonly title: string;
+    readonly projectId: ProjectId;
+  }>;
   readonly preferredSelection: ModelSelection;
   readonly providerEntries: ReadonlyArray<ProviderInstanceEntry>;
   readonly modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<AppModelOption>>;
@@ -683,21 +740,132 @@ function AutomationDetail({
   readonly providers: ReadonlyArray<ReturnType<typeof useServerProviders>[number]>;
   readonly busy: boolean;
   readonly onBack: () => void;
-  readonly onMutate: (task: ScheduledTask, action: "pause" | "resume" | "run" | "delete") => void;
-  readonly onUpdateModelSelection: (selection: ModelSelection) => void;
+  readonly onMutate: (task: ScheduledTask, action: "pause" | "resume" | "run") => void;
+  readonly onDelete: (task: ScheduledTask) => void;
+  readonly onUpdate: (task: ScheduledTask, patch: ScheduledTaskUpdateInput["patch"]) => void;
 }) {
   const active = task.status === "active";
+  const [nameDraft, setNameDraft] = useState(task.name);
+  const [promptDraft, setPromptDraft] = useState(task.prompt);
+  const [scheduleDraft, setScheduleDraft] = useState(() => formStateFromTask(task));
+  const scheduleDraftRef = useRef(scheduleDraft);
+  const projectName =
+    projects.find((project) => project.id === task.projectId)?.name ?? String(task.projectId);
+  const projectThreads = useMemo(
+    () => threads.filter((thread) => thread.projectId === task.projectId),
+    [task.projectId, threads],
+  );
+  const threadTitle = task.targetThreadId
+    ? (threads.find((thread) => thread.id === task.targetThreadId)?.title ?? null)
+    : null;
+
+  useEffect(() => {
+    setNameDraft(task.name);
+    setPromptDraft(task.prompt);
+  }, [task.id]);
+
+  useEffect(() => {
+    const nextScheduleDraft = formStateFromTask(task);
+    setScheduleDraft(nextScheduleDraft);
+    scheduleDraftRef.current = nextScheduleDraft;
+  }, [task.catchUp, task.id, task.scheduleKind, task.scheduleValue, task.timezone]);
+
+  const saveNameDraft = useCallback(
+    (value: string) => {
+      const name = value.trim();
+      if (!name || name === task.name) return;
+      onUpdate(task, { name });
+    },
+    [onUpdate, task],
+  );
+
+  const savePromptDraft = useCallback(
+    (value: string) => {
+      const prompt = value.trim();
+      if (!prompt || prompt === task.prompt) return;
+      onUpdate(task, { prompt });
+    },
+    [onUpdate, task],
+  );
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => saveNameDraft(nameDraft), 600);
+    return () => window.clearTimeout(handle);
+  }, [nameDraft, saveNameDraft]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => savePromptDraft(promptDraft), 600);
+    return () => window.clearTimeout(handle);
+  }, [promptDraft, savePromptDraft]);
+
+  const saveScheduleDraft = useCallback(
+    (next: AutomationFormState) => {
+      try {
+        onUpdate(task, {
+          ...buildSchedule(next),
+          timezone: next.timezone.trim() || task.timezone,
+          catchUp: next.catchUp,
+        });
+      } catch {
+        return;
+      }
+    },
+    [onUpdate, task],
+  );
+
+  const updateScheduleDraft = useCallback(
+    (updater: (current: AutomationFormState) => AutomationFormState) => {
+      const next = updater(scheduleDraftRef.current);
+      scheduleDraftRef.current = next;
+      setScheduleDraft(next);
+      saveScheduleDraft(next);
+    },
+    [saveScheduleDraft],
+  );
+
+  const updateKind = useCallback(
+    (kind: ScheduledTask["kind"]) => {
+      if (kind === "standalone") {
+        onUpdate(task, { kind, targetThreadId: null });
+        return;
+      }
+      const targetThreadId = task.targetThreadId ?? projectThreads[0]?.id;
+      if (!targetThreadId) return;
+      onUpdate(task, { kind, targetThreadId });
+    },
+    [onUpdate, projectThreads, task],
+  );
+
+  const updateProject = useCallback(
+    (projectId: ProjectId) => {
+      if (task.kind !== "thread") {
+        onUpdate(task, { projectId });
+        return;
+      }
+      const projectThread =
+        threads.find(
+          (thread) => thread.projectId === projectId && thread.id === task.targetThreadId,
+        ) ?? threads.find((thread) => thread.projectId === projectId);
+      if (projectThread) {
+        onUpdate(task, { projectId, targetThreadId: projectThread.id });
+        return;
+      }
+      onUpdate(task, { kind: "standalone", projectId, targetThreadId: null });
+    },
+    [onUpdate, task, threads],
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-4 border-b border-border/70 px-1 pb-5">
         <button
           type="button"
           onClick={onBack}
-          className="flex min-w-0 items-center gap-3 text-left text-muted-foreground hover:text-foreground"
+          className="flex min-w-0 cursor-pointer items-center gap-3 text-left text-muted-foreground hover:text-foreground"
         >
           <span>Automations</span>
           <ChevronRightIcon className="size-4" />
-          <span className="truncate text-foreground">{task.name}</span>
+          <span className="truncate text-foreground">{nameDraft || task.name}</span>
         </button>
         <div className="flex items-center gap-1">
           <IconButton
@@ -705,9 +873,13 @@ function AutomationDetail({
             label={active ? "Pause" : "Resume"}
             onClick={() => onMutate(task, active ? "pause" : "resume")}
           >
-            {active ? <PauseCircleIcon className="size-4" /> : <PlayIcon className="size-4" />}
+            {active ? (
+              <CirclePauseIcon className="size-4" />
+            ) : (
+              <CirclePlayIcon className="size-4" />
+            )}
           </IconButton>
-          <IconButton disabled={busy} label="Delete" onClick={() => onMutate(task, "delete")}>
+          <IconButton disabled={busy} label="Delete" onClick={() => onDelete(task)}>
             <Trash2Icon className="size-4" />
           </IconButton>
           <Button disabled={busy} onClick={() => onMutate(task, "run")} size="sm">
@@ -720,12 +892,20 @@ function AutomationDetail({
       <div className="grid min-h-0 flex-1 gap-8 pt-8 lg:grid-cols-[minmax(0,1fr)_27rem]">
         <div className="min-w-0 space-y-8">
           <div className="space-y-6">
-            <h1 className="max-w-4xl text-4xl font-semibold tracking-[-0.04em] text-foreground">
-              {task.name}
-            </h1>
-            <div className="max-w-3xl whitespace-pre-wrap text-lg leading-8 text-foreground/90">
-              {task.prompt}
-            </div>
+            <input
+              aria-label="Automation title"
+              value={nameDraft}
+              onBlur={() => saveNameDraft(nameDraft)}
+              onChange={(event) => setNameDraft(event.currentTarget.value)}
+              className="w-full max-w-4xl rounded-md bg-transparent px-0 py-1 text-4xl font-semibold tracking-[-0.04em] text-foreground outline-none placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <textarea
+              aria-label="Automation prompt"
+              value={promptDraft}
+              onBlur={() => savePromptDraft(promptDraft)}
+              onChange={(event) => setPromptDraft(event.currentTarget.value)}
+              className="min-h-72 w-full max-w-3xl resize-y rounded-md bg-transparent px-0 py-1 text-lg leading-8 text-foreground/90 outline-none placeholder:text-muted-foreground/50 focus-visible:ring-2 focus-visible:ring-ring"
+            />
           </div>
         </div>
 
@@ -751,23 +931,189 @@ function AutomationDetail({
             <section className="space-y-3">
               <h2 className="text-base text-muted-foreground">Details</h2>
               <DetailRow label="Runs in">
-                <span className="inline-flex items-center gap-1">
-                  {KIND_LABELS[task.kind]}
-                  <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-                </span>
+                <Select
+                  value={task.kind}
+                  onValueChange={(value) => {
+                    if (!isAutomationKind(value)) return;
+                    updateKind(value);
+                  }}
+                >
+                  <SelectTrigger
+                    aria-label="Runs in"
+                    className="w-auto min-w-0 justify-end"
+                    size="sm"
+                    variant="ghost"
+                  >
+                    {KIND_LABELS[task.kind]}
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="standalone">New thread</SelectItem>
+                    <SelectItem value="thread" disabled={projectThreads.length === 0}>
+                      Existing thread
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </DetailRow>
               <DetailRow label="Project">
-                <span className="inline-flex max-w-full items-center gap-1">
-                  <span className="truncate">{projectName}</span>
-                  <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                </span>
+                <Select
+                  value={task.projectId}
+                  onValueChange={(value) => updateProject(value as ProjectId)}
+                >
+                  <SelectTrigger
+                    aria-label="Project"
+                    className="w-auto min-w-0 max-w-60 justify-end"
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <span className="truncate">{projectName}</span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </DetailRow>
-              {threadTitle ? <DetailRow label="Thread" value={threadTitle} /> : null}
+              {task.kind === "thread" ? (
+                <DetailRow label="Thread">
+                  <Select
+                    value={task.targetThreadId ?? ""}
+                    onValueChange={(value) => {
+                      if (!value) return;
+                      onUpdate(task, { targetThreadId: value as ThreadId });
+                    }}
+                  >
+                    <SelectTrigger
+                      aria-label="Thread"
+                      className="w-auto min-w-0 max-w-60 justify-end"
+                      size="sm"
+                      variant="ghost"
+                    >
+                      <span className="truncate">{threadTitle ?? "Select thread"}</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projectThreads.map((thread) => (
+                        <SelectItem key={thread.id} value={thread.id}>
+                          {thread.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </DetailRow>
+              ) : null}
               <DetailRow label="Repeats">
-                <span className="inline-flex items-center gap-1">
-                  {formatSchedule(task)}
-                  <ChevronDownIcon className="size-3.5 text-muted-foreground" />
-                </span>
+                <Select
+                  value={scheduleDraft.cadence}
+                  onValueChange={(value) => {
+                    if (!isCadence(value)) return;
+                    updateScheduleDraft((current) => ({ ...current, cadence: value }));
+                  }}
+                >
+                  <SelectTrigger
+                    aria-label="Repeats"
+                    className="w-auto min-w-0 justify-end"
+                    size="sm"
+                    variant="ghost"
+                  >
+                    {CADENCE_LABELS[scheduleDraft.cadence]}
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="once">Once</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </DetailRow>
+              <DetailRow label={scheduleDraft.cadence === "once" ? "Run at" : "Starts"}>
+                <Input
+                  aria-label={scheduleDraft.cadence === "once" ? "Run at" : "Starts"}
+                  className="max-w-56 text-right"
+                  type="datetime-local"
+                  value={scheduleDraft.startAt}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    updateScheduleDraft((current) => ({ ...current, startAt: value }));
+                  }}
+                />
+              </DetailRow>
+              {scheduleDraft.cadence !== "once" ? (
+                <DetailRow label="Interval">
+                  <Input
+                    aria-label="Interval"
+                    className="max-w-24 text-right"
+                    min={1}
+                    type="number"
+                    value={scheduleDraft.interval}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      updateScheduleDraft((current) => ({ ...current, interval: value }));
+                    }}
+                  />
+                </DetailRow>
+              ) : null}
+              {scheduleDraft.cadence === "monthly" ? (
+                <DetailRow label="Day">
+                  <Input
+                    aria-label="Day of month"
+                    className="max-w-24 text-right"
+                    max={31}
+                    min={1}
+                    type="number"
+                    value={scheduleDraft.monthDay}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      updateScheduleDraft((current) => ({ ...current, monthDay: value }));
+                    }}
+                  />
+                </DetailRow>
+              ) : null}
+              {scheduleDraft.cadence === "weekly" ? (
+                <DetailRow label="Days">
+                  <div className="flex max-w-60 flex-wrap justify-end gap-1.5">
+                    {WEEKDAYS.map((weekday) => (
+                      <label
+                        key={weekday.value}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-input px-2 text-xs"
+                      >
+                        <Checkbox
+                          checked={scheduleDraft.weekdays.includes(weekday.value)}
+                          onCheckedChange={(checked) => {
+                            updateScheduleDraft((current) => ({
+                              ...current,
+                              weekdays: checked
+                                ? [...current.weekdays, weekday.value]
+                                : current.weekdays.filter((day) => day !== weekday.value),
+                            }));
+                          }}
+                        />
+                        {weekday.label}
+                      </label>
+                    ))}
+                  </div>
+                </DetailRow>
+              ) : null}
+              <DetailRow label="Timezone">
+                <Input
+                  aria-label="Timezone"
+                  className="max-w-56 text-right"
+                  value={scheduleDraft.timezone}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    updateScheduleDraft((current) => ({ ...current, timezone: value }));
+                  }}
+                />
+              </DetailRow>
+              <DetailRow label="Catch up">
+                <Switch
+                  aria-label="Catch up missed runs"
+                  checked={scheduleDraft.catchUp}
+                  onCheckedChange={(checked) => {
+                    updateScheduleDraft((current) => ({ ...current, catchUp: Boolean(checked) }));
+                  }}
+                />
               </DetailRow>
               <DetailRow label="Model">
                 <AutomationModelControls
@@ -776,11 +1122,14 @@ function AutomationDetail({
                   modelOptionsByInstance={modelOptionsByInstance}
                   providerEntries={providerEntries}
                   providers={providers}
-                  prompt={task.prompt}
+                  prompt={promptDraft}
                   selection={preferredSelection}
                   settings={settings}
-                  onPromptChange={() => undefined}
-                  onSelectionChange={onUpdateModelSelection}
+                  onPromptChange={(prompt) => {
+                    setPromptDraft(prompt);
+                    savePromptDraft(prompt);
+                  }}
+                  onSelectionChange={(modelSelection) => onUpdate(task, { modelSelection })}
                 />
               </DetailRow>
             </section>
@@ -810,7 +1159,7 @@ function AutomationDetail({
                         )}
                       />
                       <div className="min-w-0">
-                        <div className="truncate text-foreground">{task.name}</div>
+                        <div className="truncate text-foreground">{nameDraft || task.name}</div>
                         <div className="truncate text-xs text-muted-foreground">
                           {run.error ?? run.resultSummary ?? run.status}
                         </div>
@@ -1202,7 +1551,10 @@ export function AutomationsSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [mutatingTaskId, setMutatingTaskId] = useState<string | null>(null);
+  const [pendingDeleteTask, setPendingDeleteTask] = useState<ScheduledTask | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const updateSequenceByTaskIdRef = useRef(new Map<ScheduledTask["id"], number>());
+  const taskOperationQueueByTaskIdRef = useRef(new Map<ScheduledTask["id"], Promise<void>>());
 
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
@@ -1346,23 +1698,47 @@ export function AutomationsSettingsPanel() {
     }
   }, [effectiveFormModelSelection, form, loadRuns, loadTasks, timezone]);
 
-  const updateTaskModelSelection = useCallback(
-    async (task: ScheduledTask, modelSelection: ModelSelection) => {
-      setMutatingTaskId(`${task.id}:model`);
+  const enqueueTaskOperation = useCallback(
+    (taskId: ScheduledTask["id"], operation: () => Promise<void>) => {
+      const previous = taskOperationQueueByTaskIdRef.current.get(taskId) ?? Promise.resolve();
+      const tracked = previous
+        .catch(() => undefined)
+        .then(operation)
+        .finally(() => {
+          if (taskOperationQueueByTaskIdRef.current.get(taskId) === tracked) {
+            taskOperationQueueByTaskIdRef.current.delete(taskId);
+          }
+        });
+      taskOperationQueueByTaskIdRef.current.set(taskId, tracked);
+      return tracked;
+    },
+    [],
+  );
+
+  const updateTaskPatch = useCallback(
+    async (task: ScheduledTask, patch: ScheduledTaskUpdateInput["patch"]) => {
+      const nextSequence = (updateSequenceByTaskIdRef.current.get(task.id) ?? 0) + 1;
+      updateSequenceByTaskIdRef.current.set(task.id, nextSequence);
+      const mutationKey = `${task.id}:update:${nextSequence}`;
+      setMutatingTaskId(mutationKey);
       setError(null);
       try {
-        await ensureLocalApi().server.scheduledTasks.update({
-          id: task.id,
-          patch: { modelSelection },
+        await enqueueTaskOperation(task.id, async () => {
+          const result = await ensureLocalApi().server.scheduledTasks.update({
+            id: task.id,
+            patch,
+          });
+          setTasks((current) =>
+            current.map((candidate) => (candidate.id === task.id ? result.task : candidate)),
+          );
         });
-        await loadTasks();
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Failed to update automation model.");
+        setError(cause instanceof Error ? cause.message : "Failed to update automation.");
       } finally {
-        setMutatingTaskId(null);
+        setMutatingTaskId((current) => (current === mutationKey ? null : current));
       }
     },
-    [loadTasks],
+    [enqueueTaskOperation],
   );
 
   const mutateTask = useCallback(
@@ -1370,24 +1746,32 @@ export function AutomationsSettingsPanel() {
       setMutatingTaskId(`${task.id}:${action}`);
       setError(null);
       try {
-        const api = ensureLocalApi().server.scheduledTasks;
-        if (action === "pause") await api.pause({ id: task.id });
-        if (action === "resume") await api.resume({ id: task.id });
-        if (action === "run") await api.runNow({ id: task.id });
-        if (action === "delete") await api.delete({ id: task.id });
-        await loadTasks();
-        if (selectedTaskId === task.id) {
-          if (action === "delete") setSelectedTaskId(null);
-          else await loadRuns(task.id);
-        }
+        await enqueueTaskOperation(task.id, async () => {
+          const api = ensureLocalApi().server.scheduledTasks;
+          if (action === "pause") await api.pause({ id: task.id });
+          if (action === "resume") await api.resume({ id: task.id });
+          if (action === "run") await api.runNow({ id: task.id });
+          if (action === "delete") await api.delete({ id: task.id });
+          await loadTasks();
+          if (selectedTaskId === task.id) {
+            if (action === "delete") setSelectedTaskId(null);
+            else await loadRuns(task.id);
+          }
+        });
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : `Failed to ${action} automation.`);
       } finally {
         setMutatingTaskId(null);
       }
     },
-    [loadRuns, loadTasks, selectedTaskId],
+    [enqueueTaskOperation, loadRuns, loadTasks, selectedTaskId],
   );
+
+  const confirmDeleteTask = useCallback(async () => {
+    if (!pendingDeleteTask) return;
+    await mutateTask(pendingDeleteTask, "delete");
+    setPendingDeleteTask(null);
+  }, [mutateTask, pendingDeleteTask]);
 
   const openCreateViaChat = useCallback(async () => {
     const targetProject = selectedProject ?? projects[0] ?? null;
@@ -1415,6 +1799,9 @@ export function AutomationsSettingsPanel() {
     ? threadById.get(selectedTask.targetThreadId)
     : null;
   const selectedTaskRuns = selectedTask ? (runsByTaskId[selectedTask.id] ?? []) : [];
+  const pendingDeleteBusy = pendingDeleteTask
+    ? mutatingTaskId === `${pendingDeleteTask.id}:delete`
+    : false;
   const selectedTaskPreferredModel = selectedTask
     ? preferredModelSelectionForTarget({
         explicit: selectedTask.modelSelection,
@@ -1433,8 +1820,8 @@ export function AutomationsSettingsPanel() {
         <AutomationDetail
           task={selectedTask}
           runs={selectedTaskRuns}
-          projectName={selectedTaskProject?.name ?? String(selectedTask.projectId)}
-          threadTitle={selectedTaskThread?.title ?? null}
+          projects={projects}
+          threads={allThreads}
           preferredSelection={selectedTaskPreferredModel}
           providerEntries={providerEntries}
           modelOptionsByInstance={modelOptionsByInstance}
@@ -1443,9 +1830,8 @@ export function AutomationsSettingsPanel() {
           busy={mutatingTaskId?.startsWith(`${selectedTask.id}:`) ?? false}
           onBack={() => setSelectedTaskId(null)}
           onMutate={(task, action) => void mutateTask(task, action)}
-          onUpdateModelSelection={(modelSelection) =>
-            void updateTaskModelSelection(selectedTask, modelSelection)
-          }
+          onDelete={setPendingDeleteTask}
+          onUpdate={(task, patch) => void updateTaskPatch(task, patch)}
         />
       ) : (
         <>
@@ -1503,6 +1889,7 @@ export function AutomationsSettingsPanel() {
                 mutatingTaskId={mutatingTaskId}
                 onSelect={selectTask}
                 onMutate={(task, action) => void mutateTask(task, action)}
+                onDelete={setPendingDeleteTask}
               />
               <AutomationListSection
                 title="Paused"
@@ -1513,6 +1900,7 @@ export function AutomationsSettingsPanel() {
                 mutatingTaskId={mutatingTaskId}
                 onSelect={selectTask}
                 onMutate={(task, action) => void mutateTask(task, action)}
+                onDelete={setPendingDeleteTask}
               />
             </>
           )}
@@ -1539,6 +1927,36 @@ export function AutomationsSettingsPanel() {
         onFormChange={updateForm}
         onSubmit={() => void submitCreate()}
       />
+
+      <AlertDialog
+        open={Boolean(pendingDeleteTask)}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteTask(null);
+        }}
+      >
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete automation "{pendingDeleteTask?.name ?? "this automation"}"?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the schedule and any future runs. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button disabled={pendingDeleteBusy} variant="outline" />}>
+              Cancel
+            </AlertDialogClose>
+            <Button
+              disabled={pendingDeleteBusy}
+              variant="destructive"
+              onClick={() => void confirmDeleteTask()}
+            >
+              Delete automation
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </SettingsPageContainer>
   );
 }
