@@ -7,13 +7,6 @@ export const DEFAULT_VOICE_TRANSCRIPTION_BASE_URL = "https://tritonai-api.ucsd.e
 export const DEFAULT_VOICE_TRANSCRIPTION_MODEL = "api-cohere-transcribe";
 export const DEFAULT_VOICE_TRANSCRIPTION_LANGUAGE = "en";
 
-export const VoiceComposerMode = Schema.Literals([
-  "append",
-  "insert-at-cursor",
-  "replace-selection",
-]);
-export type VoiceComposerMode = typeof VoiceComposerMode.Type;
-
 export const VoiceInputProvider = Schema.Literals([
   "tritonai-litellm",
   "openai-compatible",
@@ -26,7 +19,7 @@ export const VoiceCleanupMode = Schema.Literals(["off", "light"]);
 export type VoiceCleanupMode = typeof VoiceCleanupMode.Type;
 
 export const VoiceInputSettings = Schema.Struct({
-  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   provider: VoiceInputProvider.pipe(
     Schema.withDecodingDefault(Effect.succeed("tritonai-litellm" as const)),
   ),
@@ -39,9 +32,6 @@ export const VoiceInputSettings = Schema.Struct({
   cleanupMode: VoiceCleanupMode.pipe(Schema.withDecodingDefault(Effect.succeed("off" as const))),
   language: TrimmedString.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_VOICE_TRANSCRIPTION_LANGUAGE)),
-  ),
-  defaultComposerMode: VoiceComposerMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed("insert-at-cursor" as const)),
   ),
   retainAudioForDebugging: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });
@@ -58,7 +48,6 @@ export const VoiceInputSettingsPatch = Schema.Struct({
   model: Schema.optionalKey(TrimmedString),
   cleanupMode: Schema.optionalKey(VoiceCleanupMode),
   language: Schema.optionalKey(TrimmedString),
-  defaultComposerMode: Schema.optionalKey(VoiceComposerMode),
   retainAudioForDebugging: Schema.optionalKey(Schema.Boolean),
 });
 export type VoiceInputSettingsPatch = typeof VoiceInputSettingsPatch.Type;

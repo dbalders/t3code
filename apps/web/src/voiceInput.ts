@@ -1,4 +1,4 @@
-import type { VoiceInputSettings } from "@t3tools/contracts";
+import { DEFAULT_VOICE_TRANSCRIPTION_BASE_URL, type VoiceInputSettings } from "@t3tools/contracts";
 
 import { ensureLocalApi } from "./localApi";
 
@@ -125,15 +125,28 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
+function normalizeVoiceBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/u, "");
+}
+
+function requestBaseUrl(settings: VoiceInputSettings): string | undefined {
+  const baseUrl = normalizeVoiceBaseUrl(settings.baseUrl);
+  if (!baseUrl || baseUrl === normalizeVoiceBaseUrl(DEFAULT_VOICE_TRANSCRIPTION_BASE_URL)) {
+    return undefined;
+  }
+  return baseUrl;
+}
+
 export async function transcribeVoiceBlob(
   blob: Blob,
   settings: VoiceInputSettings,
 ): Promise<string> {
   const audioBase64 = await blobToBase64(blob);
+  const baseUrl = requestBaseUrl(settings);
   const result = await ensureLocalApi().server.transcribeVoice({
     audioBase64,
     mimeType: blob.type || "audio/webm",
-    baseUrl: settings.baseUrl,
+    ...(baseUrl ? { baseUrl } : {}),
     model: settings.model,
     language: settings.language,
   });

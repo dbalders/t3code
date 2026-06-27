@@ -1,12 +1,7 @@
-import type { VoiceComposerMode } from "@t3tools/contracts";
-
 import { replaceTextRange } from "./composer-logic";
 
 export interface VoiceInsertionSnapshot {
   readonly value: string;
-  readonly expandedCursor: number;
-  readonly expandedSelectionStart: number;
-  readonly expandedSelectionEnd: number;
 }
 
 export interface VoiceInsertionResult {
@@ -44,23 +39,10 @@ function normalizeTranscriptForRange(input: {
 export function insertVoiceTranscript(input: {
   readonly snapshot: VoiceInsertionSnapshot;
   readonly transcript: string;
-  readonly mode: VoiceComposerMode;
 }): VoiceInsertionResult {
   const value = input.snapshot.value;
-  const selectionStart = Math.max(0, Math.min(value.length, input.snapshot.expandedSelectionStart));
-  const selectionEnd = Math.max(
-    selectionStart,
-    Math.min(value.length, input.snapshot.expandedSelectionEnd),
-  );
-  const cursor = Math.max(0, Math.min(value.length, input.snapshot.expandedCursor));
-  const hasSelection = selectionEnd > selectionStart;
-
-  const [rangeStart, rangeEnd] =
-    input.mode === "append"
-      ? [value.length, value.length]
-      : input.mode === "replace-selection" && hasSelection
-        ? [selectionStart, selectionEnd]
-        : [cursor, cursor];
+  const rangeStart = value.length;
+  const rangeEnd = value.length;
 
   const replacement = normalizeTranscriptForRange({
     value,

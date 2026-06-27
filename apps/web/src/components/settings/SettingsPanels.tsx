@@ -12,7 +12,6 @@ import {
   type ProviderInstanceConfig,
   type ProviderInstanceId,
   type ScopedThreadRef,
-  type VoiceComposerMode,
   type VoiceInputSettingsPatch,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
@@ -113,12 +112,6 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
-
-const VOICE_COMPOSER_MODE_LABELS: Record<VoiceComposerMode, string> = {
-  append: "Append",
-  "insert-at-cursor": "Insert at cursor",
-  "replace-selection": "Replace selection",
-};
 
 function withoutProviderInstanceKey<V>(
   record: Readonly<Record<ProviderInstanceId, V>> | undefined,
@@ -723,7 +716,7 @@ export function GeneralSettingsPanel() {
           }
         >
           {voiceInputSettings.enabled ? (
-            <div className="mt-3 grid gap-3 border-t border-border/60 py-3 sm:grid-cols-2">
+            <div className="mt-3 grid gap-3 border-t border-border/60 py-3 sm:grid-cols-3">
               <label className="grid gap-1.5">
                 <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
                   Endpoint
@@ -763,41 +756,10 @@ export function GeneralSettingsPanel() {
                   aria-label="Voice transcription language"
                 />
               </label>
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                  Insert
-                </span>
-                <Select
-                  value={voiceInputSettings.defaultComposerMode}
-                  onValueChange={(value) => {
-                    if (
-                      value === "append" ||
-                      value === "insert-at-cursor" ||
-                      value === "replace-selection"
-                    ) {
-                      updateVoiceInputSettings({ defaultComposerMode: value });
-                    }
-                  }}
-                >
-                  <SelectTrigger className="w-full" aria-label="Default voice insertion mode">
-                    <SelectValue>
-                      {VOICE_COMPOSER_MODE_LABELS[voiceInputSettings.defaultComposerMode]}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup align="end" alignItemWithTrigger={false}>
-                    {(Object.keys(VOICE_COMPOSER_MODE_LABELS) as VoiceComposerMode[]).map(
-                      (mode) => (
-                        <SelectItem hideIndicator key={mode} value={mode}>
-                          {VOICE_COMPOSER_MODE_LABELS[mode]}
-                        </SelectItem>
-                      ),
-                    )}
-                  </SelectPopup>
-                </Select>
-              </label>
-              <p className="sm:col-span-2 text-[11px] leading-4 text-muted-foreground/75">
+              <p className="sm:col-span-3 text-[11px] leading-4 text-muted-foreground/75">
                 The server reads `TRITONAI_API_KEY` and only allows its configured endpoint;
-                recorded audio is discarded after the transcription response.
+                recorded audio is discarded after the transcription response. Transcripts are
+                appended to the draft.
               </p>
             </div>
           ) : null}

@@ -13,8 +13,8 @@ import type {
   ServerProvider,
   ThreadId,
   TurnId,
-  VoiceComposerMode,
 } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime";
 import {
   DEFAULT_PROVIDER_DRIVER_KIND,
   DEFAULT_PROVIDER_INSTANCE_ID,
@@ -392,12 +392,6 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 
 type VoiceDictationStatus = "idle" | "starting" | "recording" | "processing" | "ready" | "error";
 
-const voiceComposerModeLabels: Record<VoiceComposerMode, string> = {
-  append: "Append",
-  "insert-at-cursor": "Cursor",
-  "replace-selection": "Selection",
-};
-
 function formatVoiceElapsed(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainder = Math.max(0, seconds % 60);
@@ -428,14 +422,16 @@ function VoiceActivityBars(props: { active: boolean }) {
   );
 }
 
+function composerDraftTargetKey(target: ScopedThreadRef | DraftId): string {
+  return typeof target === "string" ? `draft:${target}` : `thread:${scopedThreadKey(target)}`;
+}
+
 const VoiceDictationControl = memo(function VoiceDictationControl(props: {
   status: VoiceDictationStatus;
-  mode: VoiceComposerMode;
   elapsedSeconds: number;
   disabled: boolean;
   error: string | null;
   preserveComposerFocusOnPointerDown: boolean;
-  onModeChange: (mode: VoiceComposerMode) => void;
   onStart: () => void;
   onStop: () => void;
   onCancel: () => void;
@@ -487,24 +483,6 @@ const VoiceDictationControl = memo(function VoiceDictationControl(props: {
         <>
           <VoiceActivityBars active />
           <span className="font-mono tabular-nums">{formatVoiceElapsed(props.elapsedSeconds)}</span>
-          <Select
-            value={props.mode}
-            onValueChange={(value) => props.onModeChange(value as VoiceComposerMode)}
-          >
-            <SelectTrigger
-              aria-label="Voice insertion mode"
-              className="h-6 min-w-20 rounded-full border-border/70 bg-background/70 px-2 text-[11px]"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectPopup align="end" side="top">
-              {(Object.keys(voiceComposerModeLabels) as VoiceComposerMode[]).map((mode) => (
-                <SelectItem key={mode} value={mode}>
-                  {voiceComposerModeLabels[mode]}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
           <Button
             size="icon-xs"
             variant="ghost"
@@ -552,7 +530,7 @@ export interface ChatComposerHandle {
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
   insertTextAtEnd: (text: string) => boolean;
-  insertDraftText: (input: { text: string; mode: VoiceComposerMode }) => boolean;
+  insertDraftText: (input: { text: string }) => boolean;
   openModelPicker: () => void;
   toggleModelPicker: () => void;
   isModelPickerOpen: () => boolean;
@@ -1053,12 +1031,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const voiceSettings = settings.voiceInput;
   const [voiceStatus, setVoiceStatus] = useState<VoiceDictationStatus>("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [voiceMode, setVoiceMode] = useState<VoiceComposerMode>(voiceSettings.defaultComposerMode);
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
   const isMobileViewport = useMediaQuery("max-sm");
   const isVoiceActive =
     voiceStatus === "starting" || voiceStatus === "recording" || voiceStatus === "processing";
   const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused && !isVoiceActive;
+  const activeVoiceDraftTargetKey = useMemo(
+    () => composerDraftTargetKey(composerDraftTarget),
+    [composerDraftTarget],
+  );
 
   // ------------------------------------------------------------------
   // Refs
@@ -1080,6 +1061,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const voiceReadyTimeoutRef = useRef<number | null>(null);
   const voiceStartTokenRef = useRef(0);
   const voiceStartInFlightRef = useRef(false);
+  const voiceDraftTargetKeyRef = useRef(activeVoiceDraftTargetKey);
+  const latestVoiceDraftTargetKeyRef = useRef(activeVoiceDraftTargetKey);
+  const voiceRecordingTargetKeyRef = useRef<string | null>(null);
+  latestVoiceDraftTargetKeyRef.current = activeVoiceDraftTargetKey;
 
   // ------------------------------------------------------------------
   // Derived: composer send state
@@ -1407,13 +1392,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useEffect(() => {
     composerElementContextsRef.current = composerElementContexts;
   }, [composerElementContexts, composerElementContextsRef]);
-
-  useEffect(() => {
-    if (voiceStatus !== "idle") {
-      return;
-    }
-    setVoiceMode(voiceSettings.defaultComposerMode);
-  }, [voiceSettings.defaultComposerMode, voiceStatus]);
 
   useEffect(() => {
     if (voiceStatus !== "recording") {
@@ -1785,14 +1763,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [composerCursor, composerTerminalContexts, promptRef]);
 
   const insertDraftTextIntoComposer = useCallback(
-    (text: string, mode: VoiceComposerMode): boolean => {
+    (text: string): boolean => {
       if (text.trim().length === 0) {
         return false;
       }
       const next = insertVoiceTranscript({
         snapshot: readComposerSnapshot(),
         transcript: text,
-        mode,
       });
       const nextCursor = collapseExpandedComposerCursor(next.text, next.cursor);
       const nextExpandedCursor = expandCollapsedComposerCursor(next.text, nextCursor);
@@ -1972,6 +1949,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     voiceReadyTimeoutRef.current = null;
   }, []);
 
+  useEffect(() => {
+    if (voiceDraftTargetKeyRef.current === activeVoiceDraftTargetKey) {
+      return;
+    }
+    voiceDraftTargetKeyRef.current = activeVoiceDraftTargetKey;
+    voiceStartTokenRef.current += 1;
+    voiceStartInFlightRef.current = false;
+    voiceRecordingTargetKeyRef.current = null;
+    clearVoiceReadyTimeout();
+    voiceRecorderRef.current?.cancel();
+    voiceRecorderRef.current = null;
+    setVoiceStatus("idle");
+    setVoiceError(null);
+    setVoiceElapsedSeconds(0);
+  }, [activeVoiceDraftTargetKey, clearVoiceReadyTimeout]);
+
   const markVoiceReady = useCallback(() => {
     clearVoiceReadyTimeout();
     setVoiceStatus("ready");
@@ -2005,9 +1998,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ) {
       return;
     }
+    const targetKeyAtStart = latestVoiceDraftTargetKeyRef.current;
     const startToken = voiceStartTokenRef.current + 1;
     voiceStartTokenRef.current = startToken;
     voiceStartInFlightRef.current = true;
+    voiceRecordingTargetKeyRef.current = targetKeyAtStart;
     clearVoiceReadyTimeout();
     setVoiceError(null);
     setVoiceElapsedSeconds(0);
@@ -2015,7 +2010,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setVoiceStatus("starting");
     void createVoiceRecorder()
       .then((recorder) => {
-        if (voiceStartTokenRef.current !== startToken) {
+        if (
+          voiceStartTokenRef.current !== startToken ||
+          latestVoiceDraftTargetKeyRef.current !== targetKeyAtStart ||
+          voiceRecordingTargetKeyRef.current !== targetKeyAtStart
+        ) {
           recorder.cancel();
           return;
         }
@@ -2024,11 +2023,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         setVoiceStatus("recording");
       })
       .catch((error: unknown) => {
-        if (voiceStartTokenRef.current !== startToken) {
+        if (
+          voiceStartTokenRef.current !== startToken ||
+          latestVoiceDraftTargetKeyRef.current !== targetKeyAtStart ||
+          voiceRecordingTargetKeyRef.current !== targetKeyAtStart
+        ) {
           return;
         }
         voiceStartInFlightRef.current = false;
         voiceRecorderRef.current = null;
+        voiceRecordingTargetKeyRef.current = null;
         showVoiceError(error);
       });
   }, [canUseVoiceDictation, clearVoiceReadyTimeout, showVoiceError, voiceStatus]);
@@ -2036,6 +2040,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const cancelVoiceRecording = useCallback(() => {
     voiceStartTokenRef.current += 1;
     voiceStartInFlightRef.current = false;
+    voiceRecordingTargetKeyRef.current = null;
     clearVoiceReadyTimeout();
     voiceRecorderRef.current?.cancel();
     voiceRecorderRef.current = null;
@@ -2053,16 +2058,46 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       voiceStartInFlightRef.current = false;
       clearVoiceReadyTimeout();
       voiceRecorderRef.current = null;
+      const targetKeyAtStop = voiceRecordingTargetKeyRef.current;
+      if (!targetKeyAtStop || latestVoiceDraftTargetKeyRef.current !== targetKeyAtStop) {
+        voiceRecordingTargetKeyRef.current = null;
+        recorder.cancel();
+        setVoiceStatus("idle");
+        setVoiceError(null);
+        setVoiceElapsedSeconds(0);
+        return false;
+      }
+      const tokenAtStop = voiceStartTokenRef.current;
+      const isCurrentVoiceTarget = () =>
+        latestVoiceDraftTargetKeyRef.current === targetKeyAtStop &&
+        voiceStartTokenRef.current === tokenAtStop &&
+        voiceRecordingTargetKeyRef.current === targetKeyAtStop;
+      const discardStaleVoiceResult = () => {
+        if (voiceStartTokenRef.current === tokenAtStop) {
+          voiceRecordingTargetKeyRef.current = null;
+          setVoiceStatus("idle");
+          setVoiceError(null);
+          setVoiceElapsedSeconds(0);
+        }
+        return false;
+      };
       setVoiceStatus("processing");
       setVoiceError(null);
       setVoiceElapsedSeconds(0);
       try {
         const audio = await recorder.stop();
+        if (!isCurrentVoiceTarget()) {
+          return discardStaleVoiceResult();
+        }
         const transcript = await transcribeVoiceBlob(audio, voiceSettings);
-        const inserted = insertDraftTextIntoComposer(transcript, voiceMode);
+        if (!isCurrentVoiceTarget()) {
+          return discardStaleVoiceResult();
+        }
+        const inserted = insertDraftTextIntoComposer(transcript);
         if (!inserted) {
           throw new Error("Voice transcription returned no text.");
         }
+        voiceRecordingTargetKeyRef.current = null;
         markVoiceReady();
         if (options?.submitAfterInsert) {
           onSend();
@@ -2071,6 +2106,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return true;
       } catch (error) {
         recorder.cancel();
+        if (!isCurrentVoiceTarget()) {
+          return false;
+        }
+        voiceRecordingTargetKeyRef.current = null;
         showVoiceError(error);
         return false;
       }
@@ -2082,7 +2121,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       markVoiceReady,
       onSend,
       showVoiceError,
-      voiceMode,
       voiceSettings,
       voiceStatus,
     ],
@@ -2345,7 +2383,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         const rangeEnd = promptRef.current.length;
         return applyPromptReplacement(rangeEnd, rangeEnd, text);
       },
-      insertDraftText: ({ text, mode }: { text: string; mode: VoiceComposerMode }) => {
+      insertDraftText: ({ text }: { text: string }) => {
         if (
           text.length === 0 ||
           isConnecting ||
@@ -2355,7 +2393,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ) {
           return false;
         }
-        return insertDraftTextIntoComposer(text, mode);
+        return insertDraftTextIntoComposer(text);
       },
       openModelPicker: () => {
         setIsComposerModelPickerOpen(true);
@@ -2638,12 +2676,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               {voiceSettings.enabled ? (
                 <VoiceDictationControl
                   status={voiceStatus}
-                  mode={voiceMode}
                   elapsedSeconds={voiceElapsedSeconds}
                   disabled={!canUseVoiceDictation}
                   error={voiceError}
                   preserveComposerFocusOnPointerDown
-                  onModeChange={setVoiceMode}
                   onStart={startVoiceRecording}
                   onStop={() => void stopVoiceRecording()}
                   onCancel={cancelVoiceRecording}
@@ -2977,12 +3013,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 {voiceSettings.enabled ? (
                   <VoiceDictationControl
                     status={voiceStatus}
-                    mode={voiceMode}
                     elapsedSeconds={voiceElapsedSeconds}
                     disabled={!canUseVoiceDictation}
                     error={voiceError}
                     preserveComposerFocusOnPointerDown={isMobileViewport}
-                    onModeChange={setVoiceMode}
                     onStart={startVoiceRecording}
                     onStop={() => void stopVoiceRecording()}
                     onCancel={cancelVoiceRecording}

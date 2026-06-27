@@ -84,11 +84,7 @@ function resolveTrustedBaseUrl(
   env: VoiceTranscriptionEnv,
 ): Effect.Effect<string, ServerVoiceTranscriptionError> {
   const serverBaseUrl = configuredBaseUrl(env);
-  const trustedBaseUrls = new Set(
-    [DEFAULT_VOICE_TRANSCRIPTION_BASE_URL, serverBaseUrl].map((baseUrl) =>
-      trimTrailingSlash(baseUrl),
-    ),
-  );
+  const trustedBaseUrls = new Set([trimTrailingSlash(serverBaseUrl)]);
   const requestedBaseUrl = trimTrailingSlash(input.baseUrl?.trim() || serverBaseUrl);
 
   if (!trustedBaseUrls.has(requestedBaseUrl)) {
@@ -166,6 +162,22 @@ function transcriptionEndpoint(baseUrl: string): string {
   return `${trimTrailingSlash(baseUrl)}/audio/transcriptions`;
 }
 
+function audioFilenameExtension(mimeType: string): string {
+  const normalized = mimeType.toLowerCase().split(";")[0]?.trim();
+  switch (normalized) {
+    case "audio/webm":
+      return "webm";
+    case "audio/mp4":
+      return "mp4";
+    case "audio/wav":
+    case "audio/wave":
+    case "audio/x-wav":
+      return "wav";
+    default:
+      return "webm";
+  }
+}
+
 function safeProviderDetail(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "Provider returned an empty error response.";
@@ -239,7 +251,7 @@ export function transcribeVoice(
         form.set(
           "file",
           new Blob([audioBuffer], { type: input.mimeType }),
-          `voice-dictation.${input.mimeType.includes("webm") ? "webm" : "wav"}`,
+          `voice-dictation.${audioFilenameExtension(input.mimeType)}`,
         );
 
         const response = await fetchImpl(transcriptionEndpoint(config.baseUrl), {

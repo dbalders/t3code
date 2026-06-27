@@ -72,6 +72,7 @@ import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useUiStateStore } from "../uiStateStore";
 import { createAuthenticatedSessionHandlers } from "../../test/authHttpHandlers";
 import { BrowserWsRpcHarness, type NormalizedWsRpcRequestBody } from "../../test/wsRpcHarness";
+import { writeBrowserClientSettings } from "../clientPersistenceStorage";
 
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 
@@ -479,6 +480,17 @@ function buildFixture(snapshot: OrchestrationReadModel): TestFixture {
     },
     terminalMetadataEvents: [],
   };
+}
+
+function enableVoiceInputFixture(nextFixture: TestFixture): void {
+  writeBrowserClientSettings({
+    ...DEFAULT_CLIENT_SETTINGS,
+    voiceInput: {
+      ...DEFAULT_CLIENT_SETTINGS.voiceInput,
+      enabled: true,
+    },
+  });
+  void nextFixture;
 }
 
 function addThreadToSnapshot(
@@ -3668,6 +3680,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
         targetMessageId: "msg-user-voice-stop-target" as MessageId,
         targetText: "voice stop thread",
       }),
+      configureFixture: enableVoiceInputFixture,
       resolveRpc: (body) => {
         if (body._tag === WS_METHODS.serverTranscribeVoice) {
           return { text: "dictated follow up" };
@@ -3696,12 +3709,13 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await waitForComposerText("dictated follow up");
       const transcriptionRequest = wsRequests.find(
         (request) => request._tag === WS_METHODS.serverTranscribeVoice,
-      ) as { _tag: string; audioBase64?: string; mimeType?: string } | undefined;
+      ) as { _tag: string; audioBase64?: string; baseUrl?: string; mimeType?: string } | undefined;
       expect(transcriptionRequest).toMatchObject({
         _tag: WS_METHODS.serverTranscribeVoice,
         mimeType: "audio/webm;codecs=opus",
       });
       expect(transcriptionRequest?.audioBase64).toEqual(expect.any(String));
+      expect(transcriptionRequest?.baseUrl).toBeUndefined();
       expect(
         wsRequests.some((request) => request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand),
       ).toBe(false);
@@ -3721,6 +3735,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
         targetMessageId: "msg-user-voice-send-target" as MessageId,
         targetText: "voice send thread",
       }),
+      configureFixture: enableVoiceInputFixture,
       resolveRpc: (body) => {
         if (body._tag === WS_METHODS.serverTranscribeVoice) {
           return { text: "send this voice note" };
@@ -3769,6 +3784,174 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
     } finally {
+      voiceMocks.restore();
+      await mounted.cleanup();
+    }
+  });
+
+  it("cancels an active voice recording when the composer target changes before stop", async () => {
+    const voiceMocks = installVoiceRecordingMocks();
+    const secondThreadId = "thread-browser-test-voice-cancel-target" as ThreadId;
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: addThreadToSnapshot(
+        createSnapshotForTargetUser({
+          targetMessageId: "msg-user-voice-cancel-target" as MessageId,
+          targetText: "voice cancel target thread",
+        }),
+        secondThreadId,
+      ),
+      configureFixture: enableVoiceInputFixture,
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.serverTranscribeVoice) {
+          return { text: "should not transcribe" };
+        }
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "First thread draft");
+      await waitForComposerText("First thread draft");
+      (await waitForVoiceButton()).click();
+      await waitForVoiceStopButton();
+
+      await mounted.router.navigate({
+        to: "/$environmentId/$threadId",
+        params: {
+          environmentId: LOCAL_ENVIRONMENT_ID,
+          threadId: secondThreadId,
+        },
+      });
+      await waitForURL(
+        mounted.router,
+        (path) => path === serverThreadPath(secondThreadId),
+        "Route should switch to the second thread before voice recording stops.",
+      );
+      useComposerDraftStore
+        .getState()
+        .setPrompt(threadRefFor(secondThreadId), "Second thread draft");
+
+      await vi.waitFor(
+        () => {
+          expect(
+            document.querySelector<HTMLElement>('[data-testid="voice-dictation-active"]'),
+          ).toBeNull();
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      expect(composerDraftFor(THREAD_KEY)?.prompt ?? "").toBe("First thread draft");
+      expect(composerDraftFor(threadKeyFor(secondThreadId))?.prompt ?? "").toBe(
+        "Second thread draft",
+      );
+      expect(wsRequests.some((request) => request._tag === WS_METHODS.serverTranscribeVoice)).toBe(
+        false,
+      );
+      expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
+    } finally {
+      voiceMocks.restore();
+      await mounted.cleanup();
+    }
+  });
+
+  it("discards a voice recording result when the active composer changes before transcription finishes", async () => {
+    const voiceMocks = installVoiceRecordingMocks();
+    const secondThreadId = "thread-browser-test-voice-stale-target" as ThreadId;
+    let transcriptionSettled = false;
+    let resolveTranscription = (_value: { text: string }) => {};
+    const transcriptionPromise = new Promise<{ text: string }>((resolve) => {
+      resolveTranscription = (value) => {
+        if (transcriptionSettled) {
+          return;
+        }
+        transcriptionSettled = true;
+        resolve(value);
+      };
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: addThreadToSnapshot(
+        createSnapshotForTargetUser({
+          targetMessageId: "msg-user-voice-stale-target" as MessageId,
+          targetText: "voice stale target thread",
+        }),
+        secondThreadId,
+      ),
+      configureFixture: enableVoiceInputFixture,
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.serverTranscribeVoice) {
+          return transcriptionPromise;
+        }
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "First thread draft");
+      await waitForComposerText("First thread draft");
+      (await waitForVoiceButton()).click();
+      await waitForVoiceStopButton();
+
+      const sendButton = await waitForSendButton();
+      expect(sendButton.disabled).toBe(false);
+      sendButton.click();
+
+      await vi.waitFor(
+        () => {
+          expect(
+            wsRequests.some((request) => request._tag === WS_METHODS.serverTranscribeVoice),
+          ).toBe(true);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      await mounted.router.navigate({
+        to: "/$environmentId/$threadId",
+        params: {
+          environmentId: LOCAL_ENVIRONMENT_ID,
+          threadId: secondThreadId,
+        },
+      });
+      await waitForURL(
+        mounted.router,
+        (path) => path === serverThreadPath(secondThreadId),
+        "Route should switch to the second thread before voice transcription resolves.",
+      );
+      useComposerDraftStore
+        .getState()
+        .setPrompt(threadRefFor(secondThreadId), "Second thread draft");
+
+      resolveTranscription({ text: "stale dictated text" });
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+
+      expect(composerDraftFor(THREAD_KEY)?.prompt ?? "").toBe("First thread draft");
+      expect(composerDraftFor(threadKeyFor(secondThreadId))?.prompt ?? "").toBe(
+        "Second thread draft",
+      );
+      expect(document.body.textContent).not.toContain("stale dictated text");
+      expect(
+        wsRequests.some(
+          (request) =>
+            request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+            request.type === "thread.turn.start",
+        ),
+      ).toBe(false);
+      expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
+    } finally {
+      resolveTranscription({ text: "cleanup" });
       voiceMocks.restore();
       await mounted.cleanup();
     }
