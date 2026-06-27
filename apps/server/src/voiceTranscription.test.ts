@@ -46,7 +46,7 @@ describe("transcribeVoice", () => {
     }),
   );
 
-  it.effect("uses caller-provided endpoint, model, and language", () =>
+  it.effect("uses caller-provided endpoint only when it matches server config", () =>
     Effect.gen(function* () {
       const fetchMock = vi.fn(
         async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
@@ -67,12 +67,32 @@ describe("transcribeVoice", () => {
           language: "es",
         }),
         {
-          env: { TRITONAI_API_KEY: "test-key" },
+          env: {
+            TRITONAI_API_KEY: "test-key",
+            UCSD_AI_BASE_URL: "https://voice.example.test/v1/",
+          },
           fetch: fetchMock as unknown as typeof fetch,
         },
       );
 
       assert.deepStrictEqual(result, { text: "hola" });
+    }),
+  );
+
+  it.effect("rejects untrusted caller-provided endpoints before fetch", () =>
+    Effect.gen(function* () {
+      const fetchMock = vi.fn();
+
+      const error = yield* Effect.flip(
+        transcribeVoice(makeInput({ baseUrl: "https://attacker.example.test/v1" }), {
+          env: { TRITONAI_API_KEY: "test-key" },
+          fetch: fetchMock as unknown as typeof fetch,
+        }),
+      );
+
+      assert.equal(error.code, "invalid_base_url");
+      assert.match(error.message, /not allowed/u);
+      expect(fetchMock).not.toHaveBeenCalled();
     }),
   );
 

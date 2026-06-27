@@ -47,16 +47,9 @@ export const VoiceInputSettings = Schema.Struct({
 });
 export type VoiceInputSettings = typeof VoiceInputSettings.Type;
 
-export const DEFAULT_VOICE_INPUT_SETTINGS: VoiceInputSettings = {
-  enabled: true,
-  provider: "tritonai-litellm",
-  baseUrl: DEFAULT_VOICE_TRANSCRIPTION_BASE_URL,
-  model: DEFAULT_VOICE_TRANSCRIPTION_MODEL,
-  cleanupMode: "off",
-  language: DEFAULT_VOICE_TRANSCRIPTION_LANGUAGE,
-  defaultComposerMode: "insert-at-cursor",
-  retainAudioForDebugging: false,
-};
+export const DEFAULT_VOICE_INPUT_SETTINGS: VoiceInputSettings = Schema.decodeSync(
+  VoiceInputSettings,
+)({});
 
 export const VoiceInputSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),

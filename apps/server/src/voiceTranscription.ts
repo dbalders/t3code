@@ -46,27 +46,13 @@ export function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/u, "");
 }
 
-function normalizeBaseUrl(input: string | undefined, env: VoiceTranscriptionEnv): string {
-  const configured =
-    input?.trim() || env.UCSD_AI_BASE_URL?.trim() || DEFAULT_VOICE_TRANSCRIPTION_BASE_URL;
-  return trimTrailingSlash(configured);
+function configuredBaseUrl(env: VoiceTranscriptionEnv): string {
+  return trimTrailingSlash(env.UCSD_AI_BASE_URL?.trim() || DEFAULT_VOICE_TRANSCRIPTION_BASE_URL);
 }
 
-function resolveVoiceTranscriptionConfig(
-  input: ServerVoiceTranscribeInput,
-  env: VoiceTranscriptionEnv,
-): Effect.Effect<TranscriptionConfig, ServerVoiceTranscriptionError> {
-  const apiKey = env.TRITONAI_API_KEY?.trim();
-  if (!apiKey) {
-    return Effect.fail(
-      voiceError({
-        code: "missing_api_key",
-        message: "Voice transcription is not configured. Set TRITONAI_API_KEY on the app server.",
-      }),
-    );
-  }
-
-  const baseUrl = normalizeBaseUrl(input.baseUrl, env);
+function validateTrustedBaseUrl(
+  baseUrl: string,
+): Effect.Effect<void, ServerVoiceTranscriptionError> {
   try {
     const parsed = new URL(baseUrl);
     if (
@@ -90,11 +76,56 @@ function resolveVoiceTranscriptionConfig(
     );
   }
 
-  return Effect.succeed({
-    apiKey,
-    baseUrl,
-    model: input.model?.trim() || DEFAULT_VOICE_TRANSCRIPTION_MODEL,
-    language: input.language?.trim() || DEFAULT_VOICE_TRANSCRIPTION_LANGUAGE,
+  return Effect.void;
+}
+
+function resolveTrustedBaseUrl(
+  input: ServerVoiceTranscribeInput,
+  env: VoiceTranscriptionEnv,
+): Effect.Effect<string, ServerVoiceTranscriptionError> {
+  const serverBaseUrl = configuredBaseUrl(env);
+  const trustedBaseUrls = new Set(
+    [DEFAULT_VOICE_TRANSCRIPTION_BASE_URL, serverBaseUrl].map((baseUrl) =>
+      trimTrailingSlash(baseUrl),
+    ),
+  );
+  const requestedBaseUrl = trimTrailingSlash(input.baseUrl?.trim() || serverBaseUrl);
+
+  if (!trustedBaseUrls.has(requestedBaseUrl)) {
+    return Effect.fail(
+      voiceError({
+        code: "invalid_base_url",
+        message: "Voice transcription endpoint is not allowed by this server.",
+      }),
+    );
+  }
+
+  return validateTrustedBaseUrl(requestedBaseUrl).pipe(Effect.as(requestedBaseUrl));
+}
+
+function resolveVoiceTranscriptionConfig(
+  input: ServerVoiceTranscribeInput,
+  env: VoiceTranscriptionEnv,
+): Effect.Effect<TranscriptionConfig, ServerVoiceTranscriptionError> {
+  const apiKey = env.TRITONAI_API_KEY?.trim();
+  if (!apiKey) {
+    return Effect.fail(
+      voiceError({
+        code: "missing_api_key",
+        message: "Voice transcription is not configured. Set TRITONAI_API_KEY on the app server.",
+      }),
+    );
+  }
+
+  return Effect.gen(function* () {
+    const baseUrl = yield* resolveTrustedBaseUrl(input, env);
+
+    return {
+      apiKey,
+      baseUrl,
+      model: input.model?.trim() || DEFAULT_VOICE_TRANSCRIPTION_MODEL,
+      language: input.language?.trim() || DEFAULT_VOICE_TRANSCRIPTION_LANGUAGE,
+    };
   });
 }
 

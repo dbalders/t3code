@@ -390,7 +390,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   );
 });
 
-type VoiceDictationStatus = "idle" | "recording" | "processing" | "ready" | "error";
+type VoiceDictationStatus = "idle" | "starting" | "recording" | "processing" | "ready" | "error";
 
 const voiceComposerModeLabels: Record<VoiceComposerMode, string> = {
   append: "Append",
@@ -535,7 +535,9 @@ const VoiceDictationControl = memo(function VoiceDictationControl(props: {
       ) : (
         <>
           <LoaderCircleIcon className="size-3.5 animate-spin" />
-          <span className="whitespace-nowrap">Transcribing</span>
+          <span className="whitespace-nowrap">
+            {props.status === "starting" ? "Starting" : "Transcribing"}
+          </span>
         </>
       )}
     </div>
@@ -1054,7 +1056,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [voiceMode, setVoiceMode] = useState<VoiceComposerMode>(voiceSettings.defaultComposerMode);
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
   const isMobileViewport = useMediaQuery("max-sm");
-  const isVoiceActive = voiceStatus === "recording" || voiceStatus === "processing";
+  const isVoiceActive =
+    voiceStatus === "starting" || voiceStatus === "recording" || voiceStatus === "processing";
   const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused && !isVoiceActive;
 
   // ------------------------------------------------------------------
@@ -1075,6 +1078,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const dragDepthRef = useRef(0);
   const voiceRecorderRef = useRef<VoiceRecorderSession | null>(null);
   const voiceReadyTimeoutRef = useRef<number | null>(null);
+  const voiceStartTokenRef = useRef(0);
+  const voiceStartInFlightRef = useRef(false);
 
   // ------------------------------------------------------------------
   // Derived: composer send state
@@ -1425,6 +1430,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   useEffect(() => {
     return () => {
+      voiceStartTokenRef.current += 1;
+      voiceStartInFlightRef.current = false;
       voiceRecorderRef.current?.cancel();
       voiceRecorderRef.current = null;
       if (voiceReadyTimeoutRef.current !== null) {
@@ -1989,25 +1996,46 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, []);
 
   const startVoiceRecording = useCallback(() => {
-    if (!canUseVoiceDictation || voiceStatus === "recording" || voiceStatus === "processing") {
+    if (
+      !canUseVoiceDictation ||
+      voiceStartInFlightRef.current ||
+      voiceStatus === "starting" ||
+      voiceStatus === "recording" ||
+      voiceStatus === "processing"
+    ) {
       return;
     }
+    const startToken = voiceStartTokenRef.current + 1;
+    voiceStartTokenRef.current = startToken;
+    voiceStartInFlightRef.current = true;
     clearVoiceReadyTimeout();
     setVoiceError(null);
     setVoiceElapsedSeconds(0);
     setIsComposerFocused(true);
+    setVoiceStatus("starting");
     void createVoiceRecorder()
       .then((recorder) => {
+        if (voiceStartTokenRef.current !== startToken) {
+          recorder.cancel();
+          return;
+        }
+        voiceStartInFlightRef.current = false;
         voiceRecorderRef.current = recorder;
         setVoiceStatus("recording");
       })
       .catch((error: unknown) => {
+        if (voiceStartTokenRef.current !== startToken) {
+          return;
+        }
+        voiceStartInFlightRef.current = false;
         voiceRecorderRef.current = null;
         showVoiceError(error);
       });
   }, [canUseVoiceDictation, clearVoiceReadyTimeout, showVoiceError, voiceStatus]);
 
   const cancelVoiceRecording = useCallback(() => {
+    voiceStartTokenRef.current += 1;
+    voiceStartInFlightRef.current = false;
     clearVoiceReadyTimeout();
     voiceRecorderRef.current?.cancel();
     voiceRecorderRef.current = null;
@@ -2022,6 +2050,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (!recorder || voiceStatus !== "recording") {
         return false;
       }
+      voiceStartInFlightRef.current = false;
       clearVoiceReadyTimeout();
       voiceRecorderRef.current = null;
       setVoiceStatus("processing");

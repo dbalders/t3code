@@ -796,8 +796,8 @@ export function GeneralSettingsPanel() {
                 </Select>
               </label>
               <p className="sm:col-span-2 text-[11px] leading-4 text-muted-foreground/75">
-                The server reads `TRITONAI_API_KEY`; recorded audio is discarded after the
-                transcription response.
+                The server reads `TRITONAI_API_KEY` and only allows its configured endpoint;
+                recorded audio is discarded after the transcription response.
               </p>
             </div>
           ) : null}

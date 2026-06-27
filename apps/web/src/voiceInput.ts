@@ -35,7 +35,13 @@ export async function createVoiceRecorder(): Promise<VoiceRecorderSession> {
 
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   const mimeType = resolveVoiceRecordingMimeType();
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  } catch (error) {
+    stopMediaStream(stream);
+    throw error;
+  }
   const chunks: Blob[] = [];
   let stopped = false;
 
@@ -70,21 +76,37 @@ export async function createVoiceRecorder(): Promise<VoiceRecorderSession> {
         },
         { once: true },
       );
-      recorder.stop();
+      try {
+        recorder.stop();
+      } catch (error) {
+        chunks.splice(0);
+        stopMediaStream(stream);
+        reject(error);
+      }
     });
 
   const cancel = () => {
     if (!stopped) {
       stopped = true;
       if (recorder.state !== "inactive") {
-        recorder.stop();
+        try {
+          recorder.stop();
+        } catch {
+          // The stream is stopped below even if MediaRecorder cannot transition cleanly.
+        }
       }
     }
     chunks.splice(0);
     stopMediaStream(stream);
   };
 
-  recorder.start();
+  try {
+    recorder.start();
+  } catch (error) {
+    chunks.splice(0);
+    stopMediaStream(stream);
+    throw error;
+  }
 
   return {
     mimeType: recorder.mimeType || mimeType || "audio/webm",
