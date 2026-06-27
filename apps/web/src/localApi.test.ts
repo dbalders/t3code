@@ -1,6 +1,7 @@
 import {
   CommandId,
   DEFAULT_SERVER_SETTINGS,
+  DEFAULT_VOICE_INPUT_SETTINGS,
   type DesktopBridge,
   EnvironmentId,
   type VcsStatusResult,
@@ -122,6 +123,7 @@ const rpcClientMock = {
     upsertKeybinding: vi.fn(),
     getSettings: vi.fn(),
     updateSettings: vi.fn(),
+    transcribeVoice: vi.fn(),
     subscribeConfig: vi.fn(),
     subscribeLifecycle: vi.fn(),
     subscribeAuthAccess: vi.fn(),
@@ -721,6 +723,7 @@ describe("wsApi", () => {
       tritonAiFirstRunOnboardingCompleted: false,
       favorites: [],
       providerModelPreferences: {},
+      voiceInput: DEFAULT_VOICE_INPUT_SETTINGS,
       sidebarProjectGroupingMode: "repository_path" as const,
       sidebarProjectGroupingOverrides: {
         "environment-local:/tmp/project": "separate" as const,
@@ -785,6 +788,7 @@ describe("wsApi", () => {
       tritonAiFirstRunOnboardingCompleted: false,
       favorites: [],
       providerModelPreferences: {},
+      voiceInput: DEFAULT_VOICE_INPUT_SETTINGS,
       sidebarProjectGroupingMode: "repository_path" as const,
       sidebarProjectGroupingOverrides: {
         "environment-local:/tmp/project": "separate" as const,

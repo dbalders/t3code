@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_PROVIDER_DRIVER_KIND,
+  DEFAULT_VOICE_INPUT_SETTINGS,
   defaultInstanceIdForDriver,
   type DesktopUpdateChannel,
   PROVIDER_DISPLAY_NAMES,
@@ -11,6 +12,8 @@ import {
   type ProviderInstanceConfig,
   type ProviderInstanceId,
   type ScopedThreadRef,
+  type VoiceComposerMode,
+  type VoiceInputSettingsPatch,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
@@ -110,6 +113,12 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
+
+const VOICE_COMPOSER_MODE_LABELS: Record<VoiceComposerMode, string> = {
+  append: "Append",
+  "insert-at-cursor": "Insert at cursor",
+  "replace-selection": "Replace selection",
+};
 
 function withoutProviderInstanceKey<V>(
   record: Readonly<Record<ProviderInstanceId, V>> | undefined,
@@ -530,6 +539,14 @@ export function GeneralSettingsPanel() {
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
   );
+  const voiceInputSettings = settings.voiceInput;
+  const isVoiceInputDirty = !Equal.equals(voiceInputSettings, DEFAULT_VOICE_INPUT_SETTINGS);
+  const updateVoiceInputSettings = useCallback(
+    (patch: VoiceInputSettingsPatch) => {
+      updateSettings({ voiceInput: { ...voiceInputSettings, ...patch } });
+    },
+    [updateSettings, voiceInputSettings],
+  );
 
   return (
     <SettingsPageContainer>
@@ -685,6 +702,106 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        <SettingsRow
+          title="Voice dictation"
+          description="Show a microphone control in the composer and transcribe through the app server."
+          resetAction={
+            isVoiceInputDirty ? (
+              <SettingResetButton
+                label="voice dictation"
+                onClick={() => updateSettings({ voiceInput: DEFAULT_VOICE_INPUT_SETTINGS })}
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={voiceInputSettings.enabled}
+              onCheckedChange={(checked) => updateVoiceInputSettings({ enabled: Boolean(checked) })}
+              aria-label="Enable voice dictation"
+            />
+          }
+        >
+          {voiceInputSettings.enabled ? (
+            <div className="mt-3 grid gap-3 border-t border-border/60 py-3 sm:grid-cols-2">
+              <label className="grid gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                  Endpoint
+                </span>
+                <DraftInput
+                  className="w-full"
+                  value={voiceInputSettings.baseUrl}
+                  onCommit={(next) => updateVoiceInputSettings({ baseUrl: next })}
+                  placeholder={DEFAULT_VOICE_INPUT_SETTINGS.baseUrl}
+                  spellCheck={false}
+                  aria-label="Voice transcription endpoint"
+                />
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                  Model
+                </span>
+                <DraftInput
+                  className="w-full"
+                  value={voiceInputSettings.model}
+                  onCommit={(next) => updateVoiceInputSettings({ model: next })}
+                  placeholder={DEFAULT_VOICE_INPUT_SETTINGS.model}
+                  spellCheck={false}
+                  aria-label="Voice transcription model"
+                />
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                  Language
+                </span>
+                <DraftInput
+                  className="w-full"
+                  value={voiceInputSettings.language}
+                  onCommit={(next) => updateVoiceInputSettings({ language: next })}
+                  placeholder={DEFAULT_VOICE_INPUT_SETTINGS.language}
+                  spellCheck={false}
+                  aria-label="Voice transcription language"
+                />
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                  Insert
+                </span>
+                <Select
+                  value={voiceInputSettings.defaultComposerMode}
+                  onValueChange={(value) => {
+                    if (
+                      value === "append" ||
+                      value === "insert-at-cursor" ||
+                      value === "replace-selection"
+                    ) {
+                      updateVoiceInputSettings({ defaultComposerMode: value });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full" aria-label="Default voice insertion mode">
+                    <SelectValue>
+                      {VOICE_COMPOSER_MODE_LABELS[voiceInputSettings.defaultComposerMode]}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup align="end" alignItemWithTrigger={false}>
+                    {(Object.keys(VOICE_COMPOSER_MODE_LABELS) as VoiceComposerMode[]).map(
+                      (mode) => (
+                        <SelectItem hideIndicator key={mode} value={mode}>
+                          {VOICE_COMPOSER_MODE_LABELS[mode]}
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectPopup>
+                </Select>
+              </label>
+              <p className="sm:col-span-2 text-[11px] leading-4 text-muted-foreground/75">
+                The server reads `TRITONAI_API_KEY`; recorded audio is discarded after the
+                transcription response.
+              </p>
+            </div>
+          ) : null}
+        </SettingsRow>
 
         <SettingsRow
           title="Auto-open task panel"

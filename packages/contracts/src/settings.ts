@@ -12,6 +12,7 @@ import {
 } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
+import { DEFAULT_VOICE_INPUT_SETTINGS, VoiceInputSettings } from "./voice.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -96,6 +97,9 @@ export const ClientSettingsSchema = Schema.Struct({
       modelOrder: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
     }),
   ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  voiceInput: VoiceInputSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_VOICE_INPUT_SETTINGS)),
+  ),
   sidebarProjectGroupingMode: SidebarProjectGroupingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE)),
   ),
@@ -559,6 +563,7 @@ export const ClientSettingsPatch = Schema.Struct({
       }),
     ),
   ),
+  voiceInput: Schema.optionalKey(VoiceInputSettings),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),
   sidebarProjectGroupingOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, SidebarProjectGroupingMode),

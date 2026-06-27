@@ -170,6 +170,7 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
       removeKeybinding: vi.fn(),
       getSettings: vi.fn(),
       updateSettings: vi.fn(),
+      transcribeVoice: vi.fn(),
       subscribeConfig: vi.fn(() => () => undefined),
       subscribeLifecycle: vi.fn(() => () => undefined),
       subscribeAuthAccess: vi.fn(() => () => undefined),
@@ -298,6 +299,7 @@ describe("retainThreadDetailSubscription", () => {
             capabilities: { repositoryIdentity: true },
           },
         })),
+        transcribeVoice: vi.fn(),
       },
       isHeartbeatFresh: vi.fn(() => true),
       orchestration: {
@@ -610,6 +612,7 @@ describe("retainThreadDetailSubscription", () => {
             capabilities: { repositoryIdentity: true },
           },
         })),
+        transcribeVoice: vi.fn(),
       },
       isHeartbeatFresh: vi.fn(() => false),
       orchestration: {

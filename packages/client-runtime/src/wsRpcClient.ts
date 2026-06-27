@@ -7,6 +7,8 @@ import {
   type RelayClientInstallProgressEvent,
   type RelayClientStatus,
   type ServerSettingsPatch,
+  type ServerVoiceTranscribeInput,
+  type ServerVoiceTranscribeResult,
   type VcsStatusResult,
   type VcsStatusStreamEvent,
   WS_METHODS,
@@ -169,6 +171,9 @@ export interface WsRpcClient {
     readonly updateSettings: (
       patch: ServerSettingsPatch,
     ) => ReturnType<RpcUnaryMethod<typeof WS_METHODS.serverUpdateSettings>>;
+    readonly transcribeVoice: (
+      input: ServerVoiceTranscribeInput,
+    ) => Promise<ServerVoiceTranscribeResult>;
     readonly subscribeConfig: RpcStreamMethod<typeof WS_METHODS.subscribeServerConfig>;
     readonly subscribeLifecycle: RpcStreamMethod<typeof WS_METHODS.subscribeServerLifecycle>;
     readonly subscribeAuthAccess: RpcStreamMethod<typeof WS_METHODS.subscribeAuthAccess>;
@@ -391,6 +396,8 @@ export function createWsRpcClient(
       getSettings: () => transport.request((client) => client[WS_METHODS.serverGetSettings]({})),
       updateSettings: (patch) =>
         transport.request((client) => client[WS_METHODS.serverUpdateSettings]({ patch })),
+      transcribeVoice: (input) =>
+        transport.request((client) => client[WS_METHODS.serverTranscribeVoice](input)),
       subscribeConfig: (listener, options) =>
         transport.subscribe(
           (client) => client[WS_METHODS.subscribeServerConfig]({}),

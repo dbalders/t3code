@@ -13,6 +13,7 @@ import type {
   ServerProvider,
   ThreadId,
   TurnId,
+  VoiceComposerMode,
 } from "@t3tools/contracts";
 import {
   DEFAULT_PROVIDER_DRIVER_KIND,
@@ -88,16 +89,19 @@ import { Separator } from "../ui/separator";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { toastManager } from "../ui/toast";
+import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
   BotIcon,
   CircleAlertIcon,
   ListTodoIcon,
   PencilRulerIcon,
   type LucideIcon,
+  LoaderCircleIcon,
   LockIcon,
   LockOpenIcon,
+  MicIcon,
   PenLineIcon,
+  SquareIcon,
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
@@ -122,6 +126,13 @@ import { formatProviderSkillDisplayName } from "../../providerSkillPresentation"
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import {
+  createVoiceRecorder,
+  formatVoiceInputError,
+  transcribeVoiceBlob,
+  type VoiceRecorderSession,
+} from "../../voiceInput";
+import { insertVoiceTranscript } from "../../voiceInsertion";
 
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
 
@@ -379,6 +390,158 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   );
 });
 
+type VoiceDictationStatus = "idle" | "recording" | "processing" | "ready" | "error";
+
+const voiceComposerModeLabels: Record<VoiceComposerMode, string> = {
+  append: "Append",
+  "insert-at-cursor": "Cursor",
+  "replace-selection": "Selection",
+};
+
+function formatVoiceElapsed(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.max(0, seconds % 60);
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function VoiceActivityBars(props: { active: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-4 items-center gap-0.5"
+      data-voice-waveform-active={props.active ? "true" : "false"}
+    >
+      {[0, 1, 2, 3].map((index) => (
+        <span
+          key={index}
+          className={cn(
+            "block w-0.75 rounded-full bg-current opacity-70 transition-transform",
+            props.active ? "animate-pulse" : "opacity-35",
+          )}
+          style={{
+            height: `${6 + (index % 2) * 5}px`,
+            animationDelay: `${index * 90}ms`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+const VoiceDictationControl = memo(function VoiceDictationControl(props: {
+  status: VoiceDictationStatus;
+  mode: VoiceComposerMode;
+  elapsedSeconds: number;
+  disabled: boolean;
+  error: string | null;
+  preserveComposerFocusOnPointerDown: boolean;
+  onModeChange: (mode: VoiceComposerMode) => void;
+  onStart: () => void;
+  onStop: () => void;
+  onCancel: () => void;
+}) {
+  if (props.status === "idle" || props.status === "ready" || props.status === "error") {
+    return (
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                data-testid="voice-dictation-button"
+                size="icon-xs"
+                variant={props.status === "error" ? "destructive-outline" : "ghost"}
+                disabled={props.disabled}
+                aria-label={
+                  props.status === "error" ? "Retry voice dictation" : "Start voice dictation"
+                }
+                onPointerDown={
+                  props.preserveComposerFocusOnPointerDown
+                    ? (event) => event.preventDefault()
+                    : undefined
+                }
+                onClick={props.onStart}
+              >
+                <MicIcon />
+              </Button>
+            }
+          />
+          <TooltipPopup side="top" className="max-w-72 whitespace-normal leading-tight">
+            {props.error ?? "Dictate into the composer"}
+          </TooltipPopup>
+        </Tooltip>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="voice-dictation-active"
+      className={cn(
+        "flex min-w-0 items-center gap-1.5 rounded-full border px-1.5 py-1 text-xs",
+        props.status === "recording"
+          ? "border-destructive/30 bg-destructive/8 text-destructive"
+          : "border-border bg-muted/55 text-muted-foreground",
+      )}
+    >
+      {props.status === "recording" ? (
+        <>
+          <VoiceActivityBars active />
+          <span className="font-mono tabular-nums">{formatVoiceElapsed(props.elapsedSeconds)}</span>
+          <Select
+            value={props.mode}
+            onValueChange={(value) => props.onModeChange(value as VoiceComposerMode)}
+          >
+            <SelectTrigger
+              aria-label="Voice insertion mode"
+              className="h-6 min-w-20 rounded-full border-border/70 bg-background/70 px-2 text-[11px]"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup align="end" side="top">
+              {(Object.keys(voiceComposerModeLabels) as VoiceComposerMode[]).map((mode) => (
+                <SelectItem key={mode} value={mode}>
+                  {voiceComposerModeLabels[mode]}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label="Cancel voice dictation"
+            onPointerDown={
+              props.preserveComposerFocusOnPointerDown
+                ? (event) => event.preventDefault()
+                : undefined
+            }
+            onClick={props.onCancel}
+          >
+            <XIcon />
+          </Button>
+          <Button
+            size="icon-xs"
+            variant="secondary"
+            aria-label="Stop voice dictation"
+            onPointerDown={
+              props.preserveComposerFocusOnPointerDown
+                ? (event) => event.preventDefault()
+                : undefined
+            }
+            onClick={props.onStop}
+          >
+            <SquareIcon />
+          </Button>
+        </>
+      ) : (
+        <>
+          <LoaderCircleIcon className="size-3.5 animate-spin" />
+          <span className="whitespace-nowrap">Transcribing</span>
+        </>
+      )}
+    </div>
+  );
+});
+
 // --------------------------------------------------------------------------
 // Handle exposed to ChatView
 // --------------------------------------------------------------------------
@@ -387,6 +550,7 @@ export interface ChatComposerHandle {
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
   insertTextAtEnd: (text: string) => boolean;
+  insertDraftText: (input: { text: string; mode: VoiceComposerMode }) => boolean;
   openModelPicker: () => void;
   toggleModelPicker: () => void;
   isModelPickerOpen: () => boolean;
@@ -394,6 +558,10 @@ export interface ChatComposerHandle {
     value: string;
     cursor: number;
     expandedCursor: number;
+    selectionStart: number;
+    selectionEnd: number;
+    expandedSelectionStart: number;
+    expandedSelectionEnd: number;
     terminalContextIds: string[];
   };
   /** Reset composer cursor/trigger/highlight after external prompt mutations (e.g. onSend). */
@@ -880,8 +1048,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const voiceSettings = settings.voiceInput;
+  const [voiceStatus, setVoiceStatus] = useState<VoiceDictationStatus>("idle");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceMode, setVoiceMode] = useState<VoiceComposerMode>(voiceSettings.defaultComposerMode);
+  const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
   const isMobileViewport = useMediaQuery("max-sm");
-  const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
+  const isVoiceActive = voiceStatus === "recording" || voiceStatus === "processing";
+  const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused && !isVoiceActive;
 
   // ------------------------------------------------------------------
   // Refs
@@ -899,6 +1073,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const mobileComposerExpandReleaseFrameRef = useRef<number | null>(null);
   const mobileComposerExpandInFlightRef = useRef(false);
   const dragDepthRef = useRef(0);
+  const voiceRecorderRef = useRef<VoiceRecorderSession | null>(null);
+  const voiceReadyTimeoutRef = useRef<number | null>(null);
 
   // ------------------------------------------------------------------
   // Derived: composer send state
@@ -1134,8 +1310,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         : null,
     [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
   );
+  const canUseVoiceDictation =
+    voiceSettings.enabled &&
+    pendingPrimaryAction === null &&
+    !isComposerApprovalState &&
+    pendingUserInputs.length === 0 &&
+    phase !== "running" &&
+    !isSendBusy &&
+    !isConnecting &&
+    !isPreparingWorktree &&
+    environmentUnavailable === null;
+  const voiceIsProcessing = voiceStatus === "processing";
+  const sendHasVoiceAction = voiceStatus === "recording" || composerSendState.hasSendableContent;
+  const sendIsBusy = isSendBusy || voiceIsProcessing;
   const collapsedComposerPrimaryActionDisabled =
-    phase === "running" || isSendBusy || isConnecting || !composerSendState.hasSendableContent;
+    phase === "running" || sendIsBusy || isConnecting || !sendHasVoiceAction;
   const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
@@ -1213,6 +1402,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useEffect(() => {
     composerElementContextsRef.current = composerElementContexts;
   }, [composerElementContexts, composerElementContextsRef]);
+
+  useEffect(() => {
+    if (voiceStatus !== "idle") {
+      return;
+    }
+    setVoiceMode(voiceSettings.defaultComposerMode);
+  }, [voiceSettings.defaultComposerMode, voiceStatus]);
+
+  useEffect(() => {
+    if (voiceStatus !== "recording") {
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setVoiceElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [voiceStatus]);
+
+  useEffect(() => {
+    return () => {
+      voiceRecorderRef.current?.cancel();
+      voiceRecorderRef.current = null;
+      if (voiceReadyTimeoutRef.current !== null) {
+        window.clearTimeout(voiceReadyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // ------------------------------------------------------------------
   // Composer menu highlight sync
@@ -1535,19 +1754,53 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     value: string;
     cursor: number;
     expandedCursor: number;
+    selectionStart: number;
+    selectionEnd: number;
+    expandedSelectionStart: number;
+    expandedSelectionEnd: number;
     terminalContextIds: string[];
   } => {
     const editorSnapshot = composerEditorRef.current?.readSnapshot();
     if (editorSnapshot) {
       return editorSnapshot;
     }
+    const expandedCursor = expandCollapsedComposerCursor(promptRef.current, composerCursor);
     return {
       value: promptRef.current,
       cursor: composerCursor,
-      expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
+      expandedCursor,
+      selectionStart: composerCursor,
+      selectionEnd: composerCursor,
+      expandedSelectionStart: expandedCursor,
+      expandedSelectionEnd: expandedCursor,
       terminalContextIds: composerTerminalContexts.map((context) => context.id),
     };
   }, [composerCursor, composerTerminalContexts, promptRef]);
+
+  const insertDraftTextIntoComposer = useCallback(
+    (text: string, mode: VoiceComposerMode): boolean => {
+      if (text.trim().length === 0) {
+        return false;
+      }
+      const next = insertVoiceTranscript({
+        snapshot: readComposerSnapshot(),
+        transcript: text,
+        mode,
+      });
+      const nextCursor = collapseExpandedComposerCursor(next.text, next.cursor);
+      const nextExpandedCursor = expandCollapsedComposerCursor(next.text, nextCursor);
+      promptRef.current = next.text;
+      setPrompt(next.text);
+      setComposerCursor(nextCursor);
+      setComposerTrigger(detectComposerTrigger(next.text, nextExpandedCursor));
+      setComposerHighlightedItemId(null);
+      window.requestAnimationFrame(() => {
+        composerEditorRef.current?.focusAt(nextCursor);
+      });
+      return true;
+    },
+    [promptRef, readComposerSnapshot, setPrompt],
+  );
 
   const resolveActiveComposerTrigger = useCallback((): {
     snapshot: { value: string; cursor: number; expandedCursor: number };
@@ -1704,14 +1957,131 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showPlanFollowUpPrompt,
   ]);
 
+  const clearVoiceReadyTimeout = useCallback(() => {
+    if (voiceReadyTimeoutRef.current === null) {
+      return;
+    }
+    window.clearTimeout(voiceReadyTimeoutRef.current);
+    voiceReadyTimeoutRef.current = null;
+  }, []);
+
+  const markVoiceReady = useCallback(() => {
+    clearVoiceReadyTimeout();
+    setVoiceStatus("ready");
+    voiceReadyTimeoutRef.current = window.setTimeout(() => {
+      voiceReadyTimeoutRef.current = null;
+      setVoiceStatus((status) => (status === "ready" ? "idle" : status));
+    }, 1800);
+  }, [clearVoiceReadyTimeout]);
+
+  const showVoiceError = useCallback((error: unknown) => {
+    const message = formatVoiceInputError(error);
+    setVoiceError(message);
+    setVoiceStatus("error");
+    setVoiceElapsedSeconds(0);
+    toastManager.add(
+      stackedThreadToast({
+        type: "error",
+        title: "Voice dictation failed",
+        description: message,
+      }),
+    );
+  }, []);
+
+  const startVoiceRecording = useCallback(() => {
+    if (!canUseVoiceDictation || voiceStatus === "recording" || voiceStatus === "processing") {
+      return;
+    }
+    clearVoiceReadyTimeout();
+    setVoiceError(null);
+    setVoiceElapsedSeconds(0);
+    setIsComposerFocused(true);
+    void createVoiceRecorder()
+      .then((recorder) => {
+        voiceRecorderRef.current = recorder;
+        setVoiceStatus("recording");
+      })
+      .catch((error: unknown) => {
+        voiceRecorderRef.current = null;
+        showVoiceError(error);
+      });
+  }, [canUseVoiceDictation, clearVoiceReadyTimeout, showVoiceError, voiceStatus]);
+
+  const cancelVoiceRecording = useCallback(() => {
+    clearVoiceReadyTimeout();
+    voiceRecorderRef.current?.cancel();
+    voiceRecorderRef.current = null;
+    setVoiceStatus("idle");
+    setVoiceError(null);
+    setVoiceElapsedSeconds(0);
+  }, [clearVoiceReadyTimeout]);
+
+  const stopVoiceRecording = useCallback(
+    async (options?: { readonly submitAfterInsert?: boolean }): Promise<boolean> => {
+      const recorder = voiceRecorderRef.current;
+      if (!recorder || voiceStatus !== "recording") {
+        return false;
+      }
+      clearVoiceReadyTimeout();
+      voiceRecorderRef.current = null;
+      setVoiceStatus("processing");
+      setVoiceError(null);
+      setVoiceElapsedSeconds(0);
+      try {
+        const audio = await recorder.stop();
+        const transcript = await transcribeVoiceBlob(audio, voiceSettings);
+        const inserted = insertDraftTextIntoComposer(transcript, voiceMode);
+        if (!inserted) {
+          throw new Error("Voice transcription returned no text.");
+        }
+        markVoiceReady();
+        if (options?.submitAfterInsert) {
+          onSend();
+          blurMobileComposerAfterSend();
+        }
+        return true;
+      } catch (error) {
+        recorder.cancel();
+        showVoiceError(error);
+        return false;
+      }
+    },
+    [
+      blurMobileComposerAfterSend,
+      clearVoiceReadyTimeout,
+      insertDraftTextIntoComposer,
+      markVoiceReady,
+      onSend,
+      showVoiceError,
+      voiceMode,
+      voiceSettings,
+      voiceStatus,
+    ],
+  );
+
   const submitComposer = useCallback(
     (event?: { preventDefault: () => void }) => {
+      if (voiceStatus === "recording") {
+        event?.preventDefault();
+        void stopVoiceRecording({ submitAfterInsert: true });
+        return;
+      }
+      if (voiceStatus === "processing") {
+        event?.preventDefault();
+        return;
+      }
       onSend(event);
       if (shouldBlurMobileComposerOnSubmit()) {
         blurMobileComposerAfterSend();
       }
     },
-    [blurMobileComposerAfterSend, onSend, shouldBlurMobileComposerOnSubmit],
+    [
+      blurMobileComposerAfterSend,
+      onSend,
+      shouldBlurMobileComposerOnSubmit,
+      stopVoiceRecording,
+      voiceStatus,
+    ],
   );
   const expandMobileComposer = useCallback(() => {
     if (composerBlurFrameRef.current !== null) {
@@ -1946,6 +2316,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         const rangeEnd = promptRef.current.length;
         return applyPromptReplacement(rangeEnd, rangeEnd, text);
       },
+      insertDraftText: ({ text, mode }: { text: string; mode: VoiceComposerMode }) => {
+        if (
+          text.length === 0 ||
+          isConnecting ||
+          isComposerApprovalState ||
+          pendingUserInputs.length > 0 ||
+          (environmentUnavailable !== null && activePendingProgress === null)
+        ) {
+          return false;
+        }
+        return insertDraftTextIntoComposer(text, mode);
+      },
       openModelPicker: () => {
         setIsComposerModelPickerOpen(true);
       },
@@ -2042,6 +2424,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       environmentUnavailable,
       activePendingProgress,
       applyPromptReplacement,
+      insertDraftTextIntoComposer,
       isComposerModelPickerOpen,
       readComposerSnapshot,
       selectedModel,
@@ -2223,6 +2606,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     "Type your own answer, or leave this blank to use the selected option"
                   : prompt.trim() || "Ask anything..."}
               </button>
+              {voiceSettings.enabled ? (
+                <VoiceDictationControl
+                  status={voiceStatus}
+                  mode={voiceMode}
+                  elapsedSeconds={voiceElapsedSeconds}
+                  disabled={!canUseVoiceDictation}
+                  error={voiceError}
+                  preserveComposerFocusOnPointerDown
+                  onModeChange={setVoiceMode}
+                  onStart={startVoiceRecording}
+                  onStop={() => void stopVoiceRecording()}
+                  onCancel={cancelVoiceRecording}
+                />
+              ) : null}
               <button
                 type="button"
                 className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/90 text-primary-foreground disabled:opacity-30"
@@ -2554,6 +2951,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 }
                 className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
               >
+                {voiceSettings.enabled ? (
+                  <VoiceDictationControl
+                    status={voiceStatus}
+                    mode={voiceMode}
+                    elapsedSeconds={voiceElapsedSeconds}
+                    disabled={!canUseVoiceDictation}
+                    error={voiceError}
+                    preserveComposerFocusOnPointerDown={isMobileViewport}
+                    onModeChange={setVoiceMode}
+                    onStart={startVoiceRecording}
+                    onStop={() => void stopVoiceRecording()}
+                    onCancel={cancelVoiceRecording}
+                  />
+                ) : null}
                 <ComposerFooterPrimaryActions
                   compact={isComposerPrimaryActionsCompact}
                   activeContextWindow={activeContextWindow}
@@ -2562,11 +2973,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   isRunning={phase === "running"}
                   showPlanFollowUpPrompt={pendingUserInputs.length === 0 && showPlanFollowUpPrompt}
                   promptHasText={prompt.trim().length > 0}
-                  isSendBusy={isSendBusy}
+                  isSendBusy={sendIsBusy}
                   isConnecting={isConnecting}
                   isEnvironmentUnavailable={environmentUnavailable !== null}
                   isPreparingWorktree={isPreparingWorktree}
-                  hasSendableContent={composerSendState.hasSendableContent}
+                  hasSendableContent={sendHasVoiceAction}
                   preserveComposerFocusOnPointerDown={isMobileViewport}
                   onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                   onInterrupt={handleInterruptPrimaryAction}
