@@ -2973,13 +2973,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
 
               {/* Right side: send / stop button */}
-              <div
-                data-chat-composer-actions="right"
-                data-chat-composer-primary-actions-compact={
-                  isComposerPrimaryActionsCompact ? "true" : "false"
-                }
-                className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
-              >
+              <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2">
                 {voiceSettings.enabled ? (
                   <VoiceDictationControl
                     status={voiceStatus}
@@ -2994,24 +2988,34 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onCancel={cancelVoiceRecording}
                   />
                 ) : null}
-                <ComposerFooterPrimaryActions
-                  compact={isComposerPrimaryActionsCompact}
-                  activeContextWindow={activeContextWindow}
-                  activeThreadProviderDisplayName={activeThreadProviderDisplayName}
-                  pendingAction={pendingPrimaryAction}
-                  isRunning={phase === "running"}
-                  showPlanFollowUpPrompt={pendingUserInputs.length === 0 && showPlanFollowUpPrompt}
-                  promptHasText={prompt.trim().length > 0}
-                  isSendBusy={sendIsBusy}
-                  isConnecting={isConnecting}
-                  isEnvironmentUnavailable={environmentUnavailable !== null}
-                  isPreparingWorktree={isPreparingWorktree}
-                  hasSendableContent={sendHasVoiceAction}
-                  preserveComposerFocusOnPointerDown={isMobileViewport}
-                  onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
-                  onInterrupt={handleInterruptPrimaryAction}
-                  onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
-                />
+                <div
+                  data-chat-composer-actions="right"
+                  data-chat-composer-primary-actions-compact={
+                    isComposerPrimaryActionsCompact ? "true" : "false"
+                  }
+                  className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
+                >
+                  <ComposerFooterPrimaryActions
+                    compact={isComposerPrimaryActionsCompact}
+                    activeContextWindow={activeContextWindow}
+                    activeThreadProviderDisplayName={activeThreadProviderDisplayName}
+                    pendingAction={pendingPrimaryAction}
+                    isRunning={phase === "running"}
+                    showPlanFollowUpPrompt={
+                      pendingUserInputs.length === 0 && showPlanFollowUpPrompt
+                    }
+                    promptHasText={prompt.trim().length > 0}
+                    isSendBusy={sendIsBusy}
+                    isConnecting={isConnecting}
+                    isEnvironmentUnavailable={environmentUnavailable !== null}
+                    isPreparingWorktree={isPreparingWorktree}
+                    hasSendableContent={sendHasVoiceAction}
+                    preserveComposerFocusOnPointerDown={isMobileViewport}
+                    onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
+                    onInterrupt={handleInterruptPrimaryAction}
+                    onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
+                  />
+                </div>
               </div>
             </div>
           )}
