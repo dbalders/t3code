@@ -1466,14 +1466,21 @@ async function waitForVoiceStopButton(): Promise<HTMLButtonElement> {
   );
 }
 
-function installVoiceRecordingMocks() {
+function installVoiceRecordingMocks(options?: { readonly deferGetUserMedia?: boolean }) {
   const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
   const mediaRecorderDescriptor = Object.getOwnPropertyDescriptor(window, "MediaRecorder");
   const stopTrack = vi.fn();
+  const stream = {
+    getTracks: () => [{ stop: stopTrack }],
+  } as unknown as MediaStream;
+  let resolveGetUserMedia: ((value: MediaStream) => void) | null = null;
   const getUserMedia = vi.fn(async () => {
-    return {
-      getTracks: () => [{ stop: stopTrack }],
-    } as unknown as MediaStream;
+    if (!options?.deferGetUserMedia) {
+      return stream;
+    }
+    return await new Promise<MediaStream>((resolve) => {
+      resolveGetUserMedia = resolve;
+    });
   });
 
   class FakeMediaRecorder extends EventTarget {
@@ -1518,6 +1525,9 @@ function installVoiceRecordingMocks() {
 
   return {
     getUserMedia,
+    resolveGetUserMedia: () => {
+      resolveGetUserMedia?.(stream);
+    },
     stopTrack,
     restore: () => {
       if (mediaDevicesDescriptor) {
@@ -3784,6 +3794,86 @@ describe("ChatView timeline estimator parity (full app)", () => {
       );
       expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
     } finally {
+      voiceMocks.restore();
+      await mounted.cleanup();
+    }
+  });
+
+  it("cancels pending voice startup before sending a text draft", async () => {
+    const voiceMocks = installVoiceRecordingMocks({ deferGetUserMedia: true });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-voice-starting-send-target" as MessageId,
+        targetText: "voice starting send thread",
+      }),
+      configureFixture: enableVoiceInputFixture,
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.serverTranscribeVoice) {
+          return { text: "should not transcribe" };
+        }
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "Send while mic is starting");
+      await waitForComposerText("Send while mic is starting");
+      (await waitForVoiceButton()).click();
+      await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-testid="voice-dictation-active"]'),
+        "Unable to find starting voice dictation control.",
+      );
+
+      const sendButton = await waitForSendButton();
+      expect(sendButton.disabled).toBe(false);
+      sendButton.click();
+
+      await vi.waitFor(
+        () => {
+          const turnStartRequest = wsRequests.find(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.type === "thread.turn.start",
+          ) as
+            | {
+                _tag: string;
+                type?: string;
+                message?: { text?: string };
+              }
+            | undefined;
+          expect(turnStartRequest?.message?.text).toBe("Send while mic is starting");
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      voiceMocks.resolveGetUserMedia();
+      await vi.waitFor(
+        () => {
+          expect(
+            document.querySelector<HTMLElement>('[data-testid="voice-dictation-active"]'),
+          ).toBeNull();
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      expect(wsRequests.some((request) => request._tag === WS_METHODS.serverTranscribeVoice)).toBe(
+        false,
+      );
+      await vi.waitFor(
+        () => {
+          expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      voiceMocks.resolveGetUserMedia();
       voiceMocks.restore();
       await mounted.cleanup();
     }

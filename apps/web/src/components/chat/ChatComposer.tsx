@@ -2128,6 +2128,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const submitComposer = useCallback(
     (event?: { preventDefault: () => void }) => {
+      if (voiceStatus === "starting") {
+        voiceStartTokenRef.current += 1;
+        voiceStartInFlightRef.current = false;
+        voiceRecordingTargetKeyRef.current = null;
+        clearVoiceReadyTimeout();
+        setVoiceStatus("idle");
+        setVoiceError(null);
+        setVoiceElapsedSeconds(0);
+      }
       if (voiceStatus === "recording") {
         event?.preventDefault();
         void stopVoiceRecording({ submitAfterInsert: true });
@@ -2144,6 +2153,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
     [
       blurMobileComposerAfterSend,
+      clearVoiceReadyTimeout,
       onSend,
       shouldBlurMobileComposerOnSubmit,
       stopVoiceRecording,
