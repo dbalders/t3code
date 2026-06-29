@@ -1,4 +1,7 @@
-import { DEFAULT_VOICE_TRANSCRIPTION_BASE_URL, type VoiceInputSettings } from "@t3tools/contracts";
+import {
+  DEFAULT_VOICE_TRANSCRIPTION_LANGUAGE,
+  DEFAULT_VOICE_TRANSCRIPTION_MODEL,
+} from "@t3tools/contracts";
 
 import { ensureLocalApi } from "./localApi";
 
@@ -429,31 +432,14 @@ async function prepareVoiceBlobForTranscription(blob: Blob): Promise<Blob> {
   return new Blob([encodeAudioBufferAsWav(audioBuffer)], { type: "audio/wav" });
 }
 
-function normalizeVoiceBaseUrl(value: string): string {
-  return value.trim().replace(/\/+$/u, "");
-}
-
-function requestBaseUrl(settings: VoiceInputSettings): string | undefined {
-  const baseUrl = normalizeVoiceBaseUrl(settings.baseUrl);
-  if (!baseUrl || baseUrl === normalizeVoiceBaseUrl(DEFAULT_VOICE_TRANSCRIPTION_BASE_URL)) {
-    return undefined;
-  }
-  return baseUrl;
-}
-
-export async function transcribeVoiceBlob(
-  blob: Blob,
-  settings: VoiceInputSettings,
-): Promise<string> {
+export async function transcribeVoiceBlob(blob: Blob): Promise<string> {
   const uploadBlob = await prepareVoiceBlobForTranscription(blob);
   const audioBase64 = await blobToBase64(uploadBlob);
-  const baseUrl = requestBaseUrl(settings);
   const result = await ensureLocalApi().server.transcribeVoice({
     audioBase64,
     mimeType: uploadBlob.type || "audio/wav",
-    ...(baseUrl ? { baseUrl } : {}),
-    model: settings.model,
-    language: settings.language,
+    model: DEFAULT_VOICE_TRANSCRIPTION_MODEL,
+    language: DEFAULT_VOICE_TRANSCRIPTION_LANGUAGE,
   });
   return result.text;
 }

@@ -533,7 +533,7 @@ export function GeneralSettingsPanel() {
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
   );
   const voiceInputSettings = settings.voiceInput;
-  const isVoiceInputDirty = !Equal.equals(voiceInputSettings, DEFAULT_VOICE_INPUT_SETTINGS);
+  const isVoiceInputDirty = voiceInputSettings.enabled !== DEFAULT_VOICE_INPUT_SETTINGS.enabled;
   const updateVoiceInputSettings = useCallback(
     (patch: VoiceInputSettingsPatch) => {
       updateSettings({ voiceInput: { ...voiceInputSettings, ...patch } });
@@ -714,56 +714,7 @@ export function GeneralSettingsPanel() {
               aria-label="Enable voice dictation"
             />
           }
-        >
-          {voiceInputSettings.enabled ? (
-            <div className="mt-3 grid gap-3 border-t border-border/60 py-3 sm:grid-cols-3">
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                  Endpoint
-                </span>
-                <DraftInput
-                  className="w-full"
-                  value={voiceInputSettings.baseUrl}
-                  onCommit={(next) => updateVoiceInputSettings({ baseUrl: next })}
-                  placeholder={DEFAULT_VOICE_INPUT_SETTINGS.baseUrl}
-                  spellCheck={false}
-                  aria-label="Voice transcription endpoint"
-                />
-              </label>
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                  Model
-                </span>
-                <DraftInput
-                  className="w-full"
-                  value={voiceInputSettings.model}
-                  onCommit={(next) => updateVoiceInputSettings({ model: next })}
-                  placeholder={DEFAULT_VOICE_INPUT_SETTINGS.model}
-                  spellCheck={false}
-                  aria-label="Voice transcription model"
-                />
-              </label>
-              <label className="grid gap-1.5">
-                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                  Language
-                </span>
-                <DraftInput
-                  className="w-full"
-                  value={voiceInputSettings.language}
-                  onCommit={(next) => updateVoiceInputSettings({ language: next })}
-                  placeholder={DEFAULT_VOICE_INPUT_SETTINGS.language}
-                  spellCheck={false}
-                  aria-label="Voice transcription language"
-                />
-              </label>
-              <p className="sm:col-span-3 text-[11px] leading-4 text-muted-foreground/75">
-                The server reads `TRITONAI_API_KEY` and only allows its configured endpoint;
-                recorded audio is discarded after the transcription response. Transcripts are
-                appended to the draft.
-              </p>
-            </div>
-          ) : null}
-        </SettingsRow>
+        />
 
         <SettingsRow
           title="Auto-open task panel"

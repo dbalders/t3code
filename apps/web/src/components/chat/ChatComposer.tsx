@@ -2154,7 +2154,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (!isCurrentVoiceTarget()) {
           return discardStaleVoiceResult();
         }
-        const transcript = await transcribeVoiceBlob(audio, voiceSettings);
+        const transcript = await transcribeVoiceBlob(audio);
         if (!isCurrentVoiceTarget()) {
           return discardStaleVoiceResult();
         }
@@ -2187,7 +2187,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       markVoiceReady,
       onSend,
       showVoiceError,
-      voiceSettings,
       voiceStatus,
     ],
   );
