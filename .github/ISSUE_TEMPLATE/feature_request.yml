@@ -27,12 +27,15 @@ body:
       label: Area
       description: Which part of the project would this change affect?
       options:
-        - apps/web
-        - apps/server
-        - apps/desktop
-        - packages/contracts or packages/shared
+        - Chat or web UI
+        - Desktop app
+        - Desktop installer / TritonAI Code installer
+        - AI providers, models, or agent behavior
+        - Skills, plugins, or integrations
+        - Remote access or environments
+        - Backend, sync, or orchestration
         - Build, CI, or release tooling
-        - Docs
+        - Docs or onboarding
         - Not sure
     validations:
       required: true
@@ -47,22 +50,18 @@ body:
       required: true
 
   - type: textarea
-    id: proposal
-    attributes:
-      label: Proposed solution
-      description: Describe the behavior, API, or UX you want.
-      placeholder: Persist enough session metadata so the client can discover and reattach to the active provider session on load.
-    validations:
-      required: true
-
-  - type: textarea
     id: value
     attributes:
       label: Why this matters
       description: Who benefits, and what outcome does this unlock?
       placeholder: This would make reconnects predictable during network drops and reduce accidental duplicate sessions.
-    validations:
-      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior, API, or UX you want.
+      placeholder: Persist enough session metadata so the client can discover and reattach to the active provider session on load.
 
   - type: textarea
     id: scope
@@ -70,8 +69,6 @@ body:
       label: Smallest useful scope
       description: What is the narrowest version of this request that would still solve your problem?
       placeholder: A first pass only needs to support restoring the active session for the current thread.
-    validations:
-      required: true
 
   - type: textarea
     id: alternatives
@@ -92,10 +89,3 @@ body:
     attributes:
       label: Examples or references
       description: Links, screenshots, mockups, or comparable tools.
-
-  - type: checkboxes
-    id: contribution
-    attributes:
-      label: Contribution
-      options:
-        - label: I would be open to helping implement this.
