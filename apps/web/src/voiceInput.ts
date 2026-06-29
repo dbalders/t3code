@@ -32,7 +32,10 @@ const MIN_VOICE_AUDIO_DURATION_SECONDS = 0.25;
 const MIN_VOICE_PEAK_AMPLITUDE = 0.015;
 const MIN_VOICE_RMS_AMPLITUDE = 0.002;
 const MIN_VOICE_ACTIVE_DURATION_SECONDS = 0.08;
-const VOICE_VOLUME_SAMPLE_INTERVAL_MS = 55;
+const VOICE_VOLUME_SAMPLE_INTERVAL_MS = 68;
+const VOICE_VISUAL_NOISE_FLOOR_RMS = 0.0075;
+const VOICE_VISUAL_NOISE_GATE_WIDTH_RMS = 0.006;
+const VOICE_VISUAL_GAIN_RMS = 0.14;
 
 export type VoiceVolumeListener = (level: number) => void;
 
@@ -77,9 +80,10 @@ function resolveAudioContextConstructor(): AudioContextConstructor | undefined {
 }
 
 function voiceRmsToVisualLevel(rmsAmplitude: number): number {
-  const noiseFloor = 0.006;
-  if (rmsAmplitude <= noiseFloor) return 0;
-  return Math.max(0, Math.min(1, Math.sqrt((rmsAmplitude - noiseFloor) / 0.14)));
+  const gatedAmplitude = rmsAmplitude - VOICE_VISUAL_NOISE_FLOOR_RMS;
+  if (gatedAmplitude <= 0) return 0;
+  const gateOpacity = Math.min(1, gatedAmplitude / VOICE_VISUAL_NOISE_GATE_WIDTH_RMS);
+  return Math.max(0, Math.min(1, Math.sqrt(gatedAmplitude / VOICE_VISUAL_GAIN_RMS) * gateOpacity));
 }
 
 function createVoiceVolumeSampler(stream: MediaStream): VoiceVolumeSampler | null {
