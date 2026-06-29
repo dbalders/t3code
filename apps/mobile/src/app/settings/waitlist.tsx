@@ -6,6 +6,7 @@ import { ScrollView } from "react-native";
 import { CloudWaitlistEnrollment } from "../../features/cloud/CloudWaitlistEnrollment";
 import { useClerkSettingsSheetDetent } from "../../features/cloud/ClerkSettingsSheetDetent";
 import { hasCloudPublicConfig } from "../../features/cloud/publicConfig";
+import { useNativeClerkAuthModal } from "../../features/cloud/useNativeClerkAuthModal";
 
 export default function SettingsWaitlistRouteScreen() {
   return hasCloudPublicConfig() ? (
@@ -18,6 +19,7 @@ export default function SettingsWaitlistRouteScreen() {
 function ConfiguredSettingsWaitlistRouteScreen() {
   const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
   const { expand } = useClerkSettingsSheetDetent();
+  const { isAvailable: isNativeAuthAvailable, presentAuth } = useNativeClerkAuthModal();
   const router = useRouter();
 
   useFocusEffect(
@@ -45,6 +47,13 @@ function ConfiguredSettingsWaitlistRouteScreen() {
       >
         <CloudWaitlistEnrollment
           onSignIn={() => {
+            if (isNativeAuthAvailable) {
+              void presentAuth().catch(() => {
+                expand();
+                router.push("/settings/auth");
+              });
+              return;
+            }
             expand();
             router.push("/settings/auth");
           }}
