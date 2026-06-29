@@ -398,26 +398,45 @@ function formatVoiceElapsed(seconds: number): string {
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
-function VoiceActivityBars(props: { active: boolean }) {
+const VOICE_WAVEFORM_BAR_COUNT = 46;
+
+function createVoiceWaveformLevels(): number[] {
+  return Array.from({ length: VOICE_WAVEFORM_BAR_COUNT }, () => 0);
+}
+
+function appendVoiceWaveformLevel(levels: readonly number[], level: number): number[] {
+  const normalizedLevel = Math.max(0, Math.min(1, Number.isFinite(level) ? level : 0));
+  const currentLevels =
+    levels.length === VOICE_WAVEFORM_BAR_COUNT ? levels : createVoiceWaveformLevels();
+  return [...currentLevels.slice(1), normalizedLevel];
+}
+
+function VoiceActivityWaveform(props: { active: boolean; levels: readonly number[] }) {
+  const levels =
+    props.levels.length === VOICE_WAVEFORM_BAR_COUNT ? props.levels : createVoiceWaveformLevels();
+
   return (
     <span
       aria-hidden="true"
-      className="flex h-4 items-center gap-0.5"
+      className="relative flex h-6 min-w-24 flex-1 items-center overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_7%,black_93%,transparent)]"
       data-voice-waveform-active={props.active ? "true" : "false"}
     >
-      {[0, 1, 2, 3].map((index) => (
-        <span
-          key={index}
-          className={cn(
-            "block w-0.75 rounded-full bg-current opacity-70 transition-transform",
-            props.active ? "animate-pulse" : "opacity-35",
-          )}
-          style={{
-            height: `${6 + (index % 2) * 5}px`,
-            animationDelay: `${index * 90}ms`,
-          }}
-        />
-      ))}
+      <span className="absolute inset-x-0 top-1/2 border-t border-dashed border-current/35" />
+      <span className="relative flex h-full w-full items-center justify-end gap-[3px]">
+        {levels.map((level, index) => {
+          const isAudible = level > 0.04;
+          return (
+            <span
+              key={index}
+              className="block w-[3px] shrink-0 rounded-full bg-current transition-[height,opacity] duration-75 ease-linear"
+              style={{
+                height: `${Math.round(2 + level ** 0.72 * 22)}px`,
+                opacity: props.active ? (isAudible ? 0.95 : 0.38) : 0.28,
+              }}
+            />
+          );
+        })}
+      </span>
     </span>
   );
 }
@@ -429,6 +448,7 @@ function composerDraftTargetKey(target: ScopedThreadRef | DraftId): string {
 const VoiceDictationControl = memo(function VoiceDictationControl(props: {
   status: VoiceDictationStatus;
   elapsedSeconds: number;
+  activityLevels: readonly number[];
   disabled: boolean;
   error: string | null;
   className?: string;
@@ -483,9 +503,9 @@ const VoiceDictationControl = memo(function VoiceDictationControl(props: {
     >
       {props.status === "recording" ? (
         <>
-          <span className="flex min-w-0 items-center gap-1.5">
-            <VoiceActivityBars active />
-            <span className="font-mono tabular-nums">
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <VoiceActivityWaveform active levels={props.activityLevels} />
+            <span className="shrink-0 font-mono tabular-nums">
               {formatVoiceElapsed(props.elapsedSeconds)}
             </span>
           </span>
@@ -1042,6 +1062,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [voiceStatus, setVoiceStatus] = useState<VoiceDictationStatus>("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
+  const [voiceActivityLevels, setVoiceActivityLevels] = useState(createVoiceWaveformLevels);
   const isMobileViewport = useMediaQuery("max-sm");
   const isVoiceActive =
     voiceStatus === "starting" || voiceStatus === "recording" || voiceStatus === "processing";
@@ -1068,6 +1089,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const mobileComposerExpandInFlightRef = useRef(false);
   const dragDepthRef = useRef(0);
   const voiceRecorderRef = useRef<VoiceRecorderSession | null>(null);
+  const voiceVolumeUnsubscribeRef = useRef<(() => void) | null>(null);
   const voiceReadyTimeoutRef = useRef<number | null>(null);
   const voiceStartTokenRef = useRef(0);
   const voiceStartInFlightRef = useRef(false);
@@ -1420,6 +1442,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return () => {
       voiceStartTokenRef.current += 1;
       voiceStartInFlightRef.current = false;
+      voiceVolumeUnsubscribeRef.current?.();
+      voiceVolumeUnsubscribeRef.current = null;
       voiceRecorderRef.current?.cancel();
       voiceRecorderRef.current = null;
       if (voiceReadyTimeoutRef.current !== null) {
@@ -1959,6 +1983,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     voiceReadyTimeoutRef.current = null;
   }, []);
 
+  const clearVoiceVolumeSubscription = useCallback(() => {
+    voiceVolumeUnsubscribeRef.current?.();
+    voiceVolumeUnsubscribeRef.current = null;
+  }, []);
+
   useEffect(() => {
     if (voiceDraftTargetKeyRef.current === activeVoiceDraftTargetKey) {
       return;
@@ -1968,35 +1997,44 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     voiceStartInFlightRef.current = false;
     voiceRecordingTargetKeyRef.current = null;
     clearVoiceReadyTimeout();
+    clearVoiceVolumeSubscription();
     voiceRecorderRef.current?.cancel();
     voiceRecorderRef.current = null;
     setVoiceStatus("idle");
     setVoiceError(null);
     setVoiceElapsedSeconds(0);
-  }, [activeVoiceDraftTargetKey, clearVoiceReadyTimeout]);
+    setVoiceActivityLevels(createVoiceWaveformLevels());
+  }, [activeVoiceDraftTargetKey, clearVoiceReadyTimeout, clearVoiceVolumeSubscription]);
 
   const markVoiceReady = useCallback(() => {
     clearVoiceReadyTimeout();
+    clearVoiceVolumeSubscription();
+    setVoiceActivityLevels(createVoiceWaveformLevels());
     setVoiceStatus("ready");
     voiceReadyTimeoutRef.current = window.setTimeout(() => {
       voiceReadyTimeoutRef.current = null;
       setVoiceStatus((status) => (status === "ready" ? "idle" : status));
     }, 1800);
-  }, [clearVoiceReadyTimeout]);
+  }, [clearVoiceReadyTimeout, clearVoiceVolumeSubscription]);
 
-  const showVoiceError = useCallback((error: unknown) => {
-    const message = formatVoiceInputError(error);
-    setVoiceError(message);
-    setVoiceStatus("error");
-    setVoiceElapsedSeconds(0);
-    toastManager.add(
-      stackedThreadToast({
-        type: "error",
-        title: "Voice dictation failed",
-        description: message,
-      }),
-    );
-  }, []);
+  const showVoiceError = useCallback(
+    (error: unknown) => {
+      const message = formatVoiceInputError(error);
+      clearVoiceVolumeSubscription();
+      setVoiceError(message);
+      setVoiceStatus("error");
+      setVoiceElapsedSeconds(0);
+      setVoiceActivityLevels(createVoiceWaveformLevels());
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Voice dictation failed",
+          description: message,
+        }),
+      );
+    },
+    [clearVoiceVolumeSubscription],
+  );
 
   const startVoiceRecording = useCallback(() => {
     if (
@@ -2014,8 +2052,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     voiceStartInFlightRef.current = true;
     voiceRecordingTargetKeyRef.current = targetKeyAtStart;
     clearVoiceReadyTimeout();
+    clearVoiceVolumeSubscription();
     setVoiceError(null);
     setVoiceElapsedSeconds(0);
+    setVoiceActivityLevels(createVoiceWaveformLevels());
     setIsComposerFocused(true);
     setVoiceStatus("starting");
     void createVoiceRecorder()
@@ -2030,6 +2070,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }
         voiceStartInFlightRef.current = false;
         voiceRecorderRef.current = recorder;
+        voiceVolumeUnsubscribeRef.current = recorder.subscribeToVolume((level) => {
+          setVoiceActivityLevels((levels) => appendVoiceWaveformLevel(levels, level));
+        });
         setVoiceStatus("recording");
       })
       .catch((error: unknown) => {
@@ -2045,19 +2088,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         voiceRecordingTargetKeyRef.current = null;
         showVoiceError(error);
       });
-  }, [canUseVoiceDictation, clearVoiceReadyTimeout, showVoiceError, voiceStatus]);
+  }, [
+    canUseVoiceDictation,
+    clearVoiceReadyTimeout,
+    clearVoiceVolumeSubscription,
+    showVoiceError,
+    voiceStatus,
+  ]);
 
   const cancelVoiceRecording = useCallback(() => {
     voiceStartTokenRef.current += 1;
     voiceStartInFlightRef.current = false;
     voiceRecordingTargetKeyRef.current = null;
     clearVoiceReadyTimeout();
+    clearVoiceVolumeSubscription();
     voiceRecorderRef.current?.cancel();
     voiceRecorderRef.current = null;
     setVoiceStatus("idle");
     setVoiceError(null);
     setVoiceElapsedSeconds(0);
-  }, [clearVoiceReadyTimeout]);
+    setVoiceActivityLevels(createVoiceWaveformLevels());
+  }, [clearVoiceReadyTimeout, clearVoiceVolumeSubscription]);
 
   const stopVoiceRecording = useCallback(
     async (options?: { readonly submitAfterInsert?: boolean }): Promise<boolean> => {
@@ -2067,6 +2118,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       voiceStartInFlightRef.current = false;
       clearVoiceReadyTimeout();
+      clearVoiceVolumeSubscription();
       voiceRecorderRef.current = null;
       const targetKeyAtStop = voiceRecordingTargetKeyRef.current;
       if (!targetKeyAtStop || latestVoiceDraftTargetKeyRef.current !== targetKeyAtStop) {
@@ -2075,6 +2127,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         setVoiceStatus("idle");
         setVoiceError(null);
         setVoiceElapsedSeconds(0);
+        setVoiceActivityLevels(createVoiceWaveformLevels());
         return false;
       }
       const tokenAtStop = voiceStartTokenRef.current;
@@ -2088,12 +2141,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           setVoiceStatus("idle");
           setVoiceError(null);
           setVoiceElapsedSeconds(0);
+          setVoiceActivityLevels(createVoiceWaveformLevels());
         }
         return false;
       };
       setVoiceStatus("processing");
       setVoiceError(null);
       setVoiceElapsedSeconds(0);
+      setVoiceActivityLevels(createVoiceWaveformLevels());
       try {
         const audio = await recorder.stop();
         if (!isCurrentVoiceTarget()) {
@@ -2127,6 +2182,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       blurMobileComposerAfterSend,
       clearVoiceReadyTimeout,
+      clearVoiceVolumeSubscription,
       insertDraftTextIntoComposer,
       markVoiceReady,
       onSend,
@@ -2143,9 +2199,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         voiceStartInFlightRef.current = false;
         voiceRecordingTargetKeyRef.current = null;
         clearVoiceReadyTimeout();
+        clearVoiceVolumeSubscription();
         setVoiceStatus("idle");
         setVoiceError(null);
         setVoiceElapsedSeconds(0);
+        setVoiceActivityLevels(createVoiceWaveformLevels());
       }
       if (voiceStatus === "recording") {
         event?.preventDefault();
@@ -2164,6 +2222,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       blurMobileComposerAfterSend,
       clearVoiceReadyTimeout,
+      clearVoiceVolumeSubscription,
       onSend,
       shouldBlurMobileComposerOnSubmit,
       stopVoiceRecording,
@@ -2697,6 +2756,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 <VoiceDictationControl
                   status={voiceStatus}
                   elapsedSeconds={voiceElapsedSeconds}
+                  activityLevels={voiceActivityLevels}
                   disabled={!canUseVoiceDictation}
                   error={voiceError}
                   preserveComposerFocusOnPointerDown
@@ -3044,6 +3104,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <VoiceDictationControl
                     status={voiceStatus}
                     elapsedSeconds={voiceElapsedSeconds}
+                    activityLevels={voiceActivityLevels}
                     disabled={!canUseVoiceDictation}
                     error={voiceError}
                     {...(isVoiceActive ? { className: "flex-1" } : {})}

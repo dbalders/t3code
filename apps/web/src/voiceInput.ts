@@ -29,11 +29,15 @@ const MIN_VOICE_AUDIO_DURATION_SECONDS = 0.25;
 const MIN_VOICE_PEAK_AMPLITUDE = 0.015;
 const MIN_VOICE_RMS_AMPLITUDE = 0.002;
 const MIN_VOICE_ACTIVE_DURATION_SECONDS = 0.08;
+const VOICE_VOLUME_SAMPLE_INTERVAL_MS = 55;
+
+export type VoiceVolumeListener = (level: number) => void;
 
 export interface VoiceRecorderSession {
   readonly mimeType: string;
   readonly stop: () => Promise<Blob>;
   readonly cancel: () => void;
+  readonly subscribeToVolume: (listener: VoiceVolumeListener) => () => void;
 }
 
 export interface VoiceAudioSignal {
@@ -41,6 +45,11 @@ export interface VoiceAudioSignal {
   readonly peakAmplitude: number;
   readonly rmsAmplitude: number;
   readonly activeDurationSeconds: number;
+}
+
+interface VoiceVolumeSampler {
+  readonly subscribe: (listener: VoiceVolumeListener) => () => void;
+  readonly close: () => void;
 }
 
 function resolveVoiceRecordingMimeType(): string | undefined {
@@ -53,6 +62,116 @@ function resolveVoiceRecordingMimeType(): string | undefined {
 function stopMediaStream(stream: MediaStream): void {
   for (const track of stream.getTracks()) {
     track.stop();
+  }
+}
+
+function resolveAudioContextConstructor(): AudioContextConstructor | undefined {
+  return (
+    globalThis.AudioContext ??
+    (globalThis as typeof globalThis & { webkitAudioContext?: AudioContextConstructor })
+      .webkitAudioContext
+  );
+}
+
+function voiceRmsToVisualLevel(rmsAmplitude: number): number {
+  const noiseFloor = 0.006;
+  if (rmsAmplitude <= noiseFloor) return 0;
+  return Math.max(0, Math.min(1, Math.sqrt((rmsAmplitude - noiseFloor) / 0.14)));
+}
+
+function createVoiceVolumeSampler(stream: MediaStream): VoiceVolumeSampler | null {
+  const AudioContextCtor = resolveAudioContextConstructor();
+  if (
+    !AudioContextCtor ||
+    typeof globalThis.requestAnimationFrame !== "function" ||
+    typeof globalThis.cancelAnimationFrame !== "function"
+  ) {
+    return null;
+  }
+
+  try {
+    const audioContext = new AudioContextCtor();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.7;
+    const source = audioContext.createMediaStreamSource(stream);
+    source.connect(analyser);
+
+    const samples = new Uint8Array(analyser.fftSize);
+    const listeners = new Set<VoiceVolumeListener>();
+    let frameId: number | null = null;
+    let lastSampleAt = 0;
+    let closed = false;
+
+    const emitLevel = () => {
+      analyser.getByteTimeDomainData(samples);
+      let square = 0;
+      for (const sample of samples) {
+        const centered = (sample - 128) / 128;
+        square += centered * centered;
+      }
+      const level = voiceRmsToVisualLevel(Math.sqrt(square / samples.length));
+      for (const listener of listeners) {
+        listener(level);
+      }
+    };
+
+    const tick = (timestamp: number) => {
+      if (closed || listeners.size === 0) {
+        frameId = null;
+        return;
+      }
+      if (timestamp - lastSampleAt >= VOICE_VOLUME_SAMPLE_INTERVAL_MS) {
+        lastSampleAt = timestamp;
+        emitLevel();
+      }
+      frameId = globalThis.requestAnimationFrame(tick);
+    };
+
+    const start = () => {
+      if (frameId !== null || closed) return;
+      void audioContext.resume?.().catch(() => undefined);
+      frameId = globalThis.requestAnimationFrame(tick);
+    };
+
+    const stop = () => {
+      if (frameId === null) return;
+      globalThis.cancelAnimationFrame(frameId);
+      frameId = null;
+    };
+
+    return {
+      subscribe(listener) {
+        if (closed) return () => undefined;
+        listeners.add(listener);
+        start();
+        return () => {
+          listeners.delete(listener);
+          if (listeners.size === 0) {
+            stop();
+          }
+        };
+      },
+      close() {
+        if (closed) return;
+        closed = true;
+        stop();
+        listeners.clear();
+        try {
+          source.disconnect();
+        } catch {
+          // The stream may already be torn down by the browser recorder.
+        }
+        try {
+          analyser.disconnect();
+        } catch {
+          // The analyser can already be detached in browser cleanup paths.
+        }
+        void audioContext.close().catch(() => undefined);
+      },
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -78,6 +197,11 @@ export async function createVoiceRecorder(): Promise<VoiceRecorderSession> {
       chunks.push(event.data);
     }
   });
+  const volumeSampler = createVoiceVolumeSampler(stream);
+  const cleanup = () => {
+    volumeSampler?.close();
+    stopMediaStream(stream);
+  };
 
   const stop = () =>
     new Promise<Blob>((resolve, reject) => {
@@ -89,7 +213,7 @@ export async function createVoiceRecorder(): Promise<VoiceRecorderSession> {
       recorder.addEventListener(
         "stop",
         () => {
-          stopMediaStream(stream);
+          cleanup();
           resolve(
             new Blob(chunks.splice(0), { type: recorder.mimeType || mimeType || "audio/webm" }),
           );
@@ -99,7 +223,7 @@ export async function createVoiceRecorder(): Promise<VoiceRecorderSession> {
       recorder.addEventListener(
         "error",
         () => {
-          stopMediaStream(stream);
+          cleanup();
           reject(new Error("Voice recording failed."));
         },
         { once: true },
@@ -108,7 +232,7 @@ export async function createVoiceRecorder(): Promise<VoiceRecorderSession> {
         recorder.stop();
       } catch (error) {
         chunks.splice(0);
-        stopMediaStream(stream);
+        cleanup();
         reject(error);
       }
     });
@@ -125,14 +249,14 @@ export async function createVoiceRecorder(): Promise<VoiceRecorderSession> {
       }
     }
     chunks.splice(0);
-    stopMediaStream(stream);
+    cleanup();
   };
 
   try {
     recorder.start();
   } catch (error) {
     chunks.splice(0);
-    stopMediaStream(stream);
+    cleanup();
     throw error;
   }
 
@@ -140,6 +264,7 @@ export async function createVoiceRecorder(): Promise<VoiceRecorderSession> {
     mimeType: recorder.mimeType || mimeType || "audio/webm",
     stop,
     cancel,
+    subscribeToVolume: volumeSampler?.subscribe ?? (() => () => undefined),
   };
 }
 
@@ -282,10 +407,7 @@ function ensureVoiceSignalDetected(audioBuffer: AudioBuffer): void {
 }
 
 async function decodeVoiceBlob(blob: Blob): Promise<AudioBuffer> {
-  const AudioContextCtor =
-    globalThis.AudioContext ??
-    (globalThis as typeof globalThis & { webkitAudioContext?: AudioContextConstructor })
-      .webkitAudioContext;
+  const AudioContextCtor = resolveAudioContextConstructor();
   if (!AudioContextCtor) {
     throw new Error("Voice recording format is not supported by this browser.");
   }
