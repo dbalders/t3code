@@ -19,7 +19,7 @@ export const VoiceCleanupMode = Schema.Literals(["off", "light"]);
 export type VoiceCleanupMode = typeof VoiceCleanupMode.Type;
 
 export const VoiceInputSettings = Schema.Struct({
-  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   provider: VoiceInputProvider.pipe(
     Schema.withDecodingDefault(Effect.succeed("tritonai-litellm" as const)),
   ),
