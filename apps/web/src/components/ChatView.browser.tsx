@@ -70,8 +70,10 @@ import { selectBootstrapCompleteForActiveEnvironment, useStore } from "../store"
 import { terminalSessionManager } from "../terminalSessionState";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useUiStateStore } from "../uiStateStore";
+import { encodeAudioBufferAsWav } from "../voiceInput";
 import { createAuthenticatedSessionHandlers } from "../../test/authHttpHandlers";
 import { BrowserWsRpcHarness, type NormalizedWsRpcRequestBody } from "../../test/wsRpcHarness";
+import { writeBrowserClientSettings } from "../clientPersistenceStorage";
 
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 
@@ -479,6 +481,17 @@ function buildFixture(snapshot: OrchestrationReadModel): TestFixture {
     },
     terminalMetadataEvents: [],
   };
+}
+
+function enableVoiceInputFixture(nextFixture: TestFixture): void {
+  writeBrowserClientSettings({
+    ...DEFAULT_CLIENT_SETTINGS,
+    voiceInput: {
+      ...DEFAULT_CLIENT_SETTINGS.voiceInput,
+      enabled: true,
+    },
+  });
+  void nextFixture;
 }
 
 function addThreadToSnapshot(
@@ -1438,6 +1451,113 @@ async function waitForSendButton(): Promise<HTMLButtonElement> {
     () => document.querySelector<HTMLButtonElement>('button[aria-label="Send message"]'),
     "Unable to find send button.",
   );
+}
+
+async function waitForVoiceButton(): Promise<HTMLButtonElement> {
+  return waitForElement(
+    () => document.querySelector<HTMLButtonElement>('[data-testid="voice-dictation-button"]'),
+    "Unable to find voice dictation button.",
+  );
+}
+
+async function waitForVoiceStopButton(): Promise<HTMLButtonElement> {
+  return waitForElement(
+    () => document.querySelector<HTMLButtonElement>('button[aria-label="Stop voice dictation"]'),
+    "Unable to find voice dictation stop button.",
+  );
+}
+
+function createVoiceTestBlob(): Blob {
+  const sampleRate = 16_000;
+  const samples = new Float32Array(sampleRate);
+  for (let index = 2_000; index < 6_000; index += 1) {
+    samples[index] = Math.sin(index / 8) * 0.08;
+  }
+  const wav = encodeAudioBufferAsWav({
+    length: samples.length,
+    numberOfChannels: 1,
+    sampleRate,
+    getChannelData: () => samples,
+  });
+  return new Blob([wav], { type: "audio/wav" });
+}
+
+function installVoiceRecordingMocks(options?: { readonly deferGetUserMedia?: boolean }) {
+  const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  const mediaRecorderDescriptor = Object.getOwnPropertyDescriptor(window, "MediaRecorder");
+  const stopTrack = vi.fn();
+  const stream = {
+    getTracks: () => [{ stop: stopTrack }],
+  } as unknown as MediaStream;
+  let resolveGetUserMedia: ((value: MediaStream) => void) | null = null;
+  const getUserMedia = vi.fn(async () => {
+    if (!options?.deferGetUserMedia) {
+      return stream;
+    }
+    return await new Promise<MediaStream>((resolve) => {
+      resolveGetUserMedia = resolve;
+    });
+  });
+
+  class FakeMediaRecorder extends EventTarget {
+    static isTypeSupported() {
+      return true;
+    }
+
+    readonly mimeType: string;
+    state: RecordingState = "inactive";
+
+    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+      super();
+      this.mimeType = options?.mimeType ?? "audio/webm";
+    }
+
+    start() {
+      this.state = "recording";
+    }
+
+    stop() {
+      if (this.state === "inactive") {
+        return;
+      }
+      this.state = "inactive";
+      const dataEvent = new Event("dataavailable") as BlobEvent;
+      Object.defineProperty(dataEvent, "data", {
+        value: createVoiceTestBlob(),
+      });
+      this.dispatchEvent(dataEvent);
+      this.dispatchEvent(new Event("stop"));
+    }
+  }
+
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: { getUserMedia },
+  });
+  Object.defineProperty(window, "MediaRecorder", {
+    configurable: true,
+    value: FakeMediaRecorder,
+  });
+
+  return {
+    getUserMedia,
+    resolveGetUserMedia: () => {
+      resolveGetUserMedia?.(stream);
+    },
+    stopTrack,
+    restore: () => {
+      if (mediaDevicesDescriptor) {
+        Object.defineProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
+      } else {
+        Reflect.deleteProperty(navigator, "mediaDevices");
+      }
+      if (mediaRecorderDescriptor) {
+        Object.defineProperty(window, "MediaRecorder", mediaRecorderDescriptor);
+      } else {
+        Reflect.deleteProperty(window, "MediaRecorder");
+      }
+    },
+  };
 }
 
 function findComposerProviderModelPicker(): HTMLButtonElement | null {
@@ -3574,6 +3694,371 @@ describe("ChatView timeline estimator parity (full app)", () => {
         ),
       ).toBe(false);
     } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("inserts a stopped voice transcript without sending the draft", async () => {
+    const voiceMocks = installVoiceRecordingMocks();
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-voice-stop-target" as MessageId,
+        targetText: "voice stop thread",
+      }),
+      configureFixture: enableVoiceInputFixture,
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.serverTranscribeVoice) {
+          return { text: "dictated follow up" };
+        }
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      const voiceButton = await waitForVoiceButton();
+      expect(voiceButton.disabled).toBe(false);
+      voiceButton.click();
+
+      await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-testid="voice-dictation-active"]'),
+        "Unable to find active voice dictation control.",
+      );
+      (await waitForVoiceStopButton()).click();
+
+      await waitForComposerText("dictated follow up");
+      const transcriptionRequest = wsRequests.find(
+        (request) => request._tag === WS_METHODS.serverTranscribeVoice,
+      ) as { _tag: string; audioBase64?: string; baseUrl?: string; mimeType?: string } | undefined;
+      expect(transcriptionRequest).toMatchObject({
+        _tag: WS_METHODS.serverTranscribeVoice,
+        mimeType: "audio/wav",
+      });
+      expect(transcriptionRequest?.audioBase64).toEqual(expect.any(String));
+      expect(transcriptionRequest?.baseUrl).toBeUndefined();
+      expect(
+        wsRequests.some((request) => request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand),
+      ).toBe(false);
+      expect(voiceMocks.getUserMedia).toHaveBeenCalledWith({ audio: true });
+      expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
+    } finally {
+      voiceMocks.restore();
+      await mounted.cleanup();
+    }
+  });
+
+  it("stops voice recording, inserts the transcript, and sends when Send is pressed while recording", async () => {
+    const voiceMocks = installVoiceRecordingMocks();
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-voice-send-target" as MessageId,
+        targetText: "voice send thread",
+      }),
+      configureFixture: enableVoiceInputFixture,
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.serverTranscribeVoice) {
+          return { text: "send this voice note" };
+        }
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      (await waitForVoiceButton()).click();
+      await waitForVoiceStopButton();
+
+      const sendButton = await waitForSendButton();
+      expect(sendButton.disabled).toBe(false);
+      sendButton.click();
+
+      await vi.waitFor(
+        () => {
+          const transcriptionIndex = wsRequests.findIndex(
+            (request) => request._tag === WS_METHODS.serverTranscribeVoice,
+          );
+          const turnStartIndex = wsRequests.findIndex(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.type === "thread.turn.start",
+          );
+          const turnStartRequest = wsRequests[turnStartIndex] as
+            | {
+                _tag: string;
+                type?: string;
+                message?: { text?: string };
+              }
+            | undefined;
+
+          expect(transcriptionIndex).toBeGreaterThanOrEqual(0);
+          expect(turnStartIndex).toBeGreaterThan(transcriptionIndex);
+          expect(turnStartRequest?.message?.text).toContain("send this voice note");
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
+    } finally {
+      voiceMocks.restore();
+      await mounted.cleanup();
+    }
+  });
+
+  it("cancels pending voice startup before sending a text draft", async () => {
+    const voiceMocks = installVoiceRecordingMocks({ deferGetUserMedia: true });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-voice-starting-send-target" as MessageId,
+        targetText: "voice starting send thread",
+      }),
+      configureFixture: enableVoiceInputFixture,
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.serverTranscribeVoice) {
+          return { text: "should not transcribe" };
+        }
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "Send while mic is starting");
+      await waitForComposerText("Send while mic is starting");
+      (await waitForVoiceButton()).click();
+      await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-testid="voice-dictation-active"]'),
+        "Unable to find starting voice dictation control.",
+      );
+
+      const sendButton = await waitForSendButton();
+      expect(sendButton.disabled).toBe(false);
+      sendButton.click();
+
+      await vi.waitFor(
+        () => {
+          const turnStartRequest = wsRequests.find(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.type === "thread.turn.start",
+          ) as
+            | {
+                _tag: string;
+                type?: string;
+                message?: { text?: string };
+              }
+            | undefined;
+          expect(turnStartRequest?.message?.text).toBe("Send while mic is starting");
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      voiceMocks.resolveGetUserMedia();
+      await vi.waitFor(
+        () => {
+          expect(
+            document.querySelector<HTMLElement>('[data-testid="voice-dictation-active"]'),
+          ).toBeNull();
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      expect(wsRequests.some((request) => request._tag === WS_METHODS.serverTranscribeVoice)).toBe(
+        false,
+      );
+      await vi.waitFor(
+        () => {
+          expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      voiceMocks.resolveGetUserMedia();
+      voiceMocks.restore();
+      await mounted.cleanup();
+    }
+  });
+
+  it("cancels an active voice recording when the composer target changes before stop", async () => {
+    const voiceMocks = installVoiceRecordingMocks();
+    const secondThreadId = "thread-browser-test-voice-cancel-target" as ThreadId;
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: addThreadToSnapshot(
+        createSnapshotForTargetUser({
+          targetMessageId: "msg-user-voice-cancel-target" as MessageId,
+          targetText: "voice cancel target thread",
+        }),
+        secondThreadId,
+      ),
+      configureFixture: enableVoiceInputFixture,
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.serverTranscribeVoice) {
+          return { text: "should not transcribe" };
+        }
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "First thread draft");
+      await waitForComposerText("First thread draft");
+      (await waitForVoiceButton()).click();
+      await waitForVoiceStopButton();
+
+      await mounted.router.navigate({
+        to: "/$environmentId/$threadId",
+        params: {
+          environmentId: LOCAL_ENVIRONMENT_ID,
+          threadId: secondThreadId,
+        },
+      });
+      await waitForURL(
+        mounted.router,
+        (path) => path === serverThreadPath(secondThreadId),
+        "Route should switch to the second thread before voice recording stops.",
+      );
+      useComposerDraftStore
+        .getState()
+        .setPrompt(threadRefFor(secondThreadId), "Second thread draft");
+
+      await vi.waitFor(
+        () => {
+          expect(
+            document.querySelector<HTMLElement>('[data-testid="voice-dictation-active"]'),
+          ).toBeNull();
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      expect(composerDraftFor(THREAD_KEY)?.prompt ?? "").toBe("First thread draft");
+      expect(composerDraftFor(threadKeyFor(secondThreadId))?.prompt ?? "").toBe(
+        "Second thread draft",
+      );
+      expect(wsRequests.some((request) => request._tag === WS_METHODS.serverTranscribeVoice)).toBe(
+        false,
+      );
+      expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
+    } finally {
+      voiceMocks.restore();
+      await mounted.cleanup();
+    }
+  });
+
+  it("discards a voice recording result when the active composer changes before transcription finishes", async () => {
+    const voiceMocks = installVoiceRecordingMocks();
+    const secondThreadId = "thread-browser-test-voice-stale-target" as ThreadId;
+    let transcriptionSettled = false;
+    let resolveTranscription = (_value: { text: string }) => {};
+    const transcriptionPromise = new Promise<{ text: string }>((resolve) => {
+      resolveTranscription = (value) => {
+        if (transcriptionSettled) {
+          return;
+        }
+        transcriptionSettled = true;
+        resolve(value);
+      };
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: addThreadToSnapshot(
+        createSnapshotForTargetUser({
+          targetMessageId: "msg-user-voice-stale-target" as MessageId,
+          targetText: "voice stale target thread",
+        }),
+        secondThreadId,
+      ),
+      configureFixture: enableVoiceInputFixture,
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.serverTranscribeVoice) {
+          return transcriptionPromise;
+        }
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "First thread draft");
+      await waitForComposerText("First thread draft");
+      (await waitForVoiceButton()).click();
+      await waitForVoiceStopButton();
+
+      const sendButton = await waitForSendButton();
+      expect(sendButton.disabled).toBe(false);
+      sendButton.click();
+
+      await vi.waitFor(
+        () => {
+          expect(
+            wsRequests.some((request) => request._tag === WS_METHODS.serverTranscribeVoice),
+          ).toBe(true);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      await mounted.router.navigate({
+        to: "/$environmentId/$threadId",
+        params: {
+          environmentId: LOCAL_ENVIRONMENT_ID,
+          threadId: secondThreadId,
+        },
+      });
+      await waitForURL(
+        mounted.router,
+        (path) => path === serverThreadPath(secondThreadId),
+        "Route should switch to the second thread before voice transcription resolves.",
+      );
+      useComposerDraftStore
+        .getState()
+        .setPrompt(threadRefFor(secondThreadId), "Second thread draft");
+
+      resolveTranscription({ text: "stale dictated text" });
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+
+      expect(composerDraftFor(THREAD_KEY)?.prompt ?? "").toBe("First thread draft");
+      expect(composerDraftFor(threadKeyFor(secondThreadId))?.prompt ?? "").toBe(
+        "Second thread draft",
+      );
+      expect(document.body.textContent).not.toContain("stale dictated text");
+      expect(
+        wsRequests.some(
+          (request) =>
+            request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+            request.type === "thread.turn.start",
+        ),
+      ).toBe(false);
+      expect(voiceMocks.stopTrack).toHaveBeenCalledTimes(1);
+    } finally {
+      resolveTranscription({ text: "cleanup" });
+      voiceMocks.restore();
       await mounted.cleanup();
     }
   });

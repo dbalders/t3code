@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_PROVIDER_DRIVER_KIND,
+  DEFAULT_VOICE_INPUT_SETTINGS,
   defaultInstanceIdForDriver,
   type DesktopUpdateChannel,
   PROVIDER_DISPLAY_NAMES,
@@ -11,6 +12,7 @@ import {
   type ProviderInstanceConfig,
   type ProviderInstanceId,
   type ScopedThreadRef,
+  type VoiceInputSettingsPatch,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
@@ -530,6 +532,14 @@ export function GeneralSettingsPanel() {
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
   );
+  const voiceInputSettings = settings.voiceInput;
+  const isVoiceInputDirty = voiceInputSettings.enabled !== DEFAULT_VOICE_INPUT_SETTINGS.enabled;
+  const updateVoiceInputSettings = useCallback(
+    (patch: VoiceInputSettingsPatch) => {
+      updateSettings({ voiceInput: { ...voiceInputSettings, ...patch } });
+    },
+    [updateSettings, voiceInputSettings],
+  );
 
   return (
     <SettingsPageContainer>
@@ -682,6 +692,26 @@ export function GeneralSettingsPanel() {
                 updateSettings({ enableAssistantStreaming: Boolean(checked) })
               }
               aria-label="Stream assistant messages"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Voice dictation"
+          description="Show a microphone control in the composer and transcribe through the app server."
+          resetAction={
+            isVoiceInputDirty ? (
+              <SettingResetButton
+                label="voice dictation"
+                onClick={() => updateSettings({ voiceInput: DEFAULT_VOICE_INPUT_SETTINGS })}
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={voiceInputSettings.enabled}
+              onCheckedChange={(checked) => updateVoiceInputSettings({ enabled: Boolean(checked) })}
+              aria-label="Enable voice dictation"
             />
           }
         />

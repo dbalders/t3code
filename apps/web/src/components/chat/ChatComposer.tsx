@@ -14,6 +14,7 @@ import type {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime";
 import {
   DEFAULT_PROVIDER_DRIVER_KIND,
   DEFAULT_PROVIDER_INSTANCE_ID,
@@ -88,16 +89,19 @@ import { Separator } from "../ui/separator";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { toastManager } from "../ui/toast";
+import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
   BotIcon,
   CircleAlertIcon,
   ListTodoIcon,
   PencilRulerIcon,
   type LucideIcon,
+  LoaderCircleIcon,
   LockIcon,
   LockOpenIcon,
+  MicIcon,
   PenLineIcon,
+  SquareIcon,
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
@@ -122,6 +126,13 @@ import { formatProviderSkillDisplayName } from "../../providerSkillPresentation"
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import {
+  createVoiceRecorder,
+  formatVoiceInputError,
+  transcribeVoiceBlob,
+  type VoiceRecorderSession,
+} from "../../voiceInput";
+import { insertVoiceTranscript } from "../../voiceInsertion";
 
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
 
@@ -379,6 +390,151 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   );
 });
 
+type VoiceDictationStatus = "idle" | "starting" | "recording" | "processing" | "ready" | "error";
+
+function formatVoiceElapsed(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.max(0, seconds % 60);
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+const VOICE_WAVEFORM_BAR_COUNT = 46;
+
+function createVoiceWaveformLevels(): number[] {
+  return Array.from({ length: VOICE_WAVEFORM_BAR_COUNT }, () => 0);
+}
+
+function appendVoiceWaveformLevel(levels: readonly number[], level: number): number[] {
+  const normalizedLevel = Math.max(0, Math.min(1, Number.isFinite(level) ? level : 0));
+  const currentLevels =
+    levels.length === VOICE_WAVEFORM_BAR_COUNT ? levels : createVoiceWaveformLevels();
+  return [...currentLevels.slice(1), normalizedLevel];
+}
+
+function VoiceActivityWaveform(props: { active: boolean; levels: readonly number[] }) {
+  const levels =
+    props.levels.length === VOICE_WAVEFORM_BAR_COUNT ? props.levels : createVoiceWaveformLevels();
+
+  return (
+    <span
+      aria-hidden="true"
+      className="relative flex h-6 min-w-24 flex-1 items-center overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_7%,black_93%,transparent)]"
+      data-voice-waveform-active={props.active ? "true" : "false"}
+    >
+      <span className="absolute inset-x-0 top-1/2 border-t border-dashed border-current/35" />
+      <span className="relative flex h-full w-full items-center justify-end gap-[3px]">
+        {levels.map((level, index) => {
+          const isAudible = level > 0.04;
+          return (
+            <span
+              key={index}
+              className="block w-[3px] shrink-0 rounded-full bg-current transition-[height,opacity] duration-75 ease-linear"
+              style={{
+                height: `${Math.round(2 + level ** 0.72 * 22)}px`,
+                opacity: props.active ? (isAudible ? 0.95 : 0.38) : 0.28,
+              }}
+            />
+          );
+        })}
+      </span>
+    </span>
+  );
+}
+
+function composerDraftTargetKey(target: ScopedThreadRef | DraftId): string {
+  return typeof target === "string" ? `draft:${target}` : `thread:${scopedThreadKey(target)}`;
+}
+
+const VoiceDictationControl = memo(function VoiceDictationControl(props: {
+  status: VoiceDictationStatus;
+  elapsedSeconds: number;
+  activityLevels: readonly number[];
+  disabled: boolean;
+  error: string | null;
+  className?: string;
+  preserveComposerFocusOnPointerDown: boolean;
+  onStart: () => void;
+  onStop: () => void;
+}) {
+  if (props.status === "idle" || props.status === "ready" || props.status === "error") {
+    return (
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                data-testid="voice-dictation-button"
+                size="icon-xs"
+                variant={props.status === "error" ? "destructive-outline" : "ghost"}
+                disabled={props.disabled}
+                aria-label={
+                  props.status === "error" ? "Retry voice dictation" : "Start voice dictation"
+                }
+                onPointerDown={
+                  props.preserveComposerFocusOnPointerDown
+                    ? (event) => event.preventDefault()
+                    : undefined
+                }
+                onClick={props.onStart}
+              >
+                <MicIcon />
+              </Button>
+            }
+          />
+          <TooltipPopup side="top" className="max-w-72 whitespace-normal leading-tight">
+            {props.error ?? "Dictate into the composer"}
+          </TooltipPopup>
+        </Tooltip>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="voice-dictation-active"
+      className={cn(
+        "flex min-h-8 min-w-0 items-center justify-between gap-2 py-1 pl-2.5 pr-0 text-xs",
+        props.status === "recording" ? "text-ring/80" : "text-muted-foreground",
+        props.className,
+      )}
+    >
+      {props.status === "recording" ? (
+        <>
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <VoiceActivityWaveform active levels={props.activityLevels} />
+            <span className="shrink-0 font-mono tabular-nums">
+              {formatVoiceElapsed(props.elapsedSeconds)}
+            </span>
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-1">
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              className="size-6 rounded-full text-ring/80 hover:!bg-muted/60 hover:text-ring"
+              aria-label="Stop voice dictation"
+              onPointerDown={
+                props.preserveComposerFocusOnPointerDown
+                  ? (event) => event.preventDefault()
+                  : undefined
+              }
+              onClick={props.onStop}
+            >
+              <SquareIcon className="size-3 fill-current stroke-[2.25]" />
+            </Button>
+          </span>
+        </>
+      ) : (
+        <>
+          <LoaderCircleIcon className="size-3.5 animate-spin" />
+          <span className="whitespace-nowrap">
+            {props.status === "starting" ? "Starting" : "Transcribing"}
+          </span>
+        </>
+      )}
+    </div>
+  );
+});
+
 // --------------------------------------------------------------------------
 // Handle exposed to ChatView
 // --------------------------------------------------------------------------
@@ -387,6 +543,7 @@ export interface ChatComposerHandle {
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
   insertTextAtEnd: (text: string) => boolean;
+  insertDraftText: (input: { text: string }) => boolean;
   openModelPicker: () => void;
   toggleModelPicker: () => void;
   isModelPickerOpen: () => boolean;
@@ -394,6 +551,10 @@ export interface ChatComposerHandle {
     value: string;
     cursor: number;
     expandedCursor: number;
+    selectionStart: number;
+    selectionEnd: number;
+    expandedSelectionStart: number;
+    expandedSelectionEnd: number;
     terminalContextIds: string[];
   };
   /** Reset composer cursor/trigger/highlight after external prompt mutations (e.g. onSend). */
@@ -880,8 +1041,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
+  const voiceSettings = settings.voiceInput;
+  const [voiceStatus, setVoiceStatus] = useState<VoiceDictationStatus>("idle");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
+  const [voiceActivityLevels, setVoiceActivityLevels] = useState(createVoiceWaveformLevels);
   const isMobileViewport = useMediaQuery("max-sm");
-  const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused;
+  const isVoiceActive =
+    voiceStatus === "starting" || voiceStatus === "recording" || voiceStatus === "processing";
+  const isComposerCollapsedMobile = isMobileViewport && !isComposerFocused && !isVoiceActive;
+  const activeVoiceDraftTargetKey = useMemo(
+    () => composerDraftTargetKey(composerDraftTarget),
+    [composerDraftTarget],
+  );
 
   // ------------------------------------------------------------------
   // Refs
@@ -899,6 +1071,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const mobileComposerExpandReleaseFrameRef = useRef<number | null>(null);
   const mobileComposerExpandInFlightRef = useRef(false);
   const dragDepthRef = useRef(0);
+  const voiceRecorderRef = useRef<VoiceRecorderSession | null>(null);
+  const voiceVolumeUnsubscribeRef = useRef<(() => void) | null>(null);
+  const voiceReadyTimeoutRef = useRef<number | null>(null);
+  const voiceStartTokenRef = useRef(0);
+  const voiceStartInFlightRef = useRef(false);
+  const voiceDraftTargetKeyRef = useRef(activeVoiceDraftTargetKey);
+  const latestVoiceDraftTargetKeyRef = useRef(activeVoiceDraftTargetKey);
+  const voiceRecordingTargetKeyRef = useRef<string | null>(null);
+  latestVoiceDraftTargetKeyRef.current = activeVoiceDraftTargetKey;
 
   // ------------------------------------------------------------------
   // Derived: composer send state
@@ -1134,8 +1315,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         : null,
     [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
   );
+  const canUseVoiceDictation =
+    voiceSettings.enabled &&
+    pendingPrimaryAction === null &&
+    !isComposerApprovalState &&
+    pendingUserInputs.length === 0 &&
+    phase !== "running" &&
+    !isSendBusy &&
+    !isConnecting &&
+    !isPreparingWorktree &&
+    environmentUnavailable === null;
+  const voiceIsProcessing = voiceStatus === "processing";
+  const sendHasVoiceAction = voiceStatus === "recording" || composerSendState.hasSendableContent;
+  const sendIsBusy = isSendBusy || voiceIsProcessing;
   const collapsedComposerPrimaryActionDisabled =
-    phase === "running" || isSendBusy || isConnecting || !composerSendState.hasSendableContent;
+    phase === "running" || sendIsBusy || isConnecting || !sendHasVoiceAction;
   const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
@@ -1213,6 +1407,33 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useEffect(() => {
     composerElementContextsRef.current = composerElementContexts;
   }, [composerElementContexts, composerElementContextsRef]);
+
+  useEffect(() => {
+    if (voiceStatus !== "recording") {
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setVoiceElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [voiceStatus]);
+
+  useEffect(() => {
+    return () => {
+      voiceStartTokenRef.current += 1;
+      voiceStartInFlightRef.current = false;
+      voiceVolumeUnsubscribeRef.current?.();
+      voiceVolumeUnsubscribeRef.current = null;
+      voiceRecorderRef.current?.cancel();
+      voiceRecorderRef.current = null;
+      if (voiceReadyTimeoutRef.current !== null) {
+        window.clearTimeout(voiceReadyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // ------------------------------------------------------------------
   // Composer menu highlight sync
@@ -1535,19 +1756,52 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     value: string;
     cursor: number;
     expandedCursor: number;
+    selectionStart: number;
+    selectionEnd: number;
+    expandedSelectionStart: number;
+    expandedSelectionEnd: number;
     terminalContextIds: string[];
   } => {
     const editorSnapshot = composerEditorRef.current?.readSnapshot();
     if (editorSnapshot) {
       return editorSnapshot;
     }
+    const expandedCursor = expandCollapsedComposerCursor(promptRef.current, composerCursor);
     return {
       value: promptRef.current,
       cursor: composerCursor,
-      expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
+      expandedCursor,
+      selectionStart: composerCursor,
+      selectionEnd: composerCursor,
+      expandedSelectionStart: expandedCursor,
+      expandedSelectionEnd: expandedCursor,
       terminalContextIds: composerTerminalContexts.map((context) => context.id),
     };
   }, [composerCursor, composerTerminalContexts, promptRef]);
+
+  const insertDraftTextIntoComposer = useCallback(
+    (text: string): boolean => {
+      if (text.trim().length === 0) {
+        return false;
+      }
+      const next = insertVoiceTranscript({
+        snapshot: readComposerSnapshot(),
+        transcript: text,
+      });
+      const nextCursor = collapseExpandedComposerCursor(next.text, next.cursor);
+      const nextExpandedCursor = expandCollapsedComposerCursor(next.text, nextCursor);
+      promptRef.current = next.text;
+      setPrompt(next.text);
+      setComposerCursor(nextCursor);
+      setComposerTrigger(detectComposerTrigger(next.text, nextExpandedCursor));
+      setComposerHighlightedItemId(null);
+      window.requestAnimationFrame(() => {
+        composerEditorRef.current?.focusAt(nextCursor);
+      });
+      return true;
+    },
+    [promptRef, readComposerSnapshot, setPrompt],
+  );
 
   const resolveActiveComposerTrigger = useCallback((): {
     snapshot: { value: string; cursor: number; expandedCursor: number };
@@ -1704,14 +1958,244 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showPlanFollowUpPrompt,
   ]);
 
+  const clearVoiceReadyTimeout = useCallback(() => {
+    if (voiceReadyTimeoutRef.current === null) {
+      return;
+    }
+    window.clearTimeout(voiceReadyTimeoutRef.current);
+    voiceReadyTimeoutRef.current = null;
+  }, []);
+
+  const clearVoiceVolumeSubscription = useCallback(() => {
+    voiceVolumeUnsubscribeRef.current?.();
+    voiceVolumeUnsubscribeRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (voiceDraftTargetKeyRef.current === activeVoiceDraftTargetKey) {
+      return;
+    }
+    voiceDraftTargetKeyRef.current = activeVoiceDraftTargetKey;
+    voiceStartTokenRef.current += 1;
+    voiceStartInFlightRef.current = false;
+    voiceRecordingTargetKeyRef.current = null;
+    clearVoiceReadyTimeout();
+    clearVoiceVolumeSubscription();
+    voiceRecorderRef.current?.cancel();
+    voiceRecorderRef.current = null;
+    setVoiceStatus("idle");
+    setVoiceError(null);
+    setVoiceElapsedSeconds(0);
+    setVoiceActivityLevels(createVoiceWaveformLevels());
+  }, [activeVoiceDraftTargetKey, clearVoiceReadyTimeout, clearVoiceVolumeSubscription]);
+
+  const markVoiceReady = useCallback(() => {
+    clearVoiceReadyTimeout();
+    clearVoiceVolumeSubscription();
+    setVoiceActivityLevels(createVoiceWaveformLevels());
+    setVoiceStatus("ready");
+    voiceReadyTimeoutRef.current = window.setTimeout(() => {
+      voiceReadyTimeoutRef.current = null;
+      setVoiceStatus((status) => (status === "ready" ? "idle" : status));
+    }, 1800);
+  }, [clearVoiceReadyTimeout, clearVoiceVolumeSubscription]);
+
+  const showVoiceError = useCallback(
+    (error: unknown) => {
+      const message = formatVoiceInputError(error);
+      clearVoiceVolumeSubscription();
+      setVoiceError(message);
+      setVoiceStatus("error");
+      setVoiceElapsedSeconds(0);
+      setVoiceActivityLevels(createVoiceWaveformLevels());
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Voice dictation failed",
+          description: message,
+        }),
+      );
+    },
+    [clearVoiceVolumeSubscription],
+  );
+
+  const startVoiceRecording = useCallback(() => {
+    if (
+      !canUseVoiceDictation ||
+      voiceStartInFlightRef.current ||
+      voiceStatus === "starting" ||
+      voiceStatus === "recording" ||
+      voiceStatus === "processing"
+    ) {
+      return;
+    }
+    const targetKeyAtStart = latestVoiceDraftTargetKeyRef.current;
+    const startToken = voiceStartTokenRef.current + 1;
+    voiceStartTokenRef.current = startToken;
+    voiceStartInFlightRef.current = true;
+    voiceRecordingTargetKeyRef.current = targetKeyAtStart;
+    clearVoiceReadyTimeout();
+    clearVoiceVolumeSubscription();
+    setVoiceError(null);
+    setVoiceElapsedSeconds(0);
+    setVoiceActivityLevels(createVoiceWaveformLevels());
+    setIsComposerFocused(true);
+    setVoiceStatus("starting");
+    void createVoiceRecorder()
+      .then((recorder) => {
+        if (
+          voiceStartTokenRef.current !== startToken ||
+          latestVoiceDraftTargetKeyRef.current !== targetKeyAtStart ||
+          voiceRecordingTargetKeyRef.current !== targetKeyAtStart
+        ) {
+          recorder.cancel();
+          return;
+        }
+        voiceStartInFlightRef.current = false;
+        voiceRecorderRef.current = recorder;
+        voiceVolumeUnsubscribeRef.current = recorder.subscribeToVolume((level) => {
+          setVoiceActivityLevels((levels) => appendVoiceWaveformLevel(levels, level));
+        });
+        setVoiceStatus("recording");
+      })
+      .catch((error: unknown) => {
+        if (
+          voiceStartTokenRef.current !== startToken ||
+          latestVoiceDraftTargetKeyRef.current !== targetKeyAtStart ||
+          voiceRecordingTargetKeyRef.current !== targetKeyAtStart
+        ) {
+          return;
+        }
+        voiceStartInFlightRef.current = false;
+        voiceRecorderRef.current = null;
+        voiceRecordingTargetKeyRef.current = null;
+        showVoiceError(error);
+      });
+  }, [
+    canUseVoiceDictation,
+    clearVoiceReadyTimeout,
+    clearVoiceVolumeSubscription,
+    showVoiceError,
+    voiceStatus,
+  ]);
+
+  const stopVoiceRecording = useCallback(
+    async (options?: { readonly submitAfterInsert?: boolean }): Promise<boolean> => {
+      const recorder = voiceRecorderRef.current;
+      if (!recorder || voiceStatus !== "recording") {
+        return false;
+      }
+      voiceStartInFlightRef.current = false;
+      clearVoiceReadyTimeout();
+      clearVoiceVolumeSubscription();
+      voiceRecorderRef.current = null;
+      const targetKeyAtStop = voiceRecordingTargetKeyRef.current;
+      if (!targetKeyAtStop || latestVoiceDraftTargetKeyRef.current !== targetKeyAtStop) {
+        voiceRecordingTargetKeyRef.current = null;
+        recorder.cancel();
+        setVoiceStatus("idle");
+        setVoiceError(null);
+        setVoiceElapsedSeconds(0);
+        setVoiceActivityLevels(createVoiceWaveformLevels());
+        return false;
+      }
+      const tokenAtStop = voiceStartTokenRef.current;
+      const isCurrentVoiceTarget = () =>
+        latestVoiceDraftTargetKeyRef.current === targetKeyAtStop &&
+        voiceStartTokenRef.current === tokenAtStop &&
+        voiceRecordingTargetKeyRef.current === targetKeyAtStop;
+      const discardStaleVoiceResult = () => {
+        if (voiceStartTokenRef.current === tokenAtStop) {
+          voiceRecordingTargetKeyRef.current = null;
+          setVoiceStatus("idle");
+          setVoiceError(null);
+          setVoiceElapsedSeconds(0);
+          setVoiceActivityLevels(createVoiceWaveformLevels());
+        }
+        return false;
+      };
+      setVoiceStatus("processing");
+      setVoiceError(null);
+      setVoiceElapsedSeconds(0);
+      setVoiceActivityLevels(createVoiceWaveformLevels());
+      try {
+        const audio = await recorder.stop();
+        if (!isCurrentVoiceTarget()) {
+          return discardStaleVoiceResult();
+        }
+        const transcript = await transcribeVoiceBlob(audio);
+        if (!isCurrentVoiceTarget()) {
+          return discardStaleVoiceResult();
+        }
+        const inserted = insertDraftTextIntoComposer(transcript);
+        if (!inserted) {
+          throw new Error("Voice transcription returned no text.");
+        }
+        voiceRecordingTargetKeyRef.current = null;
+        markVoiceReady();
+        if (options?.submitAfterInsert) {
+          onSend();
+          blurMobileComposerAfterSend();
+        }
+        return true;
+      } catch (error) {
+        recorder.cancel();
+        if (!isCurrentVoiceTarget()) {
+          return false;
+        }
+        voiceRecordingTargetKeyRef.current = null;
+        showVoiceError(error);
+        return false;
+      }
+    },
+    [
+      blurMobileComposerAfterSend,
+      clearVoiceReadyTimeout,
+      clearVoiceVolumeSubscription,
+      insertDraftTextIntoComposer,
+      markVoiceReady,
+      onSend,
+      showVoiceError,
+      voiceStatus,
+    ],
+  );
+
   const submitComposer = useCallback(
     (event?: { preventDefault: () => void }) => {
+      if (voiceStatus === "starting") {
+        voiceStartTokenRef.current += 1;
+        voiceStartInFlightRef.current = false;
+        voiceRecordingTargetKeyRef.current = null;
+        clearVoiceReadyTimeout();
+        clearVoiceVolumeSubscription();
+        setVoiceStatus("idle");
+        setVoiceError(null);
+        setVoiceElapsedSeconds(0);
+        setVoiceActivityLevels(createVoiceWaveformLevels());
+      }
+      if (voiceStatus === "recording") {
+        event?.preventDefault();
+        void stopVoiceRecording({ submitAfterInsert: true });
+        return;
+      }
+      if (voiceStatus === "processing") {
+        event?.preventDefault();
+        return;
+      }
       onSend(event);
       if (shouldBlurMobileComposerOnSubmit()) {
         blurMobileComposerAfterSend();
       }
     },
-    [blurMobileComposerAfterSend, onSend, shouldBlurMobileComposerOnSubmit],
+    [
+      blurMobileComposerAfterSend,
+      clearVoiceReadyTimeout,
+      clearVoiceVolumeSubscription,
+      onSend,
+      shouldBlurMobileComposerOnSubmit,
+      stopVoiceRecording,
+      voiceStatus,
+    ],
   );
   const expandMobileComposer = useCallback(() => {
     if (composerBlurFrameRef.current !== null) {
@@ -1946,6 +2430,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         const rangeEnd = promptRef.current.length;
         return applyPromptReplacement(rangeEnd, rangeEnd, text);
       },
+      insertDraftText: ({ text }: { text: string }) => {
+        if (
+          text.length === 0 ||
+          isConnecting ||
+          isComposerApprovalState ||
+          pendingUserInputs.length > 0 ||
+          (environmentUnavailable !== null && activePendingProgress === null)
+        ) {
+          return false;
+        }
+        return insertDraftTextIntoComposer(text);
+      },
       openModelPicker: () => {
         setIsComposerModelPickerOpen(true);
       },
@@ -2042,6 +2538,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       environmentUnavailable,
       activePendingProgress,
       applyPromptReplacement,
+      insertDraftTextIntoComposer,
       isComposerModelPickerOpen,
       readComposerSnapshot,
       selectedModel,
@@ -2223,6 +2720,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     "Type your own answer, or leave this blank to use the selected option"
                   : prompt.trim() || "Ask anything..."}
               </button>
+              {voiceSettings.enabled ? (
+                <VoiceDictationControl
+                  status={voiceStatus}
+                  elapsedSeconds={voiceElapsedSeconds}
+                  activityLevels={voiceActivityLevels}
+                  disabled={!canUseVoiceDictation}
+                  error={voiceError}
+                  preserveComposerFocusOnPointerDown
+                  onStart={startVoiceRecording}
+                  onStop={() => void stopVoiceRecording()}
+                />
+              ) : null}
               <button
                 type="button"
                 className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/90 text-primary-foreground disabled:opacity-30"
@@ -2486,7 +2995,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 showMobilePendingAnswerActions && "hidden sm:flex",
               )}
             >
-              <div className="-m-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div
+                className={cn(
+                  "-m-1 flex min-w-0 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                  isVoiceActive ? "max-w-[62%] flex-none" : "flex-1",
+                )}
+              >
                 <ProviderModelPicker
                   compact={isComposerFooterCompact}
                   activeInstanceId={selectedInstanceId}
@@ -2548,30 +3062,52 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
               {/* Right side: send / stop button */}
               <div
-                data-chat-composer-actions="right"
-                data-chat-composer-primary-actions-compact={
-                  isComposerPrimaryActionsCompact ? "true" : "false"
-                }
-                className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
+                className={cn(
+                  "flex min-w-0 flex-nowrap items-center justify-end gap-2",
+                  isVoiceActive ? "flex-1" : "shrink-0",
+                )}
               >
-                <ComposerFooterPrimaryActions
-                  compact={isComposerPrimaryActionsCompact}
-                  activeContextWindow={activeContextWindow}
-                  activeThreadProviderDisplayName={activeThreadProviderDisplayName}
-                  pendingAction={pendingPrimaryAction}
-                  isRunning={phase === "running"}
-                  showPlanFollowUpPrompt={pendingUserInputs.length === 0 && showPlanFollowUpPrompt}
-                  promptHasText={prompt.trim().length > 0}
-                  isSendBusy={isSendBusy}
-                  isConnecting={isConnecting}
-                  isEnvironmentUnavailable={environmentUnavailable !== null}
-                  isPreparingWorktree={isPreparingWorktree}
-                  hasSendableContent={composerSendState.hasSendableContent}
-                  preserveComposerFocusOnPointerDown={isMobileViewport}
-                  onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
-                  onInterrupt={handleInterruptPrimaryAction}
-                  onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
-                />
+                {voiceSettings.enabled ? (
+                  <VoiceDictationControl
+                    status={voiceStatus}
+                    elapsedSeconds={voiceElapsedSeconds}
+                    activityLevels={voiceActivityLevels}
+                    disabled={!canUseVoiceDictation}
+                    error={voiceError}
+                    {...(isVoiceActive ? { className: "flex-1" } : {})}
+                    preserveComposerFocusOnPointerDown={isMobileViewport}
+                    onStart={startVoiceRecording}
+                    onStop={() => void stopVoiceRecording()}
+                  />
+                ) : null}
+                <div
+                  data-chat-composer-actions="right"
+                  data-chat-composer-primary-actions-compact={
+                    isComposerPrimaryActionsCompact ? "true" : "false"
+                  }
+                  className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
+                >
+                  <ComposerFooterPrimaryActions
+                    compact={isComposerPrimaryActionsCompact}
+                    activeContextWindow={activeContextWindow}
+                    activeThreadProviderDisplayName={activeThreadProviderDisplayName}
+                    pendingAction={pendingPrimaryAction}
+                    isRunning={phase === "running"}
+                    showPlanFollowUpPrompt={
+                      pendingUserInputs.length === 0 && showPlanFollowUpPrompt
+                    }
+                    promptHasText={prompt.trim().length > 0}
+                    isSendBusy={sendIsBusy}
+                    isConnecting={isConnecting}
+                    isEnvironmentUnavailable={environmentUnavailable !== null}
+                    isPreparingWorktree={isPreparingWorktree}
+                    hasSendableContent={sendHasVoiceAction}
+                    preserveComposerFocusOnPointerDown={isMobileViewport}
+                    onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
+                    onInterrupt={handleInterruptPrimaryAction}
+                    onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
+                  />
+                </div>
               </div>
             </div>
           )}

@@ -54,6 +54,34 @@ function copyWorkspaceManifestFixture(targetRoot: string): void {
   if (existsSync(patchesDirectory)) {
     cpSync(patchesDirectory, resolve(targetRoot, "patches"), { recursive: true });
   }
+
+  // The smoke fixture regenerates its lockfile from scratch; keep patched packages pinned
+  // to the versions declared in pnpm-workspace.yaml so pnpm does not resolve past a patch.
+  pinSmokeFixtureDependency(targetRoot, {
+    packagePath: "apps/mobile/package.json",
+    dependencyName: "react-native-nitro-modules",
+    version: "0.35.9",
+  });
+}
+
+function pinSmokeFixtureDependency(
+  targetRoot: string,
+  input: {
+    readonly packagePath: string;
+    readonly dependencyName: string;
+    readonly version: string;
+  },
+): void {
+  const packagePath = resolve(targetRoot, input.packagePath);
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8")) as {
+    dependencies?: Record<string, string>;
+  };
+  if (!packageJson.dependencies?.[input.dependencyName]) {
+    return;
+  }
+
+  packageJson.dependencies[input.dependencyName] = input.version;
+  writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
 function writeMacManifestFixtures(targetRoot: string): { arm64Path: string; x64Path: string } {
