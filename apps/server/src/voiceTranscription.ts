@@ -11,6 +11,7 @@ import {
 } from "@t3tools/contracts";
 
 const MAX_VOICE_AUDIO_BYTES = 25 * 1024 * 1024;
+const MAX_VOICE_AUDIO_BASE64_CHARS = Math.ceil(MAX_VOICE_AUDIO_BYTES / 3) * 4;
 const TRANSCRIPTION_TIMEOUT_MS = 60_000;
 
 interface VoiceTranscriptionEnv {
@@ -128,6 +129,15 @@ function resolveVoiceTranscriptionConfig(
 function decodeAudioBase64(
   input: ServerVoiceTranscribeInput,
 ): Effect.Effect<Buffer, ServerVoiceTranscriptionError> {
+  if (input.audioBase64.length > MAX_VOICE_AUDIO_BASE64_CHARS) {
+    return Effect.fail(
+      voiceError({
+        code: "audio_too_large",
+        message: "Recorded audio is too large. Try a shorter dictation.",
+      }),
+    );
+  }
+
   const normalized = input.audioBase64.replace(/\s+/gu, "");
   if (!/^[A-Za-z0-9+/]*={0,2}$/u.test(normalized) || normalized.length % 4 === 1) {
     return Effect.fail(

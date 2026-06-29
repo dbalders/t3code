@@ -181,6 +181,23 @@ describe("transcribeVoice", () => {
     }),
   );
 
+  it.effect("rejects oversized encoded audio before decoding or fetch", () =>
+    Effect.gen(function* () {
+      const fetchMock = vi.fn();
+
+      const error = yield* Effect.flip(
+        transcribeVoice(makeInput({ audioBase64: "A".repeat(35_000_000) }), {
+          env: { TRITONAI_API_KEY: "test-key" },
+          fetch: fetchMock as unknown as typeof fetch,
+        }),
+      );
+
+      assert.equal(error.code, "audio_too_large");
+      assert.equal(error.recoverable, true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    }),
+  );
+
   it.effect("maps provider errors to recoverable transcription errors", () =>
     Effect.gen(function* () {
       const fetchMock = vi.fn(async () => {
