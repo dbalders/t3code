@@ -1428,6 +1428,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
             assert.strictEqual(initialCodex?.installed, false);
             assert.deepStrictEqual(spawnedCommands, [firstMissing]);
 
+            // The rebuilt instance may re-probe synchronously during the
+            // settings update. Advance the TestClock first so `checkedAt`
+            // can safely act as the fresh-probe marker this assertion uses.
+            yield* TestClock.adjust("1 second");
+
             // Drive a settings change. The Hydration layer's
             // `SettingsWatcherLive` consumes this via `streamChanges`,
             // calls `reconcile`, which rebuilds the codex instance (the
