@@ -455,7 +455,6 @@ const VoiceDictationControl = memo(function VoiceDictationControl(props: {
   preserveComposerFocusOnPointerDown: boolean;
   onStart: () => void;
   onStop: () => void;
-  onCancel: () => void;
 }) {
   if (props.status === "idle" || props.status === "ready" || props.status === "error") {
     return (
@@ -494,10 +493,8 @@ const VoiceDictationControl = memo(function VoiceDictationControl(props: {
     <div
       data-testid="voice-dictation-active"
       className={cn(
-        "flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-full border py-1 pl-2.5 pr-1 text-xs",
-        props.status === "recording"
-          ? "border-destructive/30 bg-destructive/8 text-destructive"
-          : "border-border bg-muted/55 text-muted-foreground",
+        "flex min-h-8 min-w-0 items-center justify-between gap-2 py-1 pl-2.5 pr-0 text-xs",
+        props.status === "recording" ? "text-ring/80" : "text-muted-foreground",
         props.className,
       )}
     >
@@ -513,21 +510,7 @@ const VoiceDictationControl = memo(function VoiceDictationControl(props: {
             <Button
               size="icon-xs"
               variant="ghost"
-              className="size-6 rounded-full text-destructive/75 hover:!bg-destructive/10 hover:text-destructive"
-              aria-label="Cancel voice dictation"
-              onPointerDown={
-                props.preserveComposerFocusOnPointerDown
-                  ? (event) => event.preventDefault()
-                  : undefined
-              }
-              onClick={props.onCancel}
-            >
-              <XIcon className="size-3.5 text-destructive/75 stroke-[2.25]" />
-            </Button>
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              className="size-6 rounded-full border border-destructive/20 !bg-destructive/12 text-destructive hover:!bg-destructive/18 hover:text-destructive"
+              className="size-6 rounded-full text-ring/80 hover:!bg-muted/60 hover:text-ring"
               aria-label="Stop voice dictation"
               onPointerDown={
                 props.preserveComposerFocusOnPointerDown
@@ -536,7 +519,7 @@ const VoiceDictationControl = memo(function VoiceDictationControl(props: {
               }
               onClick={props.onStop}
             >
-              <SquareIcon className="size-3 fill-current text-destructive stroke-[2.25]" />
+              <SquareIcon className="size-3 fill-current stroke-[2.25]" />
             </Button>
           </span>
         </>
@@ -2096,20 +2079,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     voiceStatus,
   ]);
 
-  const cancelVoiceRecording = useCallback(() => {
-    voiceStartTokenRef.current += 1;
-    voiceStartInFlightRef.current = false;
-    voiceRecordingTargetKeyRef.current = null;
-    clearVoiceReadyTimeout();
-    clearVoiceVolumeSubscription();
-    voiceRecorderRef.current?.cancel();
-    voiceRecorderRef.current = null;
-    setVoiceStatus("idle");
-    setVoiceError(null);
-    setVoiceElapsedSeconds(0);
-    setVoiceActivityLevels(createVoiceWaveformLevels());
-  }, [clearVoiceReadyTimeout, clearVoiceVolumeSubscription]);
-
   const stopVoiceRecording = useCallback(
     async (options?: { readonly submitAfterInsert?: boolean }): Promise<boolean> => {
       const recorder = voiceRecorderRef.current;
@@ -2761,7 +2730,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   preserveComposerFocusOnPointerDown
                   onStart={startVoiceRecording}
                   onStop={() => void stopVoiceRecording()}
-                  onCancel={cancelVoiceRecording}
                 />
               ) : null}
               <button
@@ -3110,7 +3078,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     preserveComposerFocusOnPointerDown={isMobileViewport}
                     onStart={startVoiceRecording}
                     onStop={() => void stopVoiceRecording()}
-                    onCancel={cancelVoiceRecording}
                   />
                 ) : null}
                 <div
