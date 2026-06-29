@@ -23,10 +23,24 @@ const VOICE_TRANSCRIPTION_READY_MIME_TYPES = new Set([
 
 type AudioContextConstructor = typeof AudioContext;
 
+const VOICE_SIGNAL_FRAME_SECONDS = 0.02;
+const VOICE_ACTIVE_FRAME_RMS_AMPLITUDE = 0.006;
+const MIN_VOICE_AUDIO_DURATION_SECONDS = 0.25;
+const MIN_VOICE_PEAK_AMPLITUDE = 0.015;
+const MIN_VOICE_RMS_AMPLITUDE = 0.002;
+const MIN_VOICE_ACTIVE_DURATION_SECONDS = 0.08;
+
 export interface VoiceRecorderSession {
   readonly mimeType: string;
   readonly stop: () => Promise<Blob>;
   readonly cancel: () => void;
+}
+
+export interface VoiceAudioSignal {
+  readonly durationSeconds: number;
+  readonly peakAmplitude: number;
+  readonly rmsAmplitude: number;
+  readonly activeDurationSeconds: number;
 }
 
 function resolveVoiceRecordingMimeType(): string | undefined {
@@ -193,7 +207,81 @@ export function encodeAudioBufferAsWav(
   return output;
 }
 
-async function convertVoiceBlobToWav(blob: Blob): Promise<Blob> {
+export function analyzeAudioBufferSignal(
+  audioBuffer: Pick<AudioBuffer, "getChannelData" | "length" | "numberOfChannels" | "sampleRate">,
+): VoiceAudioSignal {
+  const channelCount = Math.max(1, audioBuffer.numberOfChannels);
+  const sampleCount = audioBuffer.length;
+  const durationSeconds = sampleCount / audioBuffer.sampleRate;
+  if (sampleCount <= 0 || audioBuffer.sampleRate <= 0) {
+    return {
+      durationSeconds: 0,
+      peakAmplitude: 0,
+      rmsAmplitude: 0,
+      activeDurationSeconds: 0,
+    };
+  }
+
+  const channels = Array.from({ length: channelCount }, (_, index) =>
+    audioBuffer.getChannelData(index),
+  );
+  const frameSampleCount = Math.max(
+    1,
+    Math.round(audioBuffer.sampleRate * VOICE_SIGNAL_FRAME_SECONDS),
+  );
+  let peakAmplitude = 0;
+  let totalSquare = 0;
+  let totalSamples = 0;
+  let activeDurationSeconds = 0;
+
+  for (let frameStart = 0; frameStart < sampleCount; frameStart += frameSampleCount) {
+    const frameEnd = Math.min(sampleCount, frameStart + frameSampleCount);
+    let frameSquare = 0;
+    let frameSamples = 0;
+
+    for (let sampleIndex = frameStart; sampleIndex < frameEnd; sampleIndex += 1) {
+      for (const channel of channels) {
+        const sample = Math.max(-1, Math.min(1, channel[sampleIndex] ?? 0));
+        const amplitude = Math.abs(sample);
+        peakAmplitude = Math.max(peakAmplitude, amplitude);
+        const square = sample * sample;
+        totalSquare += square;
+        totalSamples += 1;
+        frameSquare += square;
+        frameSamples += 1;
+      }
+    }
+
+    const frameRms = frameSamples > 0 ? Math.sqrt(frameSquare / frameSamples) : 0;
+    if (frameRms >= VOICE_ACTIVE_FRAME_RMS_AMPLITUDE) {
+      activeDurationSeconds += (frameEnd - frameStart) / audioBuffer.sampleRate;
+    }
+  }
+
+  return {
+    durationSeconds,
+    peakAmplitude,
+    rmsAmplitude: totalSamples > 0 ? Math.sqrt(totalSquare / totalSamples) : 0,
+    activeDurationSeconds,
+  };
+}
+
+export function hasSpeechLikeSignal(signal: VoiceAudioSignal): boolean {
+  return (
+    signal.durationSeconds >= MIN_VOICE_AUDIO_DURATION_SECONDS &&
+    signal.peakAmplitude >= MIN_VOICE_PEAK_AMPLITUDE &&
+    signal.rmsAmplitude >= MIN_VOICE_RMS_AMPLITUDE &&
+    signal.activeDurationSeconds >= MIN_VOICE_ACTIVE_DURATION_SECONDS
+  );
+}
+
+function ensureVoiceSignalDetected(audioBuffer: AudioBuffer): void {
+  if (!hasSpeechLikeSignal(analyzeAudioBufferSignal(audioBuffer))) {
+    throw new Error("No speech was detected. Try speaking closer to the microphone.");
+  }
+}
+
+async function decodeVoiceBlob(blob: Blob): Promise<AudioBuffer> {
   const AudioContextCtor =
     globalThis.AudioContext ??
     (globalThis as typeof globalThis & { webkitAudioContext?: AudioContextConstructor })
@@ -204,18 +292,19 @@ async function convertVoiceBlobToWav(blob: Blob): Promise<Blob> {
 
   const audioContext = new AudioContextCtor();
   try {
-    const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
-    return new Blob([encodeAudioBufferAsWav(audioBuffer)], { type: "audio/wav" });
+    return await audioContext.decodeAudioData(await blob.arrayBuffer());
   } finally {
     void audioContext.close().catch(() => undefined);
   }
 }
 
 async function prepareVoiceBlobForTranscription(blob: Blob): Promise<Blob> {
+  const audioBuffer = await decodeVoiceBlob(blob);
+  ensureVoiceSignalDetected(audioBuffer);
   if (isTranscriptionReadyMimeType(blob.type)) {
     return blob;
   }
-  return convertVoiceBlobToWav(blob);
+  return new Blob([encodeAudioBufferAsWav(audioBuffer)], { type: "audio/wav" });
 }
 
 function normalizeVoiceBaseUrl(value: string): string {

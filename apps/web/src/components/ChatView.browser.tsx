@@ -70,6 +70,7 @@ import { selectBootstrapCompleteForActiveEnvironment, useStore } from "../store"
 import { terminalSessionManager } from "../terminalSessionState";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useUiStateStore } from "../uiStateStore";
+import { encodeAudioBufferAsWav } from "../voiceInput";
 import { createAuthenticatedSessionHandlers } from "../../test/authHttpHandlers";
 import { BrowserWsRpcHarness, type NormalizedWsRpcRequestBody } from "../../test/wsRpcHarness";
 import { writeBrowserClientSettings } from "../clientPersistenceStorage";
@@ -1466,6 +1467,21 @@ async function waitForVoiceStopButton(): Promise<HTMLButtonElement> {
   );
 }
 
+function createVoiceTestBlob(): Blob {
+  const sampleRate = 16_000;
+  const samples = new Float32Array(sampleRate);
+  for (let index = 2_000; index < 6_000; index += 1) {
+    samples[index] = Math.sin(index / 8) * 0.08;
+  }
+  const wav = encodeAudioBufferAsWav({
+    length: samples.length,
+    numberOfChannels: 1,
+    sampleRate,
+    getChannelData: () => samples,
+  });
+  return new Blob([wav], { type: "audio/wav" });
+}
+
 function installVoiceRecordingMocks(options?: { readonly deferGetUserMedia?: boolean }) {
   const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
   const mediaRecorderDescriptor = Object.getOwnPropertyDescriptor(window, "MediaRecorder");
@@ -1507,7 +1523,7 @@ function installVoiceRecordingMocks(options?: { readonly deferGetUserMedia?: boo
       this.state = "inactive";
       const dataEvent = new Event("dataavailable") as BlobEvent;
       Object.defineProperty(dataEvent, "data", {
-        value: new Blob(["voice bytes"], { type: this.mimeType }),
+        value: createVoiceTestBlob(),
       });
       this.dispatchEvent(dataEvent);
       this.dispatchEvent(new Event("stop"));
@@ -3722,7 +3738,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       ) as { _tag: string; audioBase64?: string; baseUrl?: string; mimeType?: string } | undefined;
       expect(transcriptionRequest).toMatchObject({
         _tag: WS_METHODS.serverTranscribeVoice,
-        mimeType: "audio/webm;codecs=opus",
+        mimeType: "audio/wav",
       });
       expect(transcriptionRequest?.audioBase64).toEqual(expect.any(String));
       expect(transcriptionRequest?.baseUrl).toBeUndefined();
