@@ -9,6 +9,20 @@ const VOICE_RECORDING_MIME_TYPES = [
   "audio/wav",
 ] as const;
 
+const VOICE_TRANSCRIPTION_READY_MIME_TYPES = new Set([
+  "audio/flac",
+  "audio/mp3",
+  "audio/mp4",
+  "audio/mpeg",
+  "audio/mpga",
+  "audio/ogg",
+  "audio/wav",
+  "audio/wave",
+  "audio/x-wav",
+]);
+
+type AudioContextConstructor = typeof AudioContext;
+
 export interface VoiceRecorderSession {
   readonly mimeType: string;
   readonly stop: () => Promise<Blob>;
@@ -125,6 +139,85 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
+function normalizedMimeType(mimeType: string): string {
+  return mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+}
+
+function isTranscriptionReadyMimeType(mimeType: string): boolean {
+  return VOICE_TRANSCRIPTION_READY_MIME_TYPES.has(normalizedMimeType(mimeType));
+}
+
+function writeAscii(view: DataView, offset: number, value: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint8(offset + index, value.charCodeAt(index));
+  }
+}
+
+export function encodeAudioBufferAsWav(
+  audioBuffer: Pick<AudioBuffer, "getChannelData" | "length" | "numberOfChannels" | "sampleRate">,
+): ArrayBuffer {
+  const channelCount = Math.max(1, Math.min(audioBuffer.numberOfChannels, 2));
+  const sampleCount = audioBuffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = channelCount * bytesPerSample;
+  const dataSize = sampleCount * blockAlign;
+  const output = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(output);
+
+  writeAscii(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, audioBuffer.sampleRate, true);
+  view.setUint32(28, audioBuffer.sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeAscii(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+
+  const channels = Array.from({ length: channelCount }, (_, index) =>
+    audioBuffer.getChannelData(index),
+  );
+  let offset = 44;
+  for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+    for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
+      const sample = Math.max(-1, Math.min(1, channels[channelIndex]?.[sampleIndex] ?? 0));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += bytesPerSample;
+    }
+  }
+
+  return output;
+}
+
+async function convertVoiceBlobToWav(blob: Blob): Promise<Blob> {
+  const AudioContextCtor =
+    globalThis.AudioContext ??
+    (globalThis as typeof globalThis & { webkitAudioContext?: AudioContextConstructor })
+      .webkitAudioContext;
+  if (!AudioContextCtor) {
+    throw new Error("Voice recording format is not supported by this browser.");
+  }
+
+  const audioContext = new AudioContextCtor();
+  try {
+    const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+    return new Blob([encodeAudioBufferAsWav(audioBuffer)], { type: "audio/wav" });
+  } finally {
+    void audioContext.close().catch(() => undefined);
+  }
+}
+
+async function prepareVoiceBlobForTranscription(blob: Blob): Promise<Blob> {
+  if (isTranscriptionReadyMimeType(blob.type)) {
+    return blob;
+  }
+  return convertVoiceBlobToWav(blob);
+}
+
 function normalizeVoiceBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/u, "");
 }
@@ -141,11 +234,12 @@ export async function transcribeVoiceBlob(
   blob: Blob,
   settings: VoiceInputSettings,
 ): Promise<string> {
-  const audioBase64 = await blobToBase64(blob);
+  const uploadBlob = await prepareVoiceBlobForTranscription(blob);
+  const audioBase64 = await blobToBase64(uploadBlob);
   const baseUrl = requestBaseUrl(settings);
   const result = await ensureLocalApi().server.transcribeVoice({
     audioBase64,
-    mimeType: blob.type || "audio/webm",
+    mimeType: uploadBlob.type || "audio/wav",
     ...(baseUrl ? { baseUrl } : {}),
     model: settings.model,
     language: settings.language,
