@@ -431,6 +431,7 @@ const VoiceDictationControl = memo(function VoiceDictationControl(props: {
   elapsedSeconds: number;
   disabled: boolean;
   error: string | null;
+  className?: string;
   preserveComposerFocusOnPointerDown: boolean;
   onStart: () => void;
   onStop: () => void;
@@ -473,42 +474,51 @@ const VoiceDictationControl = memo(function VoiceDictationControl(props: {
     <div
       data-testid="voice-dictation-active"
       className={cn(
-        "flex min-w-0 items-center gap-1.5 rounded-full border px-1.5 py-1 text-xs",
+        "flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-full border py-1 pl-2.5 pr-1 text-xs",
         props.status === "recording"
           ? "border-destructive/30 bg-destructive/8 text-destructive"
           : "border-border bg-muted/55 text-muted-foreground",
+        props.className,
       )}
     >
       {props.status === "recording" ? (
         <>
-          <VoiceActivityBars active />
-          <span className="font-mono tabular-nums">{formatVoiceElapsed(props.elapsedSeconds)}</span>
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            aria-label="Cancel voice dictation"
-            onPointerDown={
-              props.preserveComposerFocusOnPointerDown
-                ? (event) => event.preventDefault()
-                : undefined
-            }
-            onClick={props.onCancel}
-          >
-            <XIcon />
-          </Button>
-          <Button
-            size="icon-xs"
-            variant="secondary"
-            aria-label="Stop voice dictation"
-            onPointerDown={
-              props.preserveComposerFocusOnPointerDown
-                ? (event) => event.preventDefault()
-                : undefined
-            }
-            onClick={props.onStop}
-          >
-            <SquareIcon />
-          </Button>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <VoiceActivityBars active />
+            <span className="font-mono tabular-nums">
+              {formatVoiceElapsed(props.elapsedSeconds)}
+            </span>
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-1">
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              className="size-6 rounded-full text-destructive/75 hover:!bg-destructive/10 hover:text-destructive"
+              aria-label="Cancel voice dictation"
+              onPointerDown={
+                props.preserveComposerFocusOnPointerDown
+                  ? (event) => event.preventDefault()
+                  : undefined
+              }
+              onClick={props.onCancel}
+            >
+              <XIcon className="size-3.5 text-destructive/75 stroke-[2.25]" />
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              className="size-6 rounded-full border border-destructive/20 !bg-destructive/12 text-destructive hover:!bg-destructive/18 hover:text-destructive"
+              aria-label="Stop voice dictation"
+              onPointerDown={
+                props.preserveComposerFocusOnPointerDown
+                  ? (event) => event.preventDefault()
+                  : undefined
+              }
+              onClick={props.onStop}
+            >
+              <SquareIcon className="size-3 fill-current text-destructive stroke-[2.25]" />
+            </Button>
+          </span>
         </>
       ) : (
         <>
@@ -2958,7 +2968,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 showMobilePendingAnswerActions && "hidden sm:flex",
               )}
             >
-              <div className="-m-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div
+                className={cn(
+                  "-m-1 flex min-w-0 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                  isVoiceActive ? "max-w-[62%] flex-none" : "flex-1",
+                )}
+              >
                 <ProviderModelPicker
                   compact={isComposerFooterCompact}
                   activeInstanceId={selectedInstanceId}
@@ -3019,13 +3034,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               </div>
 
               {/* Right side: send / stop button */}
-              <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2">
+              <div
+                className={cn(
+                  "flex min-w-0 flex-nowrap items-center justify-end gap-2",
+                  isVoiceActive ? "flex-1" : "shrink-0",
+                )}
+              >
                 {voiceSettings.enabled ? (
                   <VoiceDictationControl
                     status={voiceStatus}
                     elapsedSeconds={voiceElapsedSeconds}
                     disabled={!canUseVoiceDictation}
                     error={voiceError}
+                    {...(isVoiceActive ? { className: "flex-1" } : {})}
                     preserveComposerFocusOnPointerDown={isMobileViewport}
                     onStart={startVoiceRecording}
                     onStop={() => void stopVoiceRecording()}
