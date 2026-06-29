@@ -309,18 +309,45 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
-  it.effect("requests an exclusive local server lease for chat sessions", () =>
+  it.effect("requests a shared local server lease for chat sessions", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
 
       yield* adapter.startSession({
         provider: ProviderDriverKind.make("opencode"),
-        threadId: asThreadId("thread-opencode-local-exclusive"),
+        threadId: asThreadId("thread-opencode-local-shared"),
         runtimeMode: "full-access",
       });
 
-      assert.deepEqual(runtimeMock.state.connectReuseLocalServer, [false]);
+      assert.deepEqual(runtimeMock.state.connectReuseLocalServer, [true]);
       assert.deepEqual(runtimeMock.state.sessionCreateUrls, ["http://127.0.0.1:4301"]);
+    }).pipe(Effect.provide(OpenCodeAdapterLocalServerTestLayer)),
+  );
+
+  it.effect("can keep multiple local OpenCode-backed chat sessions open", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+
+      const first = yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId: asThreadId("thread-opencode-local-first"),
+        runtimeMode: "full-access",
+      });
+      const second = yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId: asThreadId("thread-opencode-local-second"),
+        runtimeMode: "full-access",
+      });
+
+      assert.equal(first.threadId, "thread-opencode-local-first");
+      assert.equal(second.threadId, "thread-opencode-local-second");
+      assert.deepEqual(runtimeMock.state.connectReuseLocalServer, [true, true]);
+      assert.deepEqual(runtimeMock.state.sessionCreateUrls, [
+        "http://127.0.0.1:4301",
+        "http://127.0.0.1:4301",
+      ]);
+      const sessions = yield* adapter.listSessions();
+      assert.equal(sessions.length, 2);
     }).pipe(Effect.provide(OpenCodeAdapterLocalServerTestLayer)),
   );
 

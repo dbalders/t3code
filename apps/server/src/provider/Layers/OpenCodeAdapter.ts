@@ -1101,7 +1101,7 @@ export function makeOpenCodeAdapter(
                 binaryPath,
                 serverUrl,
                 ...(options?.environment ? { environment: options.environment } : {}),
-                reuseLocalServer: false,
+                reuseLocalServer: true,
               });
               const client = openCodeRuntime.createOpenCodeSdkClient({
                 baseUrl: server.url,
