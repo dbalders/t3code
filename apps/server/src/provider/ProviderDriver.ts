@@ -30,7 +30,7 @@ import type * as Effect from "effect/Effect";
 import type * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 
-import type { TextGenerationShape } from "../textGeneration/TextGeneration.ts";
+import type * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import type { ProviderAdapterError, ProviderDriverError } from "./Errors.ts";
 import type { ProviderAdapterShape } from "./Services/ProviderAdapter.ts";
 import type { ServerProviderShape } from "./Services/ServerProvider.ts";
@@ -71,7 +71,7 @@ export interface ProviderInstance {
   readonly environment: NodeJS.ProcessEnv;
   readonly snapshot: ServerProviderShape;
   readonly adapter: ProviderAdapterShape<ProviderAdapterError>;
-  readonly textGeneration: TextGenerationShape;
+  readonly textGeneration: TextGeneration.TextGeneration["Service"];
 }
 
 export interface ProviderContinuationIdentity {
