@@ -13,6 +13,7 @@ import * as Order from "effect/Order";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import {
+  DEFAULT_SERVER_SETTINGS,
   GitActionProgressEvent,
   GitActionProgressPhase,
   GitCommandError,
@@ -45,7 +46,6 @@ import { GitManagerError } from "@t3tools/contracts";
 import { TextGeneration } from "../textGeneration/TextGeneration.ts";
 import { ProjectSetupScriptRunner } from "../project/Services/ProjectSetupScriptRunner.ts";
 import { extractBranchNameFromRemoteRef } from "./remoteRefs.ts";
-import { ServerSettingsService } from "../serverSettings.ts";
 import type { GitManagerServiceError } from "@t3tools/contracts";
 import { GitVcsDriver, type GitStatusDetails } from "../vcs/GitVcsDriver.ts";
 import { SourceControlProviderRegistry } from "../sourceControl/SourceControlProviderRegistry.ts";
@@ -534,7 +534,6 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
   const crypto = yield* Crypto.Crypto;
 
   const sourceControlProvider = (cwd: string) => sourceControlProviders.resolve({ cwd });
-  const serverSettingsService = yield* ServerSettingsService;
   const randomUUIDv4 = crypto.randomUUIDv4.pipe(
     Effect.mapError((cause) =>
       gitManagerError("randomUUIDv4", "Failed to generate Git operation identifier.", cause),
@@ -1655,12 +1654,7 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
         let commitMessageForStep = input.commitMessage;
         let preResolvedCommitSuggestion: CommitAndBranchSuggestion | undefined = undefined;
 
-        const modelSelection = yield* serverSettingsService.getSettings.pipe(
-          Effect.map((settings) => settings.textGenerationModelSelection),
-          Effect.mapError((cause) =>
-            gitManagerError("runStackedAction", "Failed to get server settings.", cause),
-          ),
-        );
+        const modelSelection = DEFAULT_SERVER_SETTINGS.textGenerationModelSelection;
 
         if (input.featureBranch) {
           yield* Ref.set(currentPhase, Option.some("branch"));

@@ -8,6 +8,7 @@ import type {
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 
 import { APP_BASE_NAME } from "./branding";
 import { useComposerDraftStore, type DraftId } from "./composerDraftStore";
@@ -213,9 +214,6 @@ export function TritonAiFirstRunOnboardingBootstrap(props: { pathname: string })
     (settings) => settings.tritonAiFirstRunOnboardingCompleted,
   );
   const defaultThreadEnvMode = useSettings((settings) => settings.defaultThreadEnvMode);
-  const textGenerationModelSelection = useSettings(
-    (settings) => settings.textGenerationModelSelection,
-  );
   const projectGroupingSettings = useSettings(selectProjectGroupingSettings);
   const primaryEnvironmentState = useStore(
     useMemo(
@@ -276,7 +274,7 @@ export function TritonAiFirstRunOnboardingBootstrap(props: { pathname: string })
           api,
           environmentId: primaryEnvironmentId,
           existingProject: existingTritonAiProject,
-          defaultModelSelection: textGenerationModelSelection,
+          defaultModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
         });
         if (!project) return;
 
@@ -322,7 +320,6 @@ export function TritonAiFirstRunOnboardingBootstrap(props: { pathname: string })
     primaryEnvironmentState,
     projectGroupingSettings,
     props.pathname,
-    textGenerationModelSelection,
     updateSettings,
   ]);
 
