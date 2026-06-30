@@ -849,22 +849,11 @@ const writeMacEntitlementsAfterPack = Effect.fn("writeMacEntitlementsAfterPack")
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const hookPath = path.join(stageAppDir, "scripts", "write-mac-entitlements.cjs");
-  const entitlementsPath = yield* encodeJsonString(path.join(stageAppDir, MAC_ENTITLEMENTS_FILE));
-  const entitlementsContent = yield* encodeJsonString(`<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
-    <key>com.apple.security.device.audio-input</key>
-    <true/>
-  </dict>
-</plist>
-`);
+  const entitlementsFilePath = path.join(stageAppDir, MAC_ENTITLEMENTS_FILE);
+  const entitlementsPath = yield* encodeJsonString(entitlementsFilePath);
+  const entitlementsContent = yield* fs
+    .readFileString(entitlementsFilePath)
+    .pipe(Effect.flatMap(encodeJsonString));
   yield* fs.makeDirectory(path.dirname(hookPath), { recursive: true });
   yield* fs.writeFileString(
     hookPath,
@@ -944,8 +933,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   });
 
   const stageAppDir = path.join(stageRoot, "app");
-  const afterPackHookPath =
-    options.platform === "mac" ? yield* writeMacEntitlementsAfterPack(stageAppDir) : undefined;
+  let afterPackHookPath: string | undefined;
   const stageResourcesDir = path.join(stageAppDir, "apps/desktop/resources");
   const distDirs = {
     desktopDist: path.join(repoRoot, "apps/desktop/dist-electron"),
@@ -989,9 +977,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/desktop/dist-electron"));
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
   yield* fs.copyFile(
-    path.join(stageResourcesDir, "entitlements.mac.plist"),
-    path.join(stageAppDir, "entitlements.mac.plist"),
+    path.join(stageResourcesDir, MAC_ENTITLEMENTS_FILE),
+    path.join(stageAppDir, MAC_ENTITLEMENTS_FILE),
   );
+  afterPackHookPath =
+    options.platform === "mac" ? yield* writeMacEntitlementsAfterPack(stageAppDir) : undefined;
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
 
   yield* assertPlatformBuildResources(

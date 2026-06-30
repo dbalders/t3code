@@ -178,9 +178,11 @@ describe("DesktopBackendConfiguration", () => {
         yield* fileSystem.writeFileString(
           envFile,
           [
-            "export UCSD_AI_BASE_URL='https://tritonai-api.ucsd.edu/v1'",
+            "export UCSD_AI_BASE_URL=https://tritonai-api.ucsd.edu/v1",
             "export TRITONAI_API_KEY='triton-key'",
-            "export OPENCODE_CONFIG='/Users/test/.agents/ucsd/config/opencode/opencode.json'",
+            'export OPENCODE_CONFIG="/Users/test/.agents/ucsd/config/opencode/opencode.json"',
+            'export UCSD_ESCAPED_VALUE="escaped \\"quote\\" and \\$dollar and \\`tick\\`"',
+            "export T3CODE_PORT=1234",
             "",
           ].join("\n"),
         );
@@ -192,6 +194,20 @@ describe("DesktopBackendConfiguration", () => {
           config.env.OPENCODE_CONFIG,
           "/Users/test/.agents/ucsd/config/opencode/opencode.json",
         );
+        assert.equal(config.env.UCSD_ESCAPED_VALUE, 'escaped "quote" and $dollar and `tick`');
+        assert.isUndefined(config.env.T3CODE_PORT);
+      }),
+    ),
+  );
+
+  it.effect("omits UCSD installer environment when the env file is missing", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+
+        const config = yield* configuration.resolve;
+        assert.isUndefined(config.env.UCSD_AI_BASE_URL);
+        assert.isUndefined(config.env.TRITONAI_API_KEY);
       }),
     ),
   );

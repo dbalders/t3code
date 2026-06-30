@@ -54,6 +54,10 @@ const DESKTOP_BACKEND_ENV_NAMES = [
 const backendChildEnvPatch = (): Record<string, string | undefined> =>
   Object.fromEntries(DESKTOP_BACKEND_ENV_NAMES.map((name) => [name, undefined]));
 
+function isNotFoundError(error: PlatformError.PlatformError): boolean {
+  return error.reason._tag === "NotFound";
+}
+
 function parseShellExportLine(line: string): readonly [string, string] | null {
   const match = line.match(/^export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u);
   if (!match?.[1]) return null;
@@ -74,7 +78,16 @@ const readUcsdEnvironmentFile: Effect.Effect<
   const fileSystem = yield* FileSystem.FileSystem;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const envFilePath = environment.path.join(environment.homeDirectory, ...UCSD_ENV_FILE_PATH);
-  const contents = yield* fileSystem.readFileString(envFilePath).pipe(Effect.option);
+  const contents = yield* fileSystem.readFileString(envFilePath).pipe(
+    Effect.map(Option.some),
+    Effect.catch((error) => {
+      if (isNotFoundError(error)) return Effect.succeed(Option.none<string>());
+      return logBackendConfigurationWarning("failed to read UCSD environment file", {
+        path: envFilePath,
+        error: error.message || String(error),
+      }).pipe(Effect.as(Option.none<string>()));
+    }),
+  );
   if (Option.isNone(contents)) return {};
 
   return Object.fromEntries(
@@ -140,6 +153,7 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       cwd: environment.backendCwd,
       env: {
         ...ucsdEnvironment,
+        // Reserved desktop backend names stay app-owned even if the UCSD env file defines them.
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
       },
