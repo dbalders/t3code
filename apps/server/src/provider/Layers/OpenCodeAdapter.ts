@@ -91,6 +91,8 @@ interface OpenCodeSessionContext {
   activeTurnId: TurnId | undefined;
   activeAgent: string | undefined;
   activeVariant: string | undefined;
+  ignoreSessionErrorAfterAbort: boolean;
+  readonly emittedAbortTurnIds: Set<string>;
   /**
    * One-shot guard flipped by `stopOpenCodeContext` / `emitUnexpectedExit`.
    * The session lifecycle is owned by `sessionScope`; this Ref exists only
@@ -971,6 +973,12 @@ export function makeOpenCodeAdapter(
         case "session.error": {
           const message = sessionErrorMessage(event.properties.error);
           const activeTurnId = context.activeTurnId;
+          if (context.ignoreSessionErrorAfterAbort) {
+            context.ignoreSessionErrorAfterAbort = false;
+            yield* markOpenCodeTurnAborted(context, context.session.threadId, activeTurnId);
+            break;
+          }
+          context.ignoreSessionErrorAfterAbort = false;
           context.activeTurnId = undefined;
           yield* updateProviderSession(
             context,
@@ -1208,6 +1216,8 @@ export function makeOpenCodeAdapter(
           activeTurnId: undefined,
           activeAgent: undefined,
           activeVariant: undefined,
+          ignoreSessionErrorAfterAbort: false,
+          emittedAbortTurnIds: new Set(),
           stopped: yield* Ref.make(false),
           sessionScope: started.sessionScope,
         };
@@ -1232,6 +1242,44 @@ export function makeOpenCodeAdapter(
         return session;
       },
     );
+
+    const markOpenCodeTurnAborted = Effect.fn("markOpenCodeTurnAborted")(function* (
+      context: OpenCodeSessionContext,
+      threadId: ThreadId,
+      explicitTurnId?: TurnId,
+    ) {
+      const interruptedTurnId = explicitTurnId ?? context.activeTurnId;
+      context.activeTurnId = undefined;
+      context.activeAgent = undefined;
+      context.activeVariant = undefined;
+      context.pendingPermissions.clear();
+      context.pendingQuestions.clear();
+      yield* updateProviderSession(
+        context,
+        {
+          status: "ready",
+        },
+        { clearActiveTurnId: true, clearLastError: true },
+      );
+      if (!interruptedTurnId) {
+        return;
+      }
+      const abortKey = String(interruptedTurnId);
+      if (context.emittedAbortTurnIds.has(abortKey)) {
+        return;
+      }
+      context.emittedAbortTurnIds.add(abortKey);
+      yield* emit({
+        ...(yield* buildEventBase({
+          threadId,
+          turnId: interruptedTurnId,
+        })),
+        type: "turn.aborted",
+        payload: {
+          reason: "Interrupted by user.",
+        },
+      });
+    });
 
     const sendTurn: OpenCodeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
       const context = ensureSessionContext(sessions, input.threadId);
@@ -1281,6 +1329,8 @@ export function makeOpenCodeAdapter(
       const agent = getModelSelectionStringOptionValue(modelSelection, "agent");
       const variant = getModelSelectionStringOptionValue(modelSelection, "variant");
 
+      context.ignoreSessionErrorAfterAbort = false;
+      context.emittedAbortTurnIds.clear();
       context.activeTurnId = turnId;
       context.activeAgent = agent ?? (input.interactionMode === "plan" ? "plan" : undefined);
       context.activeVariant = variant;
@@ -1359,21 +1409,11 @@ export function makeOpenCodeAdapter(
     const interruptTurn: OpenCodeAdapterShape["interruptTurn"] = Effect.fn("interruptTurn")(
       function* (threadId, turnId) {
         const context = ensureSessionContext(sessions, threadId);
+        context.ignoreSessionErrorAfterAbort = true;
         yield* runOpenCodeSdk("session.abort", () =>
           context.client.session.abort({ sessionID: context.openCodeSessionId }),
         ).pipe(Effect.mapError(toRequestError));
-        if (turnId ?? context.activeTurnId) {
-          yield* emit({
-            ...(yield* buildEventBase({
-              threadId,
-              turnId: turnId ?? context.activeTurnId,
-            })),
-            type: "turn.aborted",
-            payload: {
-              reason: "Interrupted by user.",
-            },
-          });
-        }
+        yield* markOpenCodeTurnAborted(context, threadId, turnId);
       },
     );
 

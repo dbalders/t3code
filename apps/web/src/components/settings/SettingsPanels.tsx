@@ -712,7 +712,6 @@ export function GeneralSettingsPanel() {
             />
           }
         />
-
       </SettingsSection>
 
       <SettingsSection title="About">
