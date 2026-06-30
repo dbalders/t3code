@@ -107,6 +107,24 @@ export function isSameOriginRendererNavigation(input: {
   }
 }
 
+function isSameOriginAudioMediaPermissionRequest(input: {
+  readonly applicationUrl: string;
+  readonly permission: string;
+  readonly details:
+    | Electron.PermissionRequest
+    | Electron.FilesystemPermissionRequest
+    | Electron.MediaAccessPermissionRequest
+    | Electron.OpenExternalPermissionRequest;
+}): boolean {
+  if (input.permission !== "media" || !("mediaTypes" in input.details)) return false;
+  const mediaTypes = input.details.mediaTypes ?? [];
+  if (!mediaTypes.includes("audio") || mediaTypes.includes("video")) return false;
+  return isSameOriginRendererNavigation({
+    applicationUrl: input.applicationUrl,
+    navigationUrl: input.details.securityOrigin ?? input.details.requestingUrl,
+  });
+}
+
 function getWindowTitleBarOptions(
   shouldUseDarkColors: boolean,
   platform: NodeJS.Platform,
@@ -212,10 +230,17 @@ const make = Effect.gen(function* () {
     }
 
     yield* previewManager.setMainWindow(window);
-    window.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
-      const allowed = ["media"];
-      callback(allowed.includes(permission));
-    });
+    window.webContents.session.setPermissionRequestHandler(
+      (_webContents, permission, callback, details) => {
+        callback(
+          isSameOriginAudioMediaPermissionRequest({
+            applicationUrl,
+            permission,
+            details,
+          }),
+        );
+      },
+    );
     window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
       if (
         typeof params.partition !== "string" ||
