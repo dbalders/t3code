@@ -59,7 +59,7 @@ describe("BrowserSession", () => {
     }).pipe(Effect.provide(layer)),
   );
 
-  it.effect("allows media permission requests for preview sessions", () =>
+  it.effect("denies media permission requests for preview sessions", () =>
     Effect.gen(function* () {
       const browserSessions = yield* BrowserSession.BrowserSession;
       yield* browserSessions.getSession("scope-a");
@@ -72,7 +72,7 @@ describe("BrowserSession", () => {
         allowed = result;
       });
 
-      assert.isTrue(allowed);
+      assert.isFalse(allowed);
     }).pipe(Effect.provide(layer)),
   );
 

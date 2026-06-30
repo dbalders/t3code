@@ -58,13 +58,7 @@ const make = Effect.gen(function* BrowserSessionMake() {
             .replace(/\s*t3code\/[\d.]+/, "");
           browserSession.setUserAgent(userAgent);
           browserSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-            const allowed = [
-              "clipboard-read",
-              "clipboard-write",
-              "notifications",
-              "geolocation",
-              "media",
-            ];
+            const allowed = ["clipboard-read", "clipboard-write", "notifications", "geolocation"];
             callback(allowed.includes(permission));
           });
           const next = new Map(sessions);
