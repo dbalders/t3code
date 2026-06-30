@@ -14,6 +14,8 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopServerExposure from "./DesktopServerExposure.ts";
 
+const UCSD_ENV_FILE_PATH = [".agents", "ucsd", "env"] as const;
+
 export interface DesktopBackendConfigurationShape {
   readonly resolve: Effect.Effect<
     DesktopBackendManager.DesktopBackendStartConfig,
@@ -51,6 +53,37 @@ const DESKTOP_BACKEND_ENV_NAMES = [
 
 const backendChildEnvPatch = (): Record<string, string | undefined> =>
   Object.fromEntries(DESKTOP_BACKEND_ENV_NAMES.map((name) => [name, undefined]));
+
+function parseShellExportLine(line: string): readonly [string, string] | null {
+  const match = line.match(/^export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u);
+  if (!match?.[1]) return null;
+  let value = match[2] ?? "";
+  if (value.startsWith("'") && value.endsWith("'")) {
+    value = value.slice(1, -1).replaceAll("'\\''", "'");
+  } else if (value.startsWith('"') && value.endsWith('"')) {
+    value = value.slice(1, -1).replace(/\\(["\\$`])/gu, "$1");
+  }
+  return [match[1], value] as const;
+}
+
+const readUcsdEnvironmentFile: Effect.Effect<
+  Record<string, string>,
+  never,
+  FileSystem.FileSystem | DesktopEnvironment.DesktopEnvironment
+> = Effect.gen(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const envFilePath = environment.path.join(environment.homeDirectory, ...UCSD_ENV_FILE_PATH);
+  const contents = yield* fileSystem.readFileString(envFilePath).pipe(Effect.option);
+  if (Option.isNone(contents)) return {};
+
+  return Object.fromEntries(
+    contents.value
+      .split(/\r?\n/u)
+      .map((line) => parseShellExportLine(line.trim()))
+      .filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+});
 
 const { logWarning: logBackendConfigurationWarning } = DesktopObservability.makeComponentLogger(
   "desktop-backend-configuration",
@@ -92,17 +125,21 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
   }): Effect.fn.Return<
     DesktopBackendManager.DesktopBackendStartConfig,
     never,
-    DesktopEnvironment.DesktopEnvironment | DesktopServerExposure.DesktopServerExposure
+    | DesktopEnvironment.DesktopEnvironment
+    | DesktopServerExposure.DesktopServerExposure
+    | FileSystem.FileSystem
   > {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
     const backendExposure = yield* serverExposure.backendConfig;
+    const ucsdEnvironment = yield* readUcsdEnvironmentFile;
 
     return {
       executablePath: process.execPath,
       entryPath: environment.backendEntryPath,
       cwd: environment.backendCwd,
       env: {
+        ...ucsdEnvironment,
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
       },
@@ -162,6 +199,7 @@ export const layer = Layer.effect(
         }).pipe(
           Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
           Effect.provideService(DesktopServerExposure.DesktopServerExposure, serverExposure),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
         );
       }).pipe(Effect.withSpan("desktop.backendConfiguration.resolve")),
     });
