@@ -1,6 +1,7 @@
 import {
   type ChatAttachment,
   CommandId,
+  DEFAULT_SERVER_SETTINGS,
   EventId,
   type ModelSelection,
   type OrchestrationEvent,
@@ -38,7 +39,6 @@ import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
 } from "../Services/ProviderCommandReactor.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
@@ -195,7 +195,6 @@ const make = Effect.gen(function* () {
   const gitWorkflow = yield* GitWorkflowService;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const textGeneration = yield* TextGeneration;
-  const serverSettingsService = yield* ServerSettingsService;
   const serverCommandId = (tag: string) =>
     crypto.randomUUIDv4.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
   const serverEventId = () => crypto.randomUUIDv4.pipe(Effect.map(EventId.make));
@@ -664,8 +663,7 @@ const make = Effect.gen(function* () {
     const cwd = input.worktreePath;
     const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
-      const { textGenerationModelSelection: modelSelection } =
-        yield* serverSettingsService.getSettings;
+      const modelSelection = DEFAULT_SERVER_SETTINGS.textGenerationModelSelection;
 
       const generated = yield* textGeneration.generateBranchName({
         cwd,
@@ -709,8 +707,7 @@ const make = Effect.gen(function* () {
     }) {
       const attachments = input.attachments ?? [];
       yield* Effect.gen(function* () {
-        const { textGenerationModelSelection: modelSelection } =
-          yield* serverSettingsService.getSettings;
+        const modelSelection = DEFAULT_SERVER_SETTINGS.textGenerationModelSelection;
 
         const generated = yield* textGeneration.generateThreadTitle({
           cwd: input.cwd,

@@ -9,6 +9,7 @@ import {
   type SourceControlProviderKind,
   type SourceControlRepositoryInfo,
 } from "@t3tools/contracts";
+import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import * as Option from "effect/Option";
@@ -1128,7 +1129,7 @@ function OpenCommandPaletteDialog() {
           title: inferProjectTitleFromPath(cwd),
           workspaceRoot: cwd,
           createWorkspaceRootIfMissing: true,
-          defaultModelSelection: settings.textGenerationModelSelection,
+          defaultModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
           createdAt: new Date().toISOString(),
         });
         await handleNewThread(scopeProjectRef(browseEnvironmentId, projectId), {
@@ -1154,7 +1155,6 @@ function OpenCommandPaletteDialog() {
       projects,
       setOpen,
       settings.defaultThreadEnvMode,
-      settings.textGenerationModelSelection,
       settings.sidebarThreadSortOrder,
       threads,
     ],

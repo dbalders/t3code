@@ -59,6 +59,7 @@ import {
 } from "@t3tools/client-runtime";
 import { Link, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import {
+  DEFAULT_UNIFIED_SETTINGS,
   MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
   MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
   type SidebarProjectSortOrder,
@@ -3157,7 +3158,6 @@ export default function Sidebar() {
   const sidebarProjectGroupingMode = useSettings((s) => s.sidebarProjectGroupingMode);
   const projectGroupingSettings = useSettings(selectProjectGroupingSettings);
   const sidebarThreadPreviewCount = useSettings((s) => s.sidebarThreadPreviewCount);
-  const textGenerationModelSelection = useSettings((s) => s.textGenerationModelSelection);
   const { updateSettings } = useUpdateSettings();
   const { handleNewThread } = useNewThreadHandler();
   const { archiveThread, deleteThread } = useThreadActions();
@@ -3331,7 +3331,7 @@ export default function Sidebar() {
         title: TRITONAI_CHATS_PROJECT_TITLE,
         workspaceRoot: resolveTritonAiChatsWorkspacePath(),
         createWorkspaceRootIfMissing: true,
-        defaultModelSelection: textGenerationModelSelection,
+        defaultModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
         createdAt,
       });
 
@@ -3352,7 +3352,7 @@ export default function Sidebar() {
       }
     });
     return promise;
-  }, [primaryEnvironmentId, textGenerationModelSelection]);
+  }, [primaryEnvironmentId]);
   const handleNewChat = useCallback(() => {
     void (async () => {
       try {
