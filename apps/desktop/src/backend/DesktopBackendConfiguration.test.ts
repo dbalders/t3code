@@ -182,6 +182,7 @@ describe("DesktopBackendConfiguration", () => {
             "export TRITONAI_API_KEY='triton-key'",
             'export OPENCODE_CONFIG="/Users/test/.agents/ucsd/config/opencode/opencode.json"',
             'export UCSD_ESCAPED_VALUE="escaped \\"quote\\" and \\$dollar and \\`tick\\`"',
+            "export UCSD_QUOTED_NAME='Triton AI'\\''s API'",
             "export T3CODE_PORT=1234",
             "",
           ].join("\n"),
@@ -195,6 +196,7 @@ describe("DesktopBackendConfiguration", () => {
           "/Users/test/.agents/ucsd/config/opencode/opencode.json",
         );
         assert.equal(config.env.UCSD_ESCAPED_VALUE, 'escaped "quote" and $dollar and `tick`');
+        assert.equal(config.env.UCSD_QUOTED_NAME, "Triton AI's API");
         assert.isUndefined(config.env.T3CODE_PORT);
       }),
     ),
