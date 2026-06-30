@@ -212,6 +212,10 @@ const make = Effect.gen(function* () {
     }
 
     yield* previewManager.setMainWindow(window);
+    window.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+      const allowed = ["media"];
+      callback(allowed.includes(permission));
+    });
     window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
       if (
         typeof params.partition !== "string" ||

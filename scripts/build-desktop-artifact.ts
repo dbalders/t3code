@@ -777,6 +777,10 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       target: target === "dmg" ? [target, "zip"] : [target],
       icon: "icon.icns",
       category: "public.app-category.developer-tools",
+      extendInfo: {
+        NSMicrophoneUsageDescription:
+          "TritonAI Harness uses the microphone for voice dictation in the chat composer.",
+      },
       protocols: [
         {
           name: "TritonAI Harness",
