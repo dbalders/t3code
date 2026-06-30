@@ -17,7 +17,9 @@ import {
   OpenCodeSettings,
   ProviderDriverKind,
   ProviderInstanceId,
+  ProviderRuntimeEvent,
   ThreadId,
+  TurnId,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { ServerConfig } from "../../config.ts";
@@ -41,6 +43,7 @@ class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, OpenCodeAdapterSh
 ) {}
 
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);
+const asTurnId = (value: string): TurnId => TurnId.make(value);
 
 type MessageEntry = {
   info: {
@@ -66,7 +69,7 @@ const runtimeMock = {
     promptAsyncError: null as Error | null,
     closeError: null as Error | null,
     messages: [] as MessageEntry[],
-    subscribedEvents: [] as unknown[],
+    subscribedEvents: [] as Array<unknown | Promise<unknown>>,
   },
   reset() {
     this.state.startCalls.length = 0;
@@ -199,7 +202,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
         subscribe: async () => ({
           stream: (async function* () {
             for (const event of runtimeMock.state.subscribedEvents) {
-              yield event;
+              yield await event;
             }
           })(),
         }),
@@ -574,6 +577,81 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       assert.equal(session?.status, "running");
       assert.equal(String(session?.activeTurnId), String(turn.turnId));
       assert.equal(runtimeMock.state.promptCalls.length, 2);
+    }),
+  );
+
+  it.effect("clears active turn state when interrupting an OpenCode turn", () =>
+    Effect.gen(function* () {
+      let publishPostAbortError: (event: unknown) => void = () => {};
+      runtimeMock.state.subscribedEvents = [
+        new Promise<unknown>((resolve) => {
+          publishPostAbortError = resolve;
+        }),
+      ];
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-interrupt-clears-state");
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const turn = yield* adapter.sendTurn({
+        threadId,
+        input: "run a long command",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "openai/gpt-5",
+        },
+      });
+      const observedEvents: ProviderRuntimeEvent[] = [];
+      const observedEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId),
+        Stream.filter(
+          (event) =>
+            event.type === "turn.aborted" ||
+            event.type === "runtime.error" ||
+            (event.type === "turn.completed" && event.payload.state === "failed"),
+        ),
+        Stream.runForEach((event) =>
+          Effect.sync(() => {
+            observedEvents.push(event);
+          }),
+        ),
+        Effect.forkChild,
+      );
+
+      yield* adapter.interruptTurn(threadId, asTurnId("stale-turn-id"));
+      publishPostAbortError({
+        type: "session.error",
+        properties: {
+          sessionID: "http://127.0.0.1:9999/session",
+          error: {
+            name: "MessageAbortedError",
+            data: {
+              message: "Message was aborted.",
+            },
+          },
+        },
+      });
+      yield* advanceTestClock(50);
+      yield* Fiber.interrupt(observedEventsFiber);
+
+      const sessions = yield* adapter.listSessions();
+      const session = sessions.find((entry) => entry.threadId === threadId);
+      const abortedEvents = observedEvents.filter((event) => event.type === "turn.aborted");
+      const failureEvents = observedEvents.filter(
+        (event) =>
+          event.type === "runtime.error" ||
+          (event.type === "turn.completed" && event.payload.state === "failed"),
+      );
+      assert.equal(session?.status, "ready");
+      assert.equal(session?.activeTurnId, undefined);
+      assert.equal(session?.lastError, undefined);
+      assert.deepEqual(runtimeMock.state.abortCalls, ["http://127.0.0.1:9999/session"]);
+      assert.equal(abortedEvents.length, 1);
+      assert.equal(abortedEvents[0]?.turnId, turn.turnId);
+      assert.deepEqual(failureEvents, []);
     }),
   );
 
