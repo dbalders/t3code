@@ -365,6 +365,26 @@ describe("ProviderRuntimeIngestion", () => {
     const now = "2026-01-01T00:00:00.000Z";
 
     harness.emit({
+      type: "session.state.changed",
+      eventId: asEventId("evt-turn-abort-seed-error"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId: asThreadId("thread-1"),
+      createdAt: now,
+      payload: {
+        state: "error",
+        reason: "previous provider error",
+      },
+    });
+
+    await waitForThread(
+      harness.readModel,
+      (thread) =>
+        thread.session?.status === "error" &&
+        thread.session?.activeTurnId === null &&
+        thread.session?.lastError === "previous provider error",
+    );
+
+    harness.emit({
       type: "turn.started",
       eventId: asEventId("evt-turn-abort-started"),
       provider: ProviderDriverKind.make("codex"),
@@ -376,7 +396,9 @@ describe("ProviderRuntimeIngestion", () => {
     await waitForThread(
       harness.readModel,
       (thread) =>
-        thread.session?.status === "running" && thread.session?.activeTurnId === "turn-abort",
+        thread.session?.status === "running" &&
+        thread.session?.activeTurnId === "turn-abort" &&
+        thread.session?.lastError === "previous provider error",
     );
 
     harness.emit({
