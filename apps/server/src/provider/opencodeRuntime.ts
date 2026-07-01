@@ -38,7 +38,7 @@ const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJ
 const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
 
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
-const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 5_000;
+const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 20_000;
 const DEFAULT_HOSTNAME = "127.0.0.1";
 const OPENCODE_DATABASE_LOCKED_RETRY_DELAYS = ["250 millis", "750 millis", "1500 millis"] as const;
 export interface OpenCodeServerProcess {
@@ -624,9 +624,17 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       if (Option.isNone(readyOption)) {
         yield* Fiber.interrupt(exitFiber).pipe(Effect.ignore);
         yield* terminateChild;
+        const stdout = yield* Ref.get(stdoutRef);
+        const stderr = yield* Ref.get(stderrRef);
         return yield* new OpenCodeRuntimeError({
           operation: "startOpenCodeServerProcess",
-          detail: `Timed out waiting for OpenCode server start after ${timeoutMs}ms.`,
+          detail: [
+            `Timed out waiting for OpenCode server start after ${timeoutMs}ms.`,
+            stdout.trim() ? `stdout:\n${stdout.trim()}` : null,
+            stderr.trim() ? `stderr:\n${stderr.trim()}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
         });
       }
 
