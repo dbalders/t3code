@@ -77,6 +77,16 @@ function createBrowserLocalApi(): LocalApi {
       getProcessDiagnostics: () => Promise.reject(unavailableLocalBackendError()),
       getProcessResourceHistory: () => Promise.reject(unavailableLocalBackendError()),
       signalProcess: () => Promise.reject(unavailableLocalBackendError()),
+      scheduledTasks: {
+        list: () => Promise.reject(unavailableLocalBackendError()),
+        create: () => Promise.reject(unavailableLocalBackendError()),
+        update: () => Promise.reject(unavailableLocalBackendError()),
+        delete: () => Promise.reject(unavailableLocalBackendError()),
+        pause: () => Promise.reject(unavailableLocalBackendError()),
+        resume: () => Promise.reject(unavailableLocalBackendError()),
+        runNow: () => Promise.reject(unavailableLocalBackendError()),
+        listRuns: () => Promise.reject(unavailableLocalBackendError()),
+      },
     },
   };
 }

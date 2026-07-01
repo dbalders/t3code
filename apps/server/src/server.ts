@@ -20,6 +20,7 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
 import * as ProviderSessionRuntime from "./persistence/ProviderSessionRuntime.ts";
+import * as ScheduledTasksPersistence from "./persistence/Layers/ScheduledTasks.ts";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry.ts";
 import * as ProviderEventLoggers from "./provider/Layers/ProviderEventLoggers.ts";
 import { ProviderServiceLive } from "./provider/Layers/ProviderService.ts";
@@ -83,6 +84,8 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
+import * as ScheduledTaskScheduler from "./scheduledTasks/Scheduler.ts";
+import * as ScheduledTaskService from "./scheduledTasks/ScheduledTaskService.ts";
 import {
   clearPersistedServerRuntimeState,
   makePersistedServerRuntimeState,
@@ -249,6 +252,16 @@ const PreviewLayerLive = Layer.empty.pipe(
   Layer.provideMerge(PortScannerLayerLive),
 );
 
+const ScheduledTaskLayerLive = ScheduledTaskService.ScheduledTaskServiceLive.pipe(
+  Layer.provideMerge(
+    Layer.mergeAll(
+      ScheduledTasksPersistence.ScheduledTaskRepositoryLive,
+      ScheduledTasksPersistence.ScheduledTaskRunRepositoryLive,
+    ),
+  ),
+  Layer.provideMerge(OrchestrationLayerLive),
+);
+
 const WorkspaceEntriesLayerLive = WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer));
 
 const WorkspaceFileSystemLayerLive = WorkspaceFileSystem.layer.pipe(
@@ -291,7 +304,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(GitLayerLive),
   Layer.provideMerge(VcsLayerLive),
   Layer.provideMerge(ProviderRuntimeLayerLive),
-  Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive)),
+  Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive, ScheduledTaskLayerLive)),
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provideMerge(Keybindings.layer),
   Layer.provideMerge(ProviderRegistryLive),
@@ -475,6 +488,7 @@ export const makeServerLayer = Layer.unwrap(
       runtimeStateLayer,
       tailscaleServeLayer,
       cloudDesiredLinkReconcileLayer,
+      ScheduledTaskScheduler.ScheduledTaskSchedulerLive,
     );
 
     return serverApplicationLayer.pipe(

@@ -86,6 +86,7 @@ import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/provid
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
+import * as ScheduledTaskService from "./scheduledTasks/ScheduledTaskService.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
@@ -339,6 +340,7 @@ const buildAppUnderTest = (options?: {
     serverLifecycleEvents?: Partial<ServerLifecycleEvents.ServerLifecycleEvents["Service"]>;
     serverRuntimeStartup?: Partial<ServerRuntimeStartup.ServerRuntimeStartup["Service"]>;
     serverEnvironment?: Partial<ServerEnvironment.ServerEnvironment["Service"]>;
+    scheduledTaskService?: Partial<ScheduledTaskService.ScheduledTaskService["Service"]>;
     repositoryIdentityResolver?: Partial<
       RepositoryIdentityResolver.RepositoryIdentityResolver["Service"]
     >;
@@ -710,23 +712,38 @@ const buildAppUnderTest = (options?: {
         }),
       ),
       Layer.provide(
-        Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({
-          getTurnDiff: () =>
-            Effect.succeed({
-              threadId: defaultThreadId,
-              fromTurnCount: 0,
-              toTurnCount: 0,
-              diff: "",
-            }),
-          getFullThreadDiff: () =>
-            Effect.succeed({
-              threadId: defaultThreadId,
-              fromTurnCount: 0,
-              toTurnCount: 0,
-              diff: "",
-            }),
-          ...options?.layers?.checkpointDiffQuery,
-        }),
+        Layer.mergeAll(
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({
+            list: () => Effect.succeed({ tasks: [] }),
+            create: () => Effect.die("ScheduledTaskService.create not stubbed in this test"),
+            update: () => Effect.die("ScheduledTaskService.update not stubbed in this test"),
+            delete: () => Effect.die("ScheduledTaskService.delete not stubbed in this test"),
+            pause: () => Effect.die("ScheduledTaskService.pause not stubbed in this test"),
+            resume: () => Effect.die("ScheduledTaskService.resume not stubbed in this test"),
+            runNow: () => Effect.die("ScheduledTaskService.runNow not stubbed in this test"),
+            listRuns: () => Effect.succeed({ runs: [] }),
+            runDueTasks: () => Effect.void,
+            reconcileOpenRuns: () => Effect.void,
+            ...options?.layers?.scheduledTaskService,
+          }),
+          Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({
+            getTurnDiff: () =>
+              Effect.succeed({
+                threadId: defaultThreadId,
+                fromTurnCount: 0,
+                toTurnCount: 0,
+                diff: "",
+              }),
+            getFullThreadDiff: () =>
+              Effect.succeed({
+                threadId: defaultThreadId,
+                fromTurnCount: 0,
+                toTurnCount: 0,
+                diff: "",
+              }),
+            ...options?.layers?.checkpointDiffQuery,
+          }),
+        ),
       ),
     );
 

@@ -58,6 +58,19 @@ import {
   OrchestrationReplayEventsInput,
   OrchestrationRpcSchemas,
 } from "./orchestration.ts";
+import {
+  ScheduledTaskCreateInput,
+  ScheduledTaskDeleteResult,
+  ScheduledTaskError,
+  ScheduledTaskIdInput,
+  ScheduledTaskMutationResult,
+  ScheduledTaskRunNowInput,
+  ScheduledTaskRunNowResult,
+  ScheduledTaskRunsListInput,
+  ScheduledTaskRunsListResult,
+  ScheduledTasksListResult,
+  ScheduledTaskUpdateInput,
+} from "./scheduledTasks.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   RelayClientInstallFailedError,
@@ -220,6 +233,16 @@ export const WS_METHODS = {
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
   serverSignalProcess: "server.signalProcess",
 
+  // Scheduled automation methods
+  scheduledTasksList: "scheduledTasks.list",
+  scheduledTasksCreate: "scheduledTasks.create",
+  scheduledTasksUpdate: "scheduledTasks.update",
+  scheduledTasksDelete: "scheduledTasks.delete",
+  scheduledTasksPause: "scheduledTasks.pause",
+  scheduledTasksResume: "scheduledTasks.resume",
+  scheduledTasksRunNow: "scheduledTasks.runNow",
+  scheduledTaskRunsList: "scheduledTaskRuns.list",
+
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
@@ -327,6 +350,54 @@ export const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess,
   payload: ServerSignalProcessInput,
   success: ServerSignalProcessResult,
   error: EnvironmentAuthorizationError,
+});
+
+export const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
+  payload: Schema.Struct({}),
+  success: ScheduledTasksListResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsScheduledTasksCreateRpc = Rpc.make(WS_METHODS.scheduledTasksCreate, {
+  payload: ScheduledTaskCreateInput,
+  success: ScheduledTaskMutationResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsScheduledTasksUpdateRpc = Rpc.make(WS_METHODS.scheduledTasksUpdate, {
+  payload: ScheduledTaskUpdateInput,
+  success: ScheduledTaskMutationResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsScheduledTasksDeleteRpc = Rpc.make(WS_METHODS.scheduledTasksDelete, {
+  payload: ScheduledTaskIdInput,
+  success: ScheduledTaskDeleteResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsScheduledTasksPauseRpc = Rpc.make(WS_METHODS.scheduledTasksPause, {
+  payload: ScheduledTaskIdInput,
+  success: ScheduledTaskMutationResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsScheduledTasksResumeRpc = Rpc.make(WS_METHODS.scheduledTasksResume, {
+  payload: ScheduledTaskIdInput,
+  success: ScheduledTaskMutationResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsScheduledTasksRunNowRpc = Rpc.make(WS_METHODS.scheduledTasksRunNow, {
+  payload: ScheduledTaskRunNowInput,
+  success: ScheduledTaskRunNowResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
+});
+
+export const WsScheduledTaskRunsListRpc = Rpc.make(WS_METHODS.scheduledTaskRunsList, {
+  payload: ScheduledTaskRunsListInput,
+  success: ScheduledTaskRunsListResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
 });
 
 export const WsCloudGetRelayClientStatusRpc = Rpc.make(WS_METHODS.cloudGetRelayClientStatus, {
@@ -707,6 +778,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetProcessResourceHistoryRpc,
   WsServerSignalProcessRpc,
+  WsScheduledTasksListRpc,
+  WsScheduledTasksCreateRpc,
+  WsScheduledTasksUpdateRpc,
+  WsScheduledTasksDeleteRpc,
+  WsScheduledTasksPauseRpc,
+  WsScheduledTasksResumeRpc,
+  WsScheduledTasksRunNowRpc,
+  WsScheduledTaskRunsListRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
   WsSourceControlLookupRepositoryRpc,

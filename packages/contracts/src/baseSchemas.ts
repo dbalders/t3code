@@ -58,3 +58,7 @@ export const ApprovalRequestId = makeEntityId("ApprovalRequestId");
 export type ApprovalRequestId = typeof ApprovalRequestId.Type;
 export const CheckpointRef = makeEntityId("CheckpointRef");
 export type CheckpointRef = typeof CheckpointRef.Type;
+export const ScheduledTaskId = makeEntityId("ScheduledTaskId");
+export type ScheduledTaskId = typeof ScheduledTaskId.Type;
+export const ScheduledTaskRunId = makeEntityId("ScheduledTaskRunId");
+export type ScheduledTaskRunId = typeof ScheduledTaskRunId.Type;
