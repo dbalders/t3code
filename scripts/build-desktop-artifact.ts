@@ -54,6 +54,7 @@ const encodeStageWorkspaceConfig = Schema.encodeEffect(fromYaml(StageWorkspaceCo
 const TRITONAI_DESKTOP_PACKAGE_NAME = "tritonai-code";
 const TRITONAI_DESKTOP_APP_ID = "edu.ucsd.ai.tritonai-code";
 const DEFAULT_DESKTOP_UPDATE_REPOSITORY = "dbalders/t3code";
+const MAC_ENTITLEMENTS_FILE = "entitlements.mac.plist";
 
 const readWorkspaceConfig = Effect.fn("readWorkspaceConfig")(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -777,6 +778,10 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       target: target === "dmg" ? [target, "zip"] : [target],
       icon: "icon.icns",
       category: "public.app-category.developer-tools",
+      extendInfo: {
+        NSMicrophoneUsageDescription:
+          "TritonAI Harness uses the microphone for voice dictation in the chat composer.",
+      },
       protocols: [
         {
           name: "TritonAI Harness",
@@ -836,6 +841,33 @@ const assertPlatformBuildResources = Effect.fn("assertPlatformBuildResources")(f
   if (platform === "win") {
     yield* stageWindowsIcons(stageResourcesDir, iconAssets.windowsIconIco);
   }
+});
+
+const writeMacEntitlementsAfterPack = Effect.fn("writeMacEntitlementsAfterPack")(function* (
+  stageAppDir: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const hookPath = path.join(stageAppDir, "scripts", "write-mac-entitlements.cjs");
+  const entitlementsFilePath = path.join(stageAppDir, MAC_ENTITLEMENTS_FILE);
+  const entitlementsPath = yield* encodeJsonString(entitlementsFilePath);
+  const entitlementsContent = yield* fs
+    .readFileString(entitlementsFilePath)
+    .pipe(Effect.flatMap(encodeJsonString));
+  yield* fs.makeDirectory(path.dirname(hookPath), { recursive: true });
+  yield* fs.writeFileString(
+    hookPath,
+    `const fs = require("node:fs");
+
+exports.default = async function writeMacEntitlementsAfterPack() {
+  fs.writeFileSync(
+    ${entitlementsPath},
+    ${entitlementsContent},
+  );
+};
+`,
+  );
+  return hookPath;
 });
 
 const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
@@ -901,6 +933,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   });
 
   const stageAppDir = path.join(stageRoot, "app");
+  let afterPackHookPath: string | undefined;
   const stageResourcesDir = path.join(stageAppDir, "apps/desktop/resources");
   const distDirs = {
     desktopDist: path.join(repoRoot, "apps/desktop/dist-electron"),
@@ -943,6 +976,12 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* Effect.log("[desktop-artifact] Staging release app...");
   yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/desktop/dist-electron"));
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
+  yield* fs.copyFile(
+    path.join(stageResourcesDir, MAC_ENTITLEMENTS_FILE),
+    path.join(stageAppDir, MAC_ENTITLEMENTS_FILE),
+  );
+  afterPackHookPath =
+    options.platform === "mac" ? yield* writeMacEntitlementsAfterPack(stageAppDir) : undefined;
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
 
   yield* assertPlatformBuildResources(
@@ -994,6 +1033,16 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     overrides: resolvedOverrides,
     ...(stagePnpmConfig ? { pnpm: stagePnpmConfig } : {}),
   };
+  if (afterPackHookPath) {
+    const build = stagePackageJson.build as Record<string, unknown>;
+    const mac = build.mac as Record<string, unknown> | undefined;
+    if (mac) {
+      const entitlementsPath = path.join(stageAppDir, MAC_ENTITLEMENTS_FILE);
+      mac.entitlements = entitlementsPath;
+      mac.entitlementsInherit = entitlementsPath;
+    }
+    build.afterPack = afterPackHookPath;
+  }
 
   const stagePackageJsonString = yield* encodeJsonString(stagePackageJson);
   yield* fs.writeFileString(path.join(stageAppDir, "package.json"), `${stagePackageJsonString}\n`);

@@ -54,6 +54,9 @@ function makeFakeBrowserWindow() {
     once: vi.fn(),
     openDevTools: vi.fn(),
     replaceMisspelling: vi.fn(),
+    session: {
+      setPermissionRequestHandler: vi.fn(),
+    },
     send: vi.fn(),
     setWindowOpenHandler: vi.fn(),
   };
@@ -79,6 +82,7 @@ function makeFakeBrowserWindow() {
     window: window as unknown as Electron.BrowserWindow,
     loadURL: window.loadURL,
     openDevTools: webContents.openDevTools,
+    setPermissionRequestHandler: webContents.session.setPermissionRequestHandler,
     setAutoHideCursor: window.setAutoHideCursor,
     webContentsListeners,
   };
@@ -230,6 +234,48 @@ describe("DesktopWindow", () => {
         yield* desktopWindow.handleBackendReady;
         assert.equal(yield* Ref.get(createCount), 1);
         assert.isTrue(createdWindowOptions[0]?.disableAutoHideCursor);
+        assert.equal(fakeWindow.setPermissionRequestHandler.mock.calls.length, 1);
+        const permissionHandler = fakeWindow.setPermissionRequestHandler.mock.calls[0]?.[0];
+        if (!permissionHandler) return yield* Effect.die("permission handler was not registered");
+        const resolvePermission = (
+          permission: string,
+          details: { readonly mediaTypes?: readonly string[]; readonly requestingUrl: string },
+        ) => {
+          let allowed = true;
+          permissionHandler(
+            fakeWindow.window.webContents,
+            permission,
+            (result: boolean) => {
+              allowed = result;
+            },
+            details,
+          );
+          return allowed;
+        };
+        assert.isTrue(
+          resolvePermission("media", {
+            mediaTypes: ["audio"],
+            requestingUrl: "http://127.0.0.1:5733/",
+          }),
+        );
+        assert.isFalse(
+          resolvePermission("media", {
+            mediaTypes: ["video"],
+            requestingUrl: "http://127.0.0.1:5733/",
+          }),
+        );
+        assert.isFalse(
+          resolvePermission("media", {
+            mediaTypes: ["audio", "video"],
+            requestingUrl: "http://127.0.0.1:5733/",
+          }),
+        );
+        assert.isFalse(
+          resolvePermission("media", {
+            mediaTypes: ["audio"],
+            requestingUrl: "https://example.com/",
+          }),
+        );
         assert.deepEqual(fakeWindow.setAutoHideCursor.mock.calls, [[false]]);
         assert.deepEqual(fakeWindow.loadURL.mock.calls[0], ["http://127.0.0.1:5733/"]);
         assert.equal(fakeWindow.openDevTools.mock.calls.length, 1);

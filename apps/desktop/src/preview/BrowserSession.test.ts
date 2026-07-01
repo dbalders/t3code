@@ -59,6 +59,26 @@ describe("BrowserSession", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("denies media permission requests for preview sessions", () =>
+    Effect.gen(function* () {
+      const browserSessions = yield* BrowserSession.BrowserSession;
+      yield* browserSessions.getSession("scope-a");
+      const browserSession = [...sessions.values()][0];
+      const handler = browserSession?.setPermissionRequestHandler.mock.calls[0]?.[0];
+      if (!handler) return yield* Effect.die("permission handler was not registered");
+
+      let callbackCalled = false;
+      let allowed = false;
+      handler({}, "media", (result: boolean) => {
+        callbackCalled = true;
+        allowed = result;
+      });
+
+      assert.isTrue(callbackCalled);
+      assert.isFalse(allowed);
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("clears storage and cache for every created session", () =>
     Effect.gen(function* () {
       const browserSessions = yield* BrowserSession.BrowserSession;

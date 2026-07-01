@@ -166,6 +166,54 @@ describe("DesktopBackendConfiguration", () => {
     ),
   );
 
+  it.effect("passes UCSD installer environment into the backend process", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+        const envFile = environment.path.join(environment.homeDirectory, ".agents", "ucsd", "env");
+
+        yield* fileSystem.makeDirectory(environment.path.dirname(envFile), { recursive: true });
+        yield* fileSystem.writeFileString(
+          envFile,
+          [
+            "export UCSD_AI_BASE_URL=https://tritonai-api.ucsd.edu/v1",
+            "export TRITONAI_API_KEY='triton-key'",
+            'export OPENCODE_CONFIG="/Users/test/.agents/ucsd/config/opencode/opencode.json"',
+            'export UCSD_ESCAPED_VALUE="escaped \\"quote\\" and \\$dollar and \\`tick\\`"',
+            "export UCSD_QUOTED_NAME='Triton AI'\\''s API'",
+            "export T3CODE_PORT=1234",
+            "",
+          ].join("\n"),
+        );
+
+        const config = yield* configuration.resolve;
+        assert.equal(config.env.UCSD_AI_BASE_URL, "https://tritonai-api.ucsd.edu/v1");
+        assert.equal(config.env.TRITONAI_API_KEY, "triton-key");
+        assert.equal(
+          config.env.OPENCODE_CONFIG,
+          "/Users/test/.agents/ucsd/config/opencode/opencode.json",
+        );
+        assert.equal(config.env.UCSD_ESCAPED_VALUE, 'escaped "quote" and $dollar and `tick`');
+        assert.equal(config.env.UCSD_QUOTED_NAME, "Triton AI's API");
+        assert.isUndefined(config.env.T3CODE_PORT);
+      }),
+    ),
+  );
+
+  it.effect("omits UCSD installer environment when the env file is missing", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+
+        const config = yield* configuration.resolve;
+        assert.isUndefined(config.env.UCSD_AI_BASE_URL);
+        assert.isUndefined(config.env.TRITONAI_API_KEY);
+      }),
+    ),
+  );
+
   it.effect("captures backend output in development so child process logs can be persisted", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
