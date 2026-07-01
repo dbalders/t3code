@@ -73,8 +73,6 @@ export function HomeHeader(props: {
   readonly onStartNewTask: () => void;
 }) {
   const iconColor = useThemeColor("--color-icon");
-  const mutedColor = useThemeColor("--color-foreground-muted");
-  const subtleColor = useThemeColor("--color-subtle");
   const hasCustomListOptions =
     props.selectedEnvironmentId !== null ||
     props.projectSortOrder !== DEFAULT_SIDEBAR_PROJECT_SORT_ORDER ||
@@ -126,26 +124,6 @@ export function HomeHeader(props: {
             >
               T3 Code
             </RNText>
-            <View
-              style={{
-                backgroundColor: subtleColor,
-                borderRadius: 99,
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-              }}
-            >
-              <RNText
-                style={{
-                  fontFamily: "DMSans_700Bold",
-                  fontSize: MOBILE_TYPOGRAPHY.micro.fontSize,
-                  color: mutedColor,
-                  letterSpacing: 1.1,
-                  textTransform: "uppercase",
-                }}
-              >
-                Alpha
-              </RNText>
-            </View>
           </View>
         </Stack.Toolbar.View>
       </Stack.Toolbar>

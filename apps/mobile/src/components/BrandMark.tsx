@@ -7,7 +7,7 @@ const BRAND_MARK_SOURCE = require("../../../../assets/dev/blueprint-ios-1024.png
 export function BrandMark(props: { readonly compact?: boolean; readonly stageLabel?: string }) {
   const compact = props.compact ?? false;
   const iconSize = compact ? 32 : 44;
-  const stageLabel = props.stageLabel ?? "Alpha";
+  const stageLabel = props.stageLabel?.trim() ?? "";
 
   return (
     <View className="flex-row items-center gap-3">
@@ -25,14 +25,16 @@ export function BrandMark(props: { readonly compact?: boolean; readonly stageLab
           <Text className="text-lg font-t3-bold text-foreground" style={{ letterSpacing: -0.4 }}>
             T3 Code
           </Text>
-          <View className="rounded-full bg-subtle px-2 py-1">
-            <Text
-              className="text-3xs font-t3-bold uppercase text-foreground-muted"
-              style={{ letterSpacing: 1.1 }}
-            >
-              {stageLabel}
-            </Text>
-          </View>
+          {stageLabel.length > 0 ? (
+            <View className="rounded-full bg-subtle px-2 py-1">
+              <Text
+                className="text-3xs font-t3-bold uppercase text-foreground-muted"
+                style={{ letterSpacing: 1.1 }}
+              >
+                {stageLabel}
+              </Text>
+            </View>
+          ) : null}
         </View>
         {!compact ? (
           <Text className="text-xs font-medium text-foreground-muted">

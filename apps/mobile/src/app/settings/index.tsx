@@ -414,7 +414,7 @@ function AppSettingsSection() {
           weight="regular"
         />
         <Text className="flex-1 text-lg text-foreground">Version</Text>
-        <Text className="text-lg text-foreground-muted">Alpha</Text>
+        <Text className="text-lg text-foreground-muted">TritonAI Harness</Text>
       </View>
     </SettingsSection>
   );

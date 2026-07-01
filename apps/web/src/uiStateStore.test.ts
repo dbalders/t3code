@@ -7,13 +7,17 @@ import {
   markThreadVisited,
   parsePersistedState,
   PERSISTED_STATE_KEY,
+  pinProjects,
   type PersistedUiState,
   persistState,
+  reorderPinnedProjects,
   reorderProjects,
   resolveProjectExpanded,
   setDefaultAdvertisedEndpointKey,
   setProjectExpanded,
+  setProjectsPinned,
   setThreadChangedFilesExpanded,
+  unpinProjects,
   type UiState,
 } from "./uiStateStore";
 
@@ -21,6 +25,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
     projectOrder: [],
+    pinnedProjectOrder: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -104,6 +109,37 @@ describe("uiStateStore pure functions", () => {
     expect(next.projectOrder).toEqual([keyB, keyC, keyALocal, keyARemote]);
   });
 
+  it("pins and unpins projects in stable order", () => {
+    const keyA = "env-local:proj-a";
+    const keyB = "env-local:proj-b";
+    const keyC = "env-local:proj-c";
+    const initialState = makeUiState({
+      pinnedProjectOrder: [keyA],
+    });
+
+    const afterPin = pinProjects(initialState, [keyB, keyA, keyC]);
+    expect(afterPin.pinnedProjectOrder).toEqual([keyA, keyB, keyC]);
+
+    const afterUnpin = unpinProjects(afterPin, [keyA, keyB]);
+    expect(afterUnpin.pinnedProjectOrder).toEqual([keyC]);
+
+    expect(setProjectsPinned(afterUnpin, [keyC], false).pinnedProjectOrder).toEqual([]);
+  });
+
+  it("reorders pinned grouped project members together", () => {
+    const keyALocal = "env-local:proj-a";
+    const keyARemote = "env-remote:proj-a";
+    const keyB = "env-local:proj-b";
+    const keyC = "env-local:proj-c";
+    const initialState = makeUiState({
+      pinnedProjectOrder: [keyALocal, keyARemote, keyB, keyC],
+    });
+
+    const next = reorderPinnedProjects(initialState, [keyALocal, keyARemote], [keyC]);
+
+    expect(next.pinnedProjectOrder).toEqual([keyB, keyC, keyALocal, keyARemote]);
+  });
+
   it("does not reorder missing or identical groups", () => {
     const currentOrder = ["env-local:proj-a", "env-local:proj-b"];
     const state = makeUiState();
@@ -150,6 +186,7 @@ describe("parsePersistedState", () => {
         invalid: "no" as unknown as boolean,
       },
       projectOrder: ["physical-b", "", "physical-a", "physical-b"],
+      pinnedProjectOrder: ["physical-a", "", "physical-b", "physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
         invalid: "not-a-date",
@@ -168,6 +205,7 @@ describe("parsePersistedState", () => {
         logical: false,
       },
       projectOrder: ["physical-b", "physical-a"],
+      pinnedProjectOrder: ["physical-a", "physical-b"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
       },
@@ -185,11 +223,13 @@ describe("parsePersistedState", () => {
       collapsedProjectCwds: ["/repo/b"],
       expandedProjectCwds: ["/repo/a"],
       projectOrderCwds: ["/repo/b", "/repo/a"],
+      pinnedProjectOrderCwds: ["/repo/a", "/repo/b"],
     });
     const projectAKey = legacyProjectCwdPreferenceKey("/repo/a");
     const projectBKey = legacyProjectCwdPreferenceKey("/repo/b");
 
     expect(parsed.projectOrder).toEqual([projectBKey, projectAKey]);
+    expect(parsed.pinnedProjectOrder).toEqual([projectAKey, projectBKey]);
     expect(resolveProjectExpanded(parsed.projectExpandedById, [projectAKey])).toBe(true);
     expect(resolveProjectExpanded(parsed.projectExpandedById, [projectBKey])).toBe(false);
     expect(resolveProjectExpanded(parsed.projectExpandedById, ["unknown"])).toBe(true);
@@ -252,6 +292,7 @@ describe("uiStateStore persistence", () => {
         logical: false,
       },
       projectOrder: ["physical-b", "physical-a"],
+      pinnedProjectOrder: ["physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
       },
@@ -274,6 +315,7 @@ describe("uiStateStore persistence", () => {
         logical: false,
       },
       projectOrder: ["physical-b", "physical-a"],
+      pinnedProjectOrder: ["physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
       },

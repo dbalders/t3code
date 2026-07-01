@@ -6,6 +6,8 @@ import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
+import { DEFAULT_TRITONAI_CODEX_HOME_PATH, DEFAULT_TRITONAI_CODEX_MODEL } from "./tritonai.ts";
+import { DEFAULT_VOICE_INPUT_SETTINGS, VoiceInputSettings } from "./voice.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -72,6 +74,9 @@ export const ClientSettingsSchema = Schema.Struct({
       modelOrder: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
     }),
   ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  voiceInput: VoiceInputSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_VOICE_INPUT_SETTINGS)),
+  ),
   sidebarProjectGroupingMode: SidebarProjectGroupingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE)),
   ),
@@ -120,6 +125,7 @@ export interface ProviderSettingsFormAnnotation {
   readonly control?: ProviderSettingsFormControl | undefined;
   readonly placeholder?: string | undefined;
   readonly hidden?: boolean | undefined;
+  readonly section?: "basic" | "advanced" | undefined;
   readonly clearWhenEmpty?: "omit" | "persist" | undefined;
 }
 
@@ -171,10 +177,12 @@ export const CodexSettings = makeProviderSettingsSchema(
     homePath: TrimmedString.pipe(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
-        title: "CODEX_HOME path",
-        description: "Custom Codex home and config directory.",
+        title: "Codex config home",
+        description:
+          "Custom CODEX_HOME passed to Codex. Leave blank to use the TritonAI-managed config.",
         providerSettingsForm: {
-          placeholder: "~/.codex",
+          section: "advanced",
+          placeholder: DEFAULT_TRITONAI_CODEX_HOME_PATH,
           clearWhenEmpty: "omit",
         },
       }),
@@ -184,15 +192,16 @@ export const CodexSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "Shadow home path",
         description:
-          "Account-specific Codex home. Keeps auth.json separate while sharing state from CODEX_HOME.",
+          "Account-specific Codex home. Keeps auth.json separate while sharing state from the managed Codex home.",
         providerSettingsForm: {
-          placeholder: "~/.codex-t3/personal",
+          section: "advanced",
+          placeholder: "~/.tritonai-harness/codex-personal",
           clearWhenEmpty: "omit",
         },
       }),
     ),
     customModels: Schema.Array(Schema.String).pipe(
-      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.withDecodingDefault(Effect.succeed([DEFAULT_TRITONAI_CODEX_MODEL])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
@@ -205,7 +214,7 @@ export type CodexSettings = typeof CodexSettings.Type;
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("claude").pipe(
@@ -284,7 +293,7 @@ export type CursorSettings = typeof CursorSettings.Type;
 export const GrokSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("grok").pipe(
@@ -308,7 +317,7 @@ export type GrokSettings = typeof GrokSettings.Type;
 export const OpenCodeSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("opencode").pipe(
@@ -325,7 +334,7 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
         title: "Server URL",
-        description: "Leave blank to let T3 Code spawn the server when needed.",
+        description: "Leave blank to let TritonAI Harness spawn the server when needed.",
         providerSettingsForm: {
           placeholder: "http://127.0.0.1:4096",
           clearWhenEmpty: "omit",
@@ -365,7 +374,9 @@ export const DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL = Duration.seconds(30);
 
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enableProviderUpdateChecks: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
   automaticGitFetchInterval: Schema.DurationFromMillis.pipe(
     Schema.withDecodingDefault(
       Effect.succeed(Duration.toMillis(DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL)),
@@ -559,6 +570,7 @@ export const ClientSettingsPatch = Schema.Struct({
       }),
     ),
   ),
+  voiceInput: Schema.optionalKey(VoiceInputSettings),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),
   sidebarProjectGroupingOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, SidebarProjectGroupingMode),

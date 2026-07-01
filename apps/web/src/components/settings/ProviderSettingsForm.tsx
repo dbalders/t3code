@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDownIcon } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -19,6 +20,7 @@ import type { ProviderClientDefinition } from "./providerDriverMeta";
 export interface ProviderSettingsFieldModel {
   readonly key: string;
   readonly control: ProviderSettingsFormControl;
+  readonly section: "basic" | "advanced";
   readonly label: string;
   readonly description?: string | undefined;
   readonly placeholder?: string | undefined;
@@ -97,6 +99,7 @@ export function deriveProviderSettingsFields(
         {
           key,
           control: formAnnotation.control ?? "text",
+          section: formAnnotation.section ?? "basic",
           label: annotatedTitle ?? titleizeFieldKey(key),
           ...(annotatedDescription !== undefined ? { description: annotatedDescription } : {}),
           ...(formAnnotation.placeholder !== undefined
@@ -274,6 +277,64 @@ function ProviderSettingsFieldRow({
   );
 }
 
+function ProviderSettingsAdvancedFields({
+  fields,
+  value,
+  idPrefix,
+  variant,
+  onChange,
+}: Omit<ProviderSettingsFormProps, "definition"> & {
+  readonly fields: ReadonlyArray<ProviderSettingsFieldModel>;
+}) {
+  if (fields.length === 0) {
+    return null;
+  }
+
+  if (variant === "dialog") {
+    return (
+      <details className="group rounded-lg border border-border bg-background">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-medium text-foreground [&::-webkit-details-marker]:hidden">
+          <span>Advanced</span>
+          <ChevronDownIcon className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-3 border-t border-border/60 p-3">
+          {fields.map((field) => (
+            <ProviderSettingsFieldRow
+              key={field.key}
+              field={field}
+              value={value}
+              idPrefix={idPrefix}
+              variant={variant}
+              onChange={onChange}
+            />
+          ))}
+        </div>
+      </details>
+    );
+  }
+
+  return (
+    <details className="group border-t border-border/60">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs font-medium text-foreground sm:px-5 [&::-webkit-details-marker]:hidden">
+        <span>Advanced</span>
+        <ChevronDownIcon className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-border/60">
+        {fields.map((field) => (
+          <ProviderSettingsFieldRow
+            key={field.key}
+            field={field}
+            value={value}
+            idPrefix={idPrefix}
+            variant={variant}
+            onChange={onChange}
+          />
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function ProviderSettingsForm({
   definition,
   value,
@@ -282,6 +343,8 @@ export function ProviderSettingsForm({
   onChange,
 }: ProviderSettingsFormProps) {
   const fields = useMemo(() => deriveProviderSettingsFields(definition), [definition]);
+  const basicFields = fields.filter((field) => field.section !== "advanced");
+  const advancedFields = fields.filter((field) => field.section === "advanced");
 
   if (fields.length === 0) {
     return null;
@@ -289,7 +352,7 @@ export function ProviderSettingsForm({
 
   return (
     <>
-      {fields.map((field) => (
+      {basicFields.map((field) => (
         <ProviderSettingsFieldRow
           key={field.key}
           field={field}
@@ -299,6 +362,13 @@ export function ProviderSettingsForm({
           onChange={onChange}
         />
       ))}
+      <ProviderSettingsAdvancedFields
+        value={value}
+        idPrefix={idPrefix}
+        variant={variant}
+        onChange={onChange}
+        fields={advancedFields}
+      />
     </>
   );
 }

@@ -1469,7 +1469,7 @@ function SavedBackendListRow({
       : null;
   const metadataBits = [
     sshTarget ? `SSH ${formatDesktopSshTarget(sshTarget)}` : null,
-    environment.relayManaged ? "T3 Connect" : null,
+    environment.relayManaged ? "TritonAI Connect" : null,
   ].filter((value): value is string => value !== null);
 
   // The WSL backend is a desktop-managed local backend (it surfaces as a bearer
@@ -1610,7 +1610,7 @@ function CloudLinkSwitch({
 }) {
   const control = (
     <Switch
-      aria-label="Enable T3 Connect"
+      aria-label="Enable TritonAI Connect"
       checked={checked}
       disabled={disabled}
       {...(onCheckedChange ? { onCheckedChange } : {})}
@@ -1647,13 +1647,14 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
   const [isUpdatingPreference, setIsUpdatingPreference] = useState(false);
 
   const reportUpdateFailure = (cause: unknown) => {
-    const message = cause instanceof Error ? cause.message : "Could not update T3 Connect access.";
+    const message =
+      cause instanceof Error ? cause.message : "Could not update TritonAI Connect access.";
     const traceId = findErrorTraceId(cause);
-    console.error("[t3-connect] Could not update T3 Connect", { message, traceId, cause });
+    console.error("[t3-connect] Could not update TritonAI Connect", { message, traceId, cause });
     setOperationError(traceId ? `${message} Trace ID: ${traceId}` : message);
     toastManager.add({
       type: "error",
-      title: "Could not update T3 Connect",
+      title: "Could not update TritonAI Connect",
       description: message,
       data: traceId
         ? {
@@ -1683,7 +1684,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
       return;
     }
     if (enabled && !tokenResult.value) {
-      reportUpdateFailure(new Error("Sign in to T3 Connect before linking this environment."));
+      reportUpdateFailure(new Error("Sign in to TritonAI Connect before linking this environment."));
       setIsUpdating(false);
       return;
     }
@@ -1718,10 +1719,10 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
 
     toastManager.add({
       type: "success",
-      title: enabled ? "T3 Connect linked" : "T3 Connect unlinked",
+      title: enabled ? "TritonAI Connect linked" : "TritonAI Connect unlinked",
       description: enabled
-        ? "This environment is available through T3 Connect."
-        : "This environment is no longer available through T3 Connect.",
+        ? "This environment is available through TritonAI Connect."
+        : "This environment is no longer available through TritonAI Connect.",
     });
     setIsUpdating(false);
   };
@@ -1758,20 +1759,20 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
     setIsUpdatingPreference(false);
   };
   const disabledReason = !isSignedIn
-    ? "Sign in to T3 Connect to manage this environment."
+    ? "Sign in to TritonAI Connect to manage this environment."
     : !canManageRelay
-      ? "Your session does not have permission to manage T3 Connect access."
+      ? "Your session does not have permission to manage TritonAI Connect access."
       : null;
   const linked = primaryCloudLinkState.data?.linked ?? false;
 
   return (
     <>
       <SettingsRow
-        title="T3 Connect"
+        title="TritonAI Connect"
         description={
           linked
-            ? "This environment is available to your other devices through T3 Connect."
-            : "Make this environment available to your other devices through T3 Connect."
+            ? "This environment is available to your other devices through TritonAI Connect."
+            : "Make this environment available to your other devices through TritonAI Connect."
         }
         status={operationError ?? primaryCloudLinkState.error}
         control={
@@ -1824,7 +1825,7 @@ function EmptyRemoteEnvironments({ cloudEnabled = true }: { readonly cloudEnable
         <EmptyTitle>No saved remote environments</EmptyTitle>
         <EmptyDescription>
           {cloudEnabled
-            ? "Click “Add environment” to pair another environment, or connect one from T3 Connect."
+            ? "Click “Add environment” to pair another environment, or connect one from TritonAI Connect."
             : "Click “Add environment” to pair another environment."}
         </EmptyDescription>
       </EmptyHeader>
@@ -1889,7 +1890,7 @@ function ConfiguredCloudRemoteEnvironmentRows({
       toastManager.add({
         type: "success",
         title: "Environment connected",
-        description: `${environment.label} is available through T3 Connect.`,
+        description: `${environment.label} is available through TritonAI Connect.`,
       });
       return;
     }
@@ -1898,7 +1899,7 @@ function ConfiguredCloudRemoteEnvironmentRows({
     }
     const cause = squashAtomCommandFailure(result);
     const message =
-      cause instanceof Error ? cause.message : "Could not connect the T3 Connect environment.";
+      cause instanceof Error ? cause.message : "Could not connect the TritonAI Connect environment.";
     const traceId = findErrorTraceId(cause);
     console.error("[t3-connect] Could not connect environment", { message, traceId, cause });
     toastManager.add({
@@ -3148,7 +3149,7 @@ export function ConnectionsSettings() {
         {desktopWslState.enabled ? (
           <SettingsRow
             title="WSL only"
-            description="Stop the Windows backend and run only the WSL backend. Useful if you develop entirely inside WSL and don't want a second backend process. T3 Code restarts when you change this."
+            description="Stop the Windows backend and run only the WSL backend. Useful if you develop entirely inside WSL and don't want a second backend process. TritonAI Harness restarts when you change this."
             className="bg-muted/20 pl-7 sm:pl-8"
             control={
               <Switch
@@ -3349,8 +3350,8 @@ export function ConnectionsSettings() {
                 </AlertDialogTitle>
                 <AlertDialogDescription>
                   {pendingDesktopServerExposureMode === "network-accessible"
-                    ? "T3 Code will restart to expose this environment over the network."
-                    : "T3 Code will restart and limit this environment back to this machine."}
+                    ? "TritonAI Harness will restart to expose this environment over the network."
+                    : "TritonAI Harness will restart and limit this environment back to this machine."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -3408,15 +3409,15 @@ export function ConnectionsSettings() {
                 <AlertDialogDescription>
                   {pendingWslChange?.kind === "disable"
                     ? pendingWslChange.wasWslOnly
-                      ? "T3 Code will restart on the Windows backend. Threads and projects opened against WSL stay safe inside the distro and become available again when you re-enable WSL."
-                      : "The WSL backend will stop. Threads and projects opened against WSL stay safe inside the distro, but they'll be unavailable in T3 Code until you re-enable WSL."
+                      ? "TritonAI Harness will restart on the Windows backend. Threads and projects opened against WSL stay safe inside the distro and become available again when you re-enable WSL."
+                      : "The WSL backend will stop. Threads and projects opened against WSL stay safe inside the distro, but they'll be unavailable in TritonAI Harness until you re-enable WSL."
                     : pendingWslChange?.kind === "distro"
-                      ? "T3 Code will restart the WSL backend on the new distro. Sessions still running on the current distro will be interrupted."
+                      ? "TritonAI Harness will restart the WSL backend on the new distro. Sessions still running on the current distro will be interrupted."
                       : pendingWslChange?.kind === "enable"
                         ? "Run the WSL backend alongside the Windows one, or stop the Windows backend and use only WSL? You can change this later from Settings."
                         : pendingWslChange?.nextValue
-                          ? "T3 Code will restart and start only the WSL backend. Your Windows-side projects won't be accessible until you turn this off again."
-                          : "T3 Code will restart and bring the Windows backend back up alongside WSL."}
+                          ? "TritonAI Harness will restart and start only the WSL backend. Your Windows-side projects won't be accessible until you turn this off again."
+                          : "TritonAI Harness will restart and bring the Windows backend back up alongside WSL."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -3502,7 +3503,7 @@ export function ConnectionsSettings() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Disable Tailscale HTTPS?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  T3 Code will restart the local backend without Tailscale Serve.
+                  TritonAI Harness will restart the local backend without Tailscale Serve.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -3540,8 +3541,8 @@ export function ConnectionsSettings() {
               <DialogHeader>
                 <DialogTitle>Set up Tailscale HTTPS?</DialogTitle>
                 <DialogDescription>
-                  T3 Code will restart the local backend with Tailscale Serve enabled and ask
-                  Tailscale to proxy HTTPS traffic to this backend.
+                  TritonAI Harness will restart the local backend with Tailscale Serve enabled and
+                  ask Tailscale to proxy HTTPS traffic to this backend.
                 </DialogDescription>
               </DialogHeader>
               <DialogPanel className="space-y-4">

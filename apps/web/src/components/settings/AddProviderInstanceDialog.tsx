@@ -190,8 +190,8 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
       updateSettings({ providerInstances: nextMap });
       toastManager.add({
         type: "success",
-        title: "Provider instance added",
-        description: `${driverOption.label} instance '${instanceId}' was added.`,
+      title: "Runtime instance added",
+      description: `${driverOption.label} instance '${instanceId}' was added.`,
       });
       onOpenChange(false);
     } catch (error) {
@@ -219,10 +219,9 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
       <DialogPopup className="max-w-xl overflow-hidden">
         <div className="flex min-h-0 flex-col overflow-hidden border-foreground/10 bg-background shadow-2xl">
           <DialogHeader className="border-b border-border/70 bg-background">
-            <DialogTitle>Add provider instance</DialogTitle>
+            <DialogTitle>Add runtime instance</DialogTitle>
             <DialogDescription>
-              Configure an additional provider instance — for example, a second Codex install
-              pointed at a different workspace.
+              Configure an additional Codex runtime with its own label, config, and auth boundary.
             </DialogDescription>
             <div className="grid grid-cols-3 gap-2">
               {wizardSteps.map((step, index) => (

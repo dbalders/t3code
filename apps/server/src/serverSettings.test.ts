@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  DEFAULT_TRITONAI_CODEX_MODEL,
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -179,10 +180,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         binaryPath: "/opt/homebrew/bin/codex",
         homePath: "/Users/julius/.codex",
         shadowHomePath: "",
-        customModels: [],
+        customModels: [DEFAULT_TRITONAI_CODEX_MODEL],
       });
       assert.deepEqual(next.providers.claudeAgent, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/usr/local/bin/claude",
         homePath: "",
         customModels: ["claude-custom"],
@@ -420,17 +421,17 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         binaryPath: "/opt/homebrew/bin/codex",
         homePath: "",
         shadowHomePath: "",
-        customModels: [],
+        customModels: [DEFAULT_TRITONAI_CODEX_MODEL],
       });
       assert.deepEqual(next.providers.claudeAgent, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/opt/homebrew/bin/claude",
         homePath: "",
         customModels: [],
         launchArgs: "",
       });
       assert.deepEqual(next.providers.opencode, {
-        enabled: true,
+        enabled: false,
         binaryPath: "/opt/homebrew/bin/opencode",
         serverUrl: "http://127.0.0.1:4096",
         serverPassword: "secret-password",

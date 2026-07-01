@@ -53,7 +53,7 @@ const decodeServerSettings = Schema.decodeSync(ServerSettings);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const encodedDefaultServerSettings = encodeServerSettings(DEFAULT_SERVER_SETTINGS);
 
-const defaultClaudeSettings: ClaudeSettings = Schema.decodeSync(ClaudeSettings)({});
+const enabledClaudeSettings: ClaudeSettings = Schema.decodeSync(ClaudeSettings)({ enabled: true });
 const defaultCodexSettings: CodexSettings = Schema.decodeSync(CodexSettings)({});
 const disabledCodexSettings: CodexSettings = Schema.decodeSync(CodexSettings)({
   enabled: false,
@@ -343,6 +343,44 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               shortDescription: "Debug failing GitHub Actions checks",
             },
           ]);
+        }),
+      );
+
+      it.effect("deduplicates probed codex skills by name", () =>
+        Effect.gen(function* () {
+          const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+            Effect.succeed(
+              makeCodexProbeSnapshot({
+                skills: [
+                  {
+                    name: "skill-from-masters",
+                    path: "/Users/test/.codex/skills/skill-from-masters/SKILL.md",
+                    enabled: true,
+                  },
+                  {
+                    name: "skill-from-masters",
+                    path: "/Users/test/.agents/skills/skill-from-masters/SKILL.md",
+                    enabled: true,
+                    displayName: "Duplicate Skill",
+                  },
+                  {
+                    name: "frontend-design",
+                    path: "/Users/test/.codex/skills/frontend-design/SKILL.md",
+                    enabled: true,
+                  },
+                ],
+              }),
+            ),
+          );
+
+          assert.deepStrictEqual(
+            status.skills.map((skill) => skill.name),
+            ["skill-from-masters", "frontend-design"],
+          );
+          assert.strictEqual(
+            status.skills.find((skill) => skill.name === "skill-from-masters")?.path,
+            "/Users/test/.codex/skills/skill-from-masters/SKILL.md",
+          );
         }),
       );
 
@@ -1458,7 +1496,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
           assert.strictEqual(status.enabled, false);
           assert.strictEqual(status.status, "disabled");
           assert.strictEqual(status.installed, false);
-          assert.strictEqual(status.message, "Codex is disabled in T3 Code settings.");
+          assert.strictEqual(
+            status.message,
+            "The TritonAI Codex runtime is disabled in TritonAI Harness settings.",
+          );
         }),
       );
     });
@@ -1469,7 +1510,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("returns ready when claude is installed and authenticated", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities(),
           );
           assert.strictEqual(status.status, "ready");
@@ -1495,7 +1536,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("includes Claude Fable 5 on supported Claude Code versions", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities(),
           );
           const fable5 = status.models.find((model) => model.slug === "claude-fable-5");
@@ -1520,7 +1561,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("hides Claude Fable 5 on older Claude Code versions", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities(),
           );
           assert.strictEqual(
@@ -1553,7 +1594,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         () =>
           Effect.gen(function* () {
             const status = yield* checkClaudeProviderStatus(
-              defaultClaudeSettings,
+              enabledClaudeSettings,
               claudeCapabilities(),
             );
             const opus47 = status.models.find((model) => model.slug === "claude-opus-4-7");
@@ -1594,7 +1635,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("hides Claude Opus 4.7 on older Claude Code versions", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities(),
           );
           assert.strictEqual(
@@ -1625,7 +1666,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("returns a display label for claude subscription types", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities({ subscriptionType: "maxplan" }),
           );
           assert.strictEqual(status.status, "ready");
@@ -1652,7 +1693,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("does not duplicate Claude in full subscription labels", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities({
               subscriptionType: "Claude Max Subscription",
             }),
@@ -1674,7 +1715,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("does not duplicate Claude in provider-prefixed subscription names", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities({
               subscriptionType: "Claude Max",
             }),
@@ -1696,7 +1737,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("returns claude auth email from initialization result", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities({ email: "claude@example.com" }),
           );
           assert.strictEqual(status.auth.status, "authenticated");
@@ -1736,7 +1777,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         return Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
             {
-              ...defaultClaudeSettings,
+              ...enabledClaudeSettings,
               homePath: claudeHome,
             },
             claudeCapabilities(),
@@ -1752,7 +1793,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("includes probed claude slash commands in the provider snapshot", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities({
               subscriptionType: "maxplan",
               slashCommands: [
@@ -1792,7 +1833,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("deduplicates probed claude slash commands by name", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities({
               subscriptionType: "maxplan",
               slashCommands: [
@@ -1835,7 +1876,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("returns an api key label for claude api key auth", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities({ tokenSource: "ANTHROPIC_AUTH_TOKEN" }),
           );
           assert.strictEqual(status.status, "ready");
@@ -1862,7 +1903,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("returns unavailable when claude is missing", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities(),
           );
           assert.strictEqual(status.status, "error");
@@ -1879,7 +1920,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         const secretStderr = "Something went wrong: secret-token-value";
         return Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             claudeCapabilities(),
           );
           assert.strictEqual(status.status, "error");
@@ -1905,7 +1946,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("returns warning when the Claude initialization result is unavailable", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            enabledClaudeSettings,
             noClaudeCapabilities,
           );
           assert.strictEqual(status.status, "warning");

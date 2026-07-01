@@ -116,7 +116,22 @@ export function isSameOriginRendererNavigation(input: {
   readonly navigationUrl: string;
 }): boolean {
   try {
-    return new URL(input.applicationUrl).origin === new URL(input.navigationUrl).origin;
+    const applicationUrl = new URL(input.applicationUrl);
+    const navigationUrl = new URL(input.navigationUrl);
+    if (applicationUrl.protocol !== navigationUrl.protocol) {
+      return false;
+    }
+    if (applicationUrl.origin !== "null" || navigationUrl.origin !== "null") {
+      return applicationUrl.origin === navigationUrl.origin;
+    }
+    const applicationBasePath = applicationUrl.pathname.endsWith("/")
+      ? applicationUrl.pathname
+      : `${applicationUrl.pathname}/`;
+    return (
+      applicationUrl.host === navigationUrl.host &&
+      (navigationUrl.pathname === applicationUrl.pathname ||
+        navigationUrl.pathname.startsWith(applicationBasePath))
+    );
   } catch {
     return false;
   }
@@ -134,6 +149,21 @@ export function isRetryableDevelopmentRendererLoadFailure(input: {
     isSameOriginRendererNavigation({
       applicationUrl: input.applicationUrl,
       navigationUrl: input.validatedUrl,
+    })
+  );
+}
+
+export function isTrustedRendererMicrophoneRequest(input: {
+  readonly applicationUrl: string;
+  readonly requestingUrl: string;
+  readonly mediaTypes: readonly string[];
+}): boolean {
+  return (
+    input.mediaTypes.includes("audio") &&
+    !input.mediaTypes.includes("video") &&
+    isSameOriginRendererNavigation({
+      applicationUrl: input.applicationUrl,
+      navigationUrl: input.requestingUrl,
     })
   );
 }
@@ -359,6 +389,22 @@ export const make = Effect.gen(function* () {
         void runPromise(electronShell.openExternal(url));
       }
     });
+
+    window.webContents.session.setPermissionRequestHandler(
+      (requestingWebContents, permission, callback, details) => {
+        const requestingUrl = details.requestingUrl || requestingWebContents.getURL();
+        const mediaTypes = "mediaTypes" in details ? (details.mediaTypes ?? []) : [];
+        callback(
+          requestingWebContents === window.webContents &&
+            permission === "media" &&
+            isTrustedRendererMicrophoneRequest({
+              applicationUrl,
+              requestingUrl,
+              mediaTypes,
+            }),
+        );
+      },
+    );
 
     window.on("page-title-updated", (event) => {
       event.preventDefault();

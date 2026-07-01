@@ -35,7 +35,9 @@ import {
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import { ServerConfig } from "../../config.ts";
@@ -118,6 +120,13 @@ describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
       const personalId = ProviderInstanceId.make("codex_personal");
       const workId = ProviderInstanceId.make("codex_work");
       const codexDriverKind = ProviderDriverKind.make("codex");
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const homeRoot = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "provider-instance-codex-homes-",
+      });
+      const personalHomePath = path.join(homeRoot, "codex_personal");
+      const workHomePath = path.join(homeRoot, "codex_work");
 
       const configMap: ProviderInstanceConfigMap = {
         [personalId]: {
@@ -126,7 +135,7 @@ describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
           enabled: false,
           config: makeCodexConfig({
             binaryPath: "/opt/codex-personal/bin/codex",
-            homePath: "/home/julius/.codex_personal",
+            homePath: personalHomePath,
             customModels: ["personal-preview"],
           }),
         },
@@ -136,7 +145,7 @@ describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
           enabled: false,
           config: makeCodexConfig({
             binaryPath: "/opt/codex-work/bin/codex",
-            homePath: "/home/julius/.codex",
+            homePath: workHomePath,
             customModels: ["work-preview"],
           }),
         },
@@ -171,15 +180,13 @@ describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
       expect(personalSnapshot.instanceId).toBe(personalId);
       expect(personalSnapshot.driver).toBe(codexDriverKind);
       expect(personalSnapshot.enabled).toBe(false);
-      expect(personalSnapshot.continuation?.groupKey).toBe(
-        "codex:home:/home/julius/.codex_personal",
-      );
+      expect(personalSnapshot.continuation?.groupKey).toBe(`codex:home:${personalHomePath}`);
 
       const workSnapshot = yield* work!.snapshot.getSnapshot;
       expect(workSnapshot.instanceId).toBe(workId);
       expect(workSnapshot.driver).toBe(codexDriverKind);
       expect(workSnapshot.enabled).toBe(false);
-      expect(workSnapshot.continuation?.groupKey).toBe("codex:home:/home/julius/.codex");
+      expect(workSnapshot.continuation?.groupKey).toBe(`codex:home:${workHomePath}`);
 
       // Nothing goes to the unavailable bucket — both drivers are registered.
       const unavailable = yield* registry.listUnavailable;
@@ -264,13 +271,19 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
       const cursorDriverKind = ProviderDriverKind.make("cursor");
       const grokDriverKind = ProviderDriverKind.make("grok");
       const openCodeDriverKind = ProviderDriverKind.make("opencode");
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const homeRoot = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "provider-instance-all-homes-",
+      });
+      const codexHomePath = path.join(homeRoot, "codex");
 
       const configMap: ProviderInstanceConfigMap = {
         [codexId]: {
           driver: codexDriverKind,
           displayName: "Codex",
           enabled: false,
-          config: makeCodexConfig({ homePath: "/home/julius/.codex" }),
+          config: makeCodexConfig({ homePath: codexHomePath }),
         },
         [claudeId]: {
           driver: claudeDriverKind,
@@ -376,7 +389,7 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
       expect(codexSnapshot.instanceId).toBe(codexId);
       expect(codexSnapshot.driver).toBe(codexDriverKind);
       expect(codexSnapshot.enabled).toBe(false);
-      expect(codexSnapshot.continuation?.groupKey).toBe("codex:home:/home/julius/.codex");
+      expect(codexSnapshot.continuation?.groupKey).toBe(`codex:home:${codexHomePath}`);
 
       const claudeSnapshot = yield* claude!.snapshot.getSnapshot;
       expect(claudeSnapshot.instanceId).toBe(claudeId);

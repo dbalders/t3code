@@ -31,6 +31,7 @@ import {
 } from "./TextGenerationUtils.ts";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { getCodexServiceTierOptionValue } from "../codexModelOptions.ts";
+import { makeTritonAiCodexConfigArgs } from "../provider/Drivers/TritonAiCodexConfig.ts";
 
 const CODEX_GIT_TEXT_GENERATION_REASONING_EFFORT = "low";
 const CODEX_TIMEOUT_MS = 180_000;
@@ -182,6 +183,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
         codexConfig.binaryPath || "codex",
         [
           "exec",
+          ...makeTritonAiCodexConfigArgs(resolvedEnvironment),
           "--ephemeral",
           "--skip-git-repo-check",
           "-s",

@@ -9,7 +9,12 @@ import * as Schema from "effect/Schema";
 import { createModelSelection } from "@t3tools/shared/model";
 import { expect } from "vite-plus/test";
 
-import { CodexSettings, ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
+import {
+  CodexSettings,
+  DEFAULT_TRITONAI_CODEX_MODEL,
+  ProviderInstanceId,
+  TextGenerationError,
+} from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as TextGeneration from "./TextGeneration.ts";
@@ -34,6 +39,7 @@ function makeFakeCodexBinary(
     requireImage?: boolean;
     requireServiceTier?: string;
     requireReasoningEffort?: string;
+    requireTritonAiProviderConfig?: boolean;
     forbidReasoningEffort?: boolean;
     stdinMustContain?: string;
     stdinMustNotContain?: string;
@@ -54,6 +60,11 @@ function makeFakeCodexBinary(
         'seen_image="0"',
         'seen_service_tier=""',
         'seen_reasoning_effort=""',
+        'seen_model_provider=""',
+        'seen_default_model=""',
+        'seen_provider_name=""',
+        'seen_provider_env_key=""',
+        'seen_provider_wire=""',
         "while [ $# -gt 0 ]; do",
         '  if [ "$1" = "--image" ]; then',
         "    shift",
@@ -65,6 +76,31 @@ function makeFakeCodexBinary(
         "  fi",
         '  if [ "$1" = "--config" ]; then',
         "    shift",
+        '    case "$1" in',
+        "      model_provider=*)",
+        '        seen_model_provider="$1"',
+        "        ;;",
+        "    esac",
+        '    case "$1" in',
+        "      model=*)",
+        '        seen_default_model="$1"',
+        "        ;;",
+        "    esac",
+        '    case "$1" in',
+        "      model_providers.ucsd.name=*)",
+        '        seen_provider_name="$1"',
+        "        ;;",
+        "    esac",
+        '    case "$1" in',
+        "      model_providers.ucsd.env_key=*)",
+        '        seen_provider_env_key="$1"',
+        "        ;;",
+        "    esac",
+        '    case "$1" in',
+        "      model_providers.ucsd.wire_api=*)",
+        '        seen_provider_wire="$1"',
+        "        ;;",
+        "    esac",
         '    case "$1" in',
         "      service_tier=*)",
         '        seen_service_tier="$1"',
@@ -119,6 +155,30 @@ function makeFakeCodexBinary(
               "fi",
             ]
           : []),
+        ...(input.requireTritonAiProviderConfig
+          ? [
+              'if [ "$seen_model_provider" != "model_provider=\\"ucsd\\"" ]; then',
+              '  printf "%s\\n" "missing TritonAI model provider config: $seen_model_provider" >&2',
+              `  exit 8`,
+              "fi",
+              `if [ "$seen_default_model" != "model=\\"${DEFAULT_TRITONAI_CODEX_MODEL}\\"" ]; then`,
+              '  printf "%s\\n" "missing TritonAI default model config: $seen_default_model" >&2',
+              `  exit 9`,
+              "fi",
+              'if [ "$seen_provider_name" != "model_providers.ucsd.name=\\"UCSD TritonAI\\"" ]; then',
+              '  printf "%s\\n" "missing TritonAI provider name config: $seen_provider_name" >&2',
+              `  exit 10`,
+              "fi",
+              'if [ "$seen_provider_env_key" != "model_providers.ucsd.env_key=\\"TRITONAI_API_KEY\\"" ]; then',
+              '  printf "%s\\n" "missing TritonAI provider env key config: $seen_provider_env_key" >&2',
+              `  exit 11`,
+              "fi",
+              'if [ "$seen_provider_wire" != "model_providers.ucsd.wire_api=\\"responses\\"" ]; then',
+              '  printf "%s\\n" "missing TritonAI provider wire config: $seen_provider_wire" >&2',
+              `  exit 12`,
+              "fi",
+            ]
+          : []),
         ...(input.stdinMustContain !== undefined
           ? [
               // @effect-diagnostics-next-line preferSchemaOverJson:off
@@ -165,6 +225,7 @@ function withFakeCodexEnv<A, E, R>(
     requireImage?: boolean;
     requireServiceTier?: string;
     requireReasoningEffort?: string;
+    requireTritonAiProviderConfig?: boolean;
     forbidReasoningEffort?: boolean;
     stdinMustContain?: string;
     stdinMustNotContain?: string;
@@ -190,6 +251,7 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGeneration", (it) => {
             "  Add important change to the system with too much detail and a trailing period.\nsecondary line",
           body: "\n- added migration\n- updated tests\n",
         }),
+        requireTritonAiProviderConfig: true,
         stdinMustNotContain: "branch must be a short semantic git branch fragment",
       },
       (textGeneration) =>

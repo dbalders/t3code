@@ -23,9 +23,21 @@ describe("buildInitialGrokProviderSnapshot", () => {
     }),
   );
 
-  it.effect("returns a pending snapshot by default", () =>
+  it.effect("returns a disabled snapshot by default", () =>
     Effect.gen(function* () {
       const snapshot = yield* buildInitialGrokProviderSnapshot(decodeGrokSettings({}));
+      expect(snapshot.enabled).toBe(false);
+      expect(snapshot.status).toBe("disabled");
+      expect(snapshot.installed).toBe(false);
+      expect(snapshot.message).toContain("disabled");
+    }),
+  );
+
+  it.effect("returns a pending snapshot when enabled", () =>
+    Effect.gen(function* () {
+      const snapshot = yield* buildInitialGrokProviderSnapshot(
+        decodeGrokSettings({ enabled: true }),
+      );
       expect(snapshot.enabled).toBe(true);
       expect(snapshot.installed).toBe(true);
       expect(snapshot.status).toBe("warning");

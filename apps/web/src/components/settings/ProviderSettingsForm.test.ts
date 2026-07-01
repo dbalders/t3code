@@ -22,32 +22,30 @@ describe("ProviderSettingsForm helpers", () => {
   });
 
   it("sources labels and descriptions from schema annotations", () => {
-    const opencode = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("opencode")];
-    expect(opencode).toBeDefined();
+    const codex = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("codex")];
+    expect(codex).toBeDefined();
 
-    const serverPassword = deriveProviderSettingsFields(opencode!).find(
-      (field) => field.key === "serverPassword",
-    );
+    const homePath = deriveProviderSettingsFields(codex!).find((field) => field.key === "homePath");
 
-    expect(serverPassword).toMatchObject({
-      label: "Server password",
-      description: "Stored in plain text on disk.",
-      control: "password",
+    expect(homePath).toMatchObject({
+      label: "Codex config home",
+      description:
+        "Custom CODEX_HOME passed to Codex. Leave blank to use the TritonAI-managed config.",
+      control: "text",
+      section: "advanced",
     });
   });
 
   it("preserves unknown config keys while omitting empty configurable fields", () => {
-    const opencode = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("opencode")];
-    expect(opencode).toBeDefined();
+    const codex = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("codex")];
+    expect(codex).toBeDefined();
 
-    const serverUrl = deriveProviderSettingsFields(opencode!).find(
-      (field) => field.key === "serverUrl",
-    );
-    expect(serverUrl).toBeDefined();
+    const homePath = deriveProviderSettingsFields(codex!).find((field) => field.key === "homePath");
+    expect(homePath).toBeDefined();
 
     const next = nextProviderConfigWithFieldValue(
-      { forkOwned: 1, serverUrl: "http://127.0.0.1:4096" },
-      serverUrl!,
+      { forkOwned: 1, homePath: "~/.tritonai-harness/codex" },
+      homePath!,
       "",
     );
 
@@ -64,6 +62,7 @@ describe("ProviderSettingsForm helpers", () => {
       {
         key: "experimental",
         control: "switch",
+        section: "basic",
         label: "Experimental",
         clearWhenEmpty: "omit",
         defaultBooleanValue: false,
@@ -80,6 +79,7 @@ describe("ProviderSettingsForm helpers", () => {
       {
         key: "experimental",
         control: "switch",
+        section: "basic",
         label: "Experimental",
         clearWhenEmpty: "omit",
         defaultBooleanValue: true,
@@ -96,6 +96,7 @@ describe("ProviderSettingsForm helpers", () => {
       {
         key: "experimental",
         control: "switch",
+        section: "basic",
         label: "Experimental",
         clearWhenEmpty: "omit",
         defaultBooleanValue: true,
@@ -112,6 +113,7 @@ describe("ProviderSettingsForm helpers", () => {
       {
         key: "experimental",
         control: "switch",
+        section: "basic",
         label: "Experimental",
         clearWhenEmpty: "persist",
       },

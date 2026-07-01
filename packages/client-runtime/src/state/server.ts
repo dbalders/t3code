@@ -186,6 +186,10 @@ export function createServerEnvironmentAtoms<R, E>(
       scheduler: configScheduler,
       concurrency: configConcurrency,
     }),
+    transcribeVoice: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:transcribe-voice",
+      tag: WS_METHODS.serverTranscribeVoice,
+    }),
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
       tag: WS_METHODS.serverSignalProcess,

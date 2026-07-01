@@ -22,7 +22,13 @@ import type {
   ServerProviderModel,
   ServerProviderSkill,
 } from "@t3tools/contracts";
-import { ServerSettingsError } from "@t3tools/contracts";
+import {
+  DEFAULT_TRITONAI_CODEX_MODEL,
+  DEFAULT_TRITONAI_CODEX_MODEL_DISPLAY_NAME,
+  ServerSettingsError,
+  TRITONAI_APP_BASE_NAME,
+  TRITONAI_VISIBLE_CODEX_MODELS,
+} from "@t3tools/contracts";
 
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
@@ -32,15 +38,37 @@ import {
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
+import { makeTritonAiCodexConfigArgs } from "../Drivers/TritonAiCodexConfig.ts";
 import packageJson from "../../../package.json" with { type: "json" };
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
 
 const CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER = "2 seconds" as const;
 
 const CODEX_PRESENTATION = {
-  displayName: "Codex",
+  displayName: "TritonAI",
   showInteractionModeToggle: true,
 } as const;
+const VISIBLE_CODEX_MODEL_SLUGS = new Set<string>(TRITONAI_VISIBLE_CODEX_MODELS);
+
+function codexModelDisplayName(slug: string): string {
+  return slug === DEFAULT_TRITONAI_CODEX_MODEL ? DEFAULT_TRITONAI_CODEX_MODEL_DISPLAY_NAME : slug;
+}
+
+function curateVisibleCodexModels(
+  models: ReadonlyArray<ServerProviderModel>,
+): ReadonlyArray<ServerProviderModel> {
+  return models
+    .filter((model) => VISIBLE_CODEX_MODEL_SLUGS.has(model.slug))
+    .map((model) =>
+      model.slug === DEFAULT_TRITONAI_CODEX_MODEL
+        ? {
+            ...model,
+            name: DEFAULT_TRITONAI_CODEX_MODEL_DISPLAY_NAME,
+            shortName: "DeepSeek",
+          }
+        : model,
+    );
+}
 
 export interface CodexAppServerProviderSnapshot {
   readonly account: CodexSchema.V2GetAccountResponse;
@@ -209,7 +237,8 @@ function appendCustomCodexModels(
     seen.add(slug);
     customEntries.push({
       slug,
-      name: slug,
+      name: codexModelDisplayName(slug),
+      ...(slug === DEFAULT_TRITONAI_CODEX_MODEL ? { shortName: "DeepSeek" } : {}),
       isCustom: true,
       capabilities: fallbackCapabilities,
     });
@@ -226,31 +255,46 @@ function parseCodexSkillsListResponse(
     ? matchingEntry.skills
     : response.data.flatMap((entry) => entry.skills);
 
-  return skills.map((skill) => {
-    const shortDescription =
-      skill.shortDescription ?? skill.interface?.shortDescription ?? undefined;
+  return dedupeServerProviderSkills(
+    skills.map((skill) => {
+      const shortDescription =
+        skill.shortDescription ?? skill.interface?.shortDescription ?? undefined;
 
-    const parsedSkill: Types.Mutable<ServerProviderSkill> = {
-      name: skill.name,
-      path: skill.path,
-      enabled: skill.enabled,
-    };
+      const parsedSkill: Types.Mutable<ServerProviderSkill> = {
+        name: skill.name,
+        path: skill.path,
+        enabled: skill.enabled,
+      };
 
-    if (skill.description) {
-      parsedSkill.description = skill.description;
-    }
-    if (skill.scope) {
-      parsedSkill.scope = skill.scope;
-    }
-    if (skill.interface?.displayName) {
-      parsedSkill.displayName = skill.interface.displayName;
-    }
-    if (shortDescription) {
-      parsedSkill.shortDescription = shortDescription;
-    }
+      if (skill.description) {
+        parsedSkill.description = skill.description;
+      }
+      if (skill.scope) {
+        parsedSkill.scope = skill.scope;
+      }
+      if (skill.interface?.displayName) {
+        parsedSkill.displayName = skill.interface.displayName;
+      }
+      if (shortDescription) {
+        parsedSkill.shortDescription = shortDescription;
+      }
 
-    return parsedSkill;
-  });
+      return parsedSkill;
+    }),
+  );
+}
+
+function dedupeServerProviderSkills(
+  skills: ReadonlyArray<ServerProviderSkill>,
+): ReadonlyArray<ServerProviderSkill> {
+  const skillByName = new Map<string, ServerProviderSkill>();
+  for (const skill of skills) {
+    const existing = skillByName.get(skill.name);
+    if (!existing || (!existing.enabled && skill.enabled)) {
+      skillByName.set(skill.name, skill);
+    }
+  }
+  return [...skillByName.values()];
 }
 
 const requestAllCodexModels = Effect.fn("requestAllCodexModels")(function* (
@@ -274,8 +318,8 @@ const requestAllCodexModels = Effect.fn("requestAllCodexModels")(function* (
 export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   return {
     clientInfo: {
-      name: "t3code_desktop",
-      title: "T3 Code Desktop",
+      name: "tritonai_harness_desktop",
+      title: `${TRITONAI_APP_BASE_NAME} Desktop`,
       version: packageJson.version,
     },
     capabilities: {
@@ -301,10 +345,14 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     ...input.environment,
     ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
   };
-  const spawnCommand = yield* resolveSpawnCommand(input.binaryPath, ["app-server"], {
-    env: environment,
-    extendEnv: true,
-  });
+  const spawnCommand = yield* resolveSpawnCommand(
+    input.binaryPath,
+    ["app-server", ...makeTritonAiCodexConfigArgs(environment)],
+    {
+      env: environment,
+      extendEnv: true,
+    },
+  );
   const child = yield* spawner
     .spawn(
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
@@ -331,8 +379,8 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
 
   const initialize = yield* client.request("initialize", {
     clientInfo: {
-      name: "t3code_desktop",
-      title: "T3 Code Desktop",
+      name: "tritonai_harness_desktop",
+      title: `${TRITONAI_APP_BASE_NAME} Desktop`,
       version: "0.1.0",
     },
     capabilities: {
@@ -350,7 +398,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     return {
       account: accountResponse,
       version,
-      models: appendCustomCodexModels([], input.customModels ?? []),
+      models: curateVisibleCodexModels(appendCustomCodexModels([], input.customModels ?? [])),
       skills: [],
     } satisfies CodexAppServerProviderSnapshot;
   }
@@ -368,7 +416,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   return {
     account: accountResponse,
     version,
-    models: appendCustomCodexModels(models, input.customModels ?? []),
+    models: curateVisibleCodexModels(appendCustomCodexModels(models, input.customModels ?? [])),
     skills: parseCodexSkillsListResponse(skillsResponse, input.cwd),
   } satisfies CodexAppServerProviderSnapshot;
 });
@@ -381,12 +429,15 @@ const emptyCodexModelsFromSettings = (codexSettings: CodexSettings): ServerProvi
       models.add(trimmed);
     }
   }
-  return Array.from(models, (model) => ({
-    slug: model,
-    name: model,
-    isCustom: true,
-    capabilities: null,
-  }));
+  return curateVisibleCodexModels(
+    Array.from(models, (model) => ({
+      slug: model,
+      name: codexModelDisplayName(model),
+      ...(model === DEFAULT_TRITONAI_CODEX_MODEL ? { shortName: "DeepSeek" } : {}),
+      isCustom: true,
+      capabilities: null,
+    })),
+  );
 };
 
 const makePendingCodexProvider = (
@@ -408,7 +459,7 @@ const makePendingCodexProvider = (
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Codex is disabled in T3 Code settings.",
+          message: "The TritonAI Codex runtime is disabled in TritonAI Harness settings.",
         },
       });
     }
@@ -493,7 +544,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Codex is disabled in T3 Code settings.",
+        message: "The TritonAI Codex runtime is disabled in TritonAI Harness settings.",
       },
     });
   }
@@ -556,7 +607,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     enabled: codexSettings.enabled,
     checkedAt,
     models: snapshot.models,
-    skills: snapshot.skills,
+    skills: dedupeServerProviderSkills(snapshot.skills),
     probe: {
       installed: true,
       version: snapshot.version ?? null,

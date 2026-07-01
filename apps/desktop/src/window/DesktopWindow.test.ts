@@ -47,6 +47,14 @@ const environmentInput = {
 
 function makeFakeBrowserWindow() {
   const webContentsListeners = new Map<string, (...args: readonly unknown[]) => void>();
+  let permissionRequestHandler:
+    | ((
+        webContents: Electron.WebContents,
+        permission: string,
+        callback: (granted: boolean) => void,
+        details: { readonly requestingUrl: string; readonly mediaTypes?: readonly string[] },
+      ) => void)
+    | null = null;
   const webContents = {
     copyImageAt: vi.fn(),
     getURL: vi.fn(() => "t3code-dev://app/"),
@@ -59,6 +67,11 @@ function makeFakeBrowserWindow() {
     reload: vi.fn(),
     replaceMisspelling: vi.fn(),
     send: vi.fn(),
+    session: {
+      setPermissionRequestHandler: vi.fn((handler) => {
+        permissionRequestHandler = handler;
+      }),
+    },
     setWindowOpenHandler: vi.fn(),
   };
 
@@ -87,6 +100,7 @@ function makeFakeBrowserWindow() {
     reload: webContents.reload,
     send: webContents.send,
     setAutoHideCursor: window.setAutoHideCursor,
+    getPermissionRequestHandler: () => permissionRequestHandler,
     webContentsListeners,
   };
 }
@@ -296,6 +310,12 @@ describe("DesktopWindow", () => {
         navigationUrl: "t3code://app/settings/connections",
       }),
     );
+    assert.isTrue(
+      DesktopWindow.isSameOriginRendererNavigation({
+        applicationUrl: "http://127.0.0.1:5173/",
+        navigationUrl: "http://127.0.0.1:5173/settings/connections",
+      }),
+    );
     assert.isFalse(
       DesktopWindow.isSameOriginRendererNavigation({
         applicationUrl: "t3code://app/",
@@ -305,7 +325,50 @@ describe("DesktopWindow", () => {
     assert.isFalse(
       DesktopWindow.isSameOriginRendererNavigation({
         applicationUrl: "t3code://app/",
+        navigationUrl: "t3code://evil/",
+      }),
+    );
+    assert.isFalse(
+      DesktopWindow.isSameOriginRendererNavigation({
+        applicationUrl: "http://127.0.0.1:5173/",
+        navigationUrl: "http://127.0.0.1:5174/",
+      }),
+    );
+    assert.isFalse(
+      DesktopWindow.isSameOriginRendererNavigation({
+        applicationUrl: "t3code://app/",
         navigationUrl: "not a url",
+      }),
+    );
+  });
+
+  it("allows only same-origin audio media permission requests", () => {
+    assert.isTrue(
+      DesktopWindow.isTrustedRendererMicrophoneRequest({
+        applicationUrl: "t3code-dev://app/",
+        requestingUrl: "t3code-dev://app/",
+        mediaTypes: ["audio"],
+      }),
+    );
+    assert.isFalse(
+      DesktopWindow.isTrustedRendererMicrophoneRequest({
+        applicationUrl: "t3code-dev://app/",
+        requestingUrl: "https://example.com/",
+        mediaTypes: ["audio"],
+      }),
+    );
+    assert.isFalse(
+      DesktopWindow.isTrustedRendererMicrophoneRequest({
+        applicationUrl: "t3code-dev://app/",
+        requestingUrl: "t3code-dev://evil/",
+        mediaTypes: ["audio"],
+      }),
+    );
+    assert.isFalse(
+      DesktopWindow.isTrustedRendererMicrophoneRequest({
+        applicationUrl: "t3code-dev://app/",
+        requestingUrl: "t3code-dev://app/",
+        mediaTypes: ["audio", "video"],
       }),
     );
   });
@@ -334,6 +397,52 @@ describe("DesktopWindow", () => {
         assert.deepEqual(fakeWindow.setAutoHideCursor.mock.calls, [[false]]);
         assert.deepEqual(fakeWindow.loadURL.mock.calls[0], ["t3code-dev://app/"]);
         assert.equal(fakeWindow.openDevTools.mock.calls.length, 1);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("grants microphone permission only to the main app renderer", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = makeTestLayer({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+        const handler = fakeWindow.getPermissionRequestHandler();
+        assert.isNotNull(handler);
+
+        const decisions: boolean[] = [];
+        handler?.(fakeWindow.window.webContents, "media", (granted) => decisions.push(granted), {
+          requestingUrl: "t3code-dev://app/",
+          mediaTypes: ["audio"],
+        });
+        handler?.(fakeWindow.window.webContents, "media", (granted) => decisions.push(granted), {
+          requestingUrl: "https://example.com/",
+          mediaTypes: ["audio"],
+        });
+        handler?.(fakeWindow.window.webContents, "media", (granted) => decisions.push(granted), {
+          requestingUrl: "t3code-dev://evil/",
+          mediaTypes: ["audio"],
+        });
+        handler?.(fakeWindow.window.webContents, "media", (granted) => decisions.push(granted), {
+          requestingUrl: "t3code-dev://app/",
+          mediaTypes: ["audio", "video"],
+        });
+        handler?.(
+          fakeWindow.window.webContents,
+          "notifications",
+          (granted) => decisions.push(granted),
+          { requestingUrl: "t3code-dev://app/", mediaTypes: [] },
+        );
+
+        assert.deepEqual(decisions, [true, false, false, false, false]);
       }).pipe(Effect.provide(layer));
     }),
   );

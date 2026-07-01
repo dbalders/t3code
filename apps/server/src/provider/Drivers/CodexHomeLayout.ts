@@ -1,6 +1,8 @@
-import * as NodeOS from "node:os";
-
-import { ProviderDriverKind, type CodexSettings } from "@t3tools/contracts";
+import {
+  DEFAULT_TRITONAI_CODEX_HOME_PATH,
+  ProviderDriverKind,
+  type CodexSettings,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -35,7 +37,7 @@ function resolveHomePath(path: Path.Path, value: string | undefined): string {
   const expanded =
     value && value.trim().length > 0
       ? expandHomePath(value)
-      : path.join(NodeOS.homedir(), ".codex");
+      : expandHomePath(DEFAULT_TRITONAI_CODEX_HOME_PATH);
   return path.resolve(expanded);
 }
 
@@ -301,18 +303,9 @@ const ensureShadowAuthIsPrivate = Effect.fn("CodexHomeLayout.ensureShadowAuthIsP
 export const materializeCodexShadowHome = Effect.fn("materializeCodexShadowHome")(function* (
   layout: CodexHomeLayout,
 ) {
-  if (layout.mode !== "authOverlay") return;
-  const effectiveHomePath = layout.effectiveHomePath;
-  if (!effectiveHomePath) return;
-  if (layout.sharedHomePath === effectiveHomePath) {
-    return yield* new CodexShadowHomePathConflictError({
-      sharedHomePath: layout.sharedHomePath,
-      effectiveHomePath,
-    });
-  }
-
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const effectiveHomePath = layout.effectiveHomePath ?? layout.sharedHomePath;
 
   const makeDirectory = (directoryPath: string) =>
     fileSystem.makeDirectory(directoryPath, { recursive: true }).pipe(
@@ -327,6 +320,18 @@ export const materializeCodexShadowHome = Effect.fn("materializeCodexShadowHome"
           }),
       }),
     );
+
+  if (layout.mode !== "authOverlay") {
+    yield* makeDirectory(layout.sharedHomePath);
+    return;
+  }
+
+  if (layout.sharedHomePath === effectiveHomePath) {
+    return yield* new CodexShadowHomePathConflictError({
+      sharedHomePath: layout.sharedHomePath,
+      effectiveHomePath,
+    });
+  }
 
   yield* Effect.all(
     [

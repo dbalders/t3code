@@ -26,6 +26,7 @@ import {
 import { readThreadShell, useProjects, useServerConfigs, useThread } from "../state/entities";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { resolveThreadRouteTarget } from "../threadRoutes";
+import { isTritonAiChatsWorkspacePath } from "../tritonAiWorkspace";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
 
@@ -205,8 +206,11 @@ export function useHandleNewThread() {
   );
   const projects = useProjects();
   const orderedProjects = useMemo(() => {
+    const visibleProjects = projects.filter(
+      (project) => !isTritonAiChatsWorkspacePath(project.workspaceRoot),
+    );
     return orderItemsByPreferredIds({
-      items: projects,
+      items: visibleProjects,
       preferredIds: projectOrder,
       getId: getProjectOrderKey,
       getPreferenceIds: (project) => [

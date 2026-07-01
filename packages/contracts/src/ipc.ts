@@ -32,6 +32,7 @@ import type {
   ProjectWriteFileResult,
 } from "./project.ts";
 import type { ProviderInstanceId } from "./providerInstance.ts";
+import type { ServerVoiceTranscribeInput, ServerVoiceTranscribeResult } from "./voice.ts";
 import type {
   ServerConfig,
   ServerProcessDiagnosticsResult,
@@ -1113,6 +1114,7 @@ export interface LocalApi {
     removeKeybinding: (input: ServerRemoveKeybindingInput) => Promise<ServerRemoveKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
     updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
+    transcribeVoice: (input: ServerVoiceTranscribeInput) => Promise<ServerVoiceTranscribeResult>;
     discoverSourceControl: () => Promise<SourceControlDiscoveryResult>;
     getTraceDiagnostics: () => Promise<ServerTraceDiagnosticsResult>;
     getProcessDiagnostics: () => Promise<ServerProcessDiagnosticsResult>;

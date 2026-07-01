@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderDriverKind } from "./providerInstance.ts";
+import { DEFAULT_TRITONAI_CODEX_MODEL } from "./tritonai.ts";
 
 export const ProviderOptionDescriptorType = Schema.Literals(["select", "boolean"]);
 export type ProviderOptionDescriptorType = typeof ProviderOptionDescriptorType.Type;
@@ -133,8 +134,8 @@ const CURSOR_DRIVER_KIND = ProviderDriverKind.make("cursor");
 const GROK_DRIVER_KIND = ProviderDriverKind.make("grok");
 const OPENCODE_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
-export const DEFAULT_MODEL = "gpt-5.4";
-export const DEFAULT_GIT_TEXT_GENERATION_MODEL = "gpt-5.4-mini";
+export const DEFAULT_MODEL = DEFAULT_TRITONAI_CODEX_MODEL;
+export const DEFAULT_GIT_TEXT_GENERATION_MODEL = DEFAULT_TRITONAI_CODEX_MODEL;
 
 export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, string>> = {
   [CODEX_DRIVER_KIND]: DEFAULT_MODEL,
@@ -158,6 +159,10 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Partial<
   Record<ProviderDriverKind, Record<string, string>>
 > = {
   [CODEX_DRIVER_KIND]: {
+    deepseek: DEFAULT_TRITONAI_CODEX_MODEL,
+    "deepseek-v4-flash": DEFAULT_TRITONAI_CODEX_MODEL,
+    "api-deepseek-v4-flash": DEFAULT_TRITONAI_CODEX_MODEL,
+    "ucsd/api-deepseek-v4-flash": DEFAULT_TRITONAI_CODEX_MODEL,
     "gpt-5-codex": "gpt-5.4",
     "5.4": "gpt-5.4",
     "5.3": "gpt-5.3-codex",
@@ -200,7 +205,7 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Partial<
 // ── Provider display names ────────────────────────────────────────────
 
 export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>> = {
-  [CODEX_DRIVER_KIND]: "Codex",
+  [CODEX_DRIVER_KIND]: "TritonAI",
   [CLAUDE_DRIVER_KIND]: "Claude",
   [CURSOR_DRIVER_KIND]: "Cursor",
   [GROK_DRIVER_KIND]: "Grok",
