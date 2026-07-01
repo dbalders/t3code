@@ -129,6 +129,7 @@ import type { ReviewCommentContext } from "../../reviewCommentContext";
 import {
   createVoiceRecorder,
   formatVoiceInputError,
+  isVoiceInputSilenceError,
   transcribeVoiceBlob,
   type VoiceRecorderSession,
 } from "../../voiceInput";
@@ -2144,6 +2145,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           return false;
         }
         voiceRecordingTargetKeyRef.current = null;
+        if (isVoiceInputSilenceError(error)) {
+          setVoiceStatus("idle");
+          setVoiceError(null);
+          setVoiceElapsedSeconds(0);
+          setVoiceActivityLevels(createVoiceWaveformLevels());
+          return false;
+        }
         showVoiceError(error);
         return false;
       }

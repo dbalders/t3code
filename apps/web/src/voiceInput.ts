@@ -28,10 +28,10 @@ type AudioContextConstructor = typeof AudioContext;
 
 const VOICE_SIGNAL_FRAME_SECONDS = 0.02;
 const VOICE_ACTIVE_FRAME_RMS_AMPLITUDE = 0.006;
-const MIN_VOICE_AUDIO_DURATION_SECONDS = 0.25;
+const MIN_VOICE_AUDIO_DURATION_SECONDS = 0.8;
 const MIN_VOICE_PEAK_AMPLITUDE = 0.015;
 const MIN_VOICE_RMS_AMPLITUDE = 0.002;
-const MIN_VOICE_ACTIVE_DURATION_SECONDS = 0.08;
+const MIN_VOICE_ACTIVE_DURATION_SECONDS = 0.22;
 const VOICE_VOLUME_SAMPLE_INTERVAL_MS = 68;
 const VOICE_VISUAL_NOISE_FLOOR_RMS = 0.0075;
 const VOICE_VISUAL_NOISE_GATE_WIDTH_RMS = 0.006;
@@ -51,6 +51,13 @@ export interface VoiceAudioSignal {
   readonly peakAmplitude: number;
   readonly rmsAmplitude: number;
   readonly activeDurationSeconds: number;
+}
+
+export class VoiceInputSilenceError extends Error {
+  constructor() {
+    super("No speech was detected.");
+    this.name = "VoiceInputSilenceError";
+  }
 }
 
 interface VoiceVolumeSampler {
@@ -409,8 +416,12 @@ export function hasSpeechLikeSignal(signal: VoiceAudioSignal): boolean {
 
 function ensureVoiceSignalDetected(audioBuffer: AudioBuffer): void {
   if (!hasSpeechLikeSignal(analyzeAudioBufferSignal(audioBuffer))) {
-    throw new Error("No speech was detected. Try speaking closer to the microphone.");
+    throw new VoiceInputSilenceError();
   }
+}
+
+export function isVoiceInputSilenceError(error: unknown): boolean {
+  return error instanceof VoiceInputSilenceError;
 }
 
 async function decodeVoiceBlob(blob: Blob): Promise<AudioBuffer> {
