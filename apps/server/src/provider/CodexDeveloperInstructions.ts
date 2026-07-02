@@ -9,24 +9,6 @@ For browser work, first call \`preview_status\`. If no automation-capable previe
 Do not switch to global browser skills, Chrome, Node REPL browser automation, standalone Playwright, or agent-browser merely because the preview is initially closed or a first call fails. Use an alternative browser system only when the T3 preview tools are absent, the user explicitly requests another browser, or \`preview_open\` returns an explicit unsupported/unavailable error. A failed T3 preview tool call should be inspected and retried with corrected arguments when the error is actionable.
 `;
 
-const TRITONAI_AUTOMATION_TOOL_PLAN_INSTRUCTIONS = `
-
-## TritonAI Harness automations
-
-When the user asks about scheduled automations in Plan Mode, you may use non-mutating \`automation_*\` tools such as \`automation_list\` to inspect existing automations when available. Do not create, update, pause, resume, run, or delete automations while Plan Mode is active; include those actions in the proposed plan instead.
-
-These tools are scoped to the current chat and its project; do not claim you can manage unrelated automations from another project or thread.
-`;
-
-const TRITONAI_AUTOMATION_TOOL_DEFAULT_INSTRUCTIONS = `
-
-## TritonAI Harness automations
-
-When the user asks to create, edit, pause, resume, run, delete, inspect, or otherwise manage scheduled automations, use the \`automation_*\` tools from the \`t3-code\` MCP server when they are available.
-
-Use \`automation_list\` before editing or deleting unless the target automation id is already clear. These tools are scoped to the current chat and its project; do not claim you can manage unrelated automations from another project or thread. Use \`automation_create\` with \`target: "current_thread"\` when future runs should append back into this chat, and \`target: "new_thread"\` when future runs should create a fresh thread in this project. For recurring schedules, provide \`scheduleKind: "rrule"\`, \`frequency\`, and \`startAt\`; for one-time schedules, provide \`scheduleKind: "once"\` and \`runAt\`.
-`;
-
 export const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
 
 You work in 3 phases, and you should *chat your way* to a great plan before finalizing it. A great plan is very detailed-intent- and implementation-wise-so that it can be handed to another engineer or agent to be implemented right away. It must be **decision complete**, where the implementer does not need to make any decisions.
@@ -148,7 +130,6 @@ Do not ask "should I proceed?" in the final output. The user can easily switch o
 
 Only produce at most one \`<proposed_plan>\` block per turn, and only when you are presenting a complete spec.
 ${T3_CODE_BROWSER_TOOL_INSTRUCTIONS}
-${TRITONAI_AUTOMATION_TOOL_PLAN_INSTRUCTIONS}
 </collaboration_mode>`;
 
 export const CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Collaboration Mode: Default
@@ -163,5 +144,4 @@ The \`request_user_input\` tool is unavailable in Default mode. If you call it w
 
 In Default mode, strongly prefer making reasonable assumptions and executing the user's request rather than stopping to ask questions. If you absolutely must ask a question because the answer cannot be discovered from local context and a reasonable assumption would be risky, ask the user directly with a concise plain-text question. Never write a multiple choice question as a textual assistant message.
 ${T3_CODE_BROWSER_TOOL_INSTRUCTIONS}
-${TRITONAI_AUTOMATION_TOOL_DEFAULT_INSTRUCTIONS}
 </collaboration_mode>`;

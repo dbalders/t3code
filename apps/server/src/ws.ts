@@ -113,7 +113,6 @@ import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
-import { ScheduledTaskService } from "./scheduledTasks/ScheduledTaskService.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
@@ -308,14 +307,6 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverAddMarketplace, AuthOrchestrationOperateScope],
   [WS_METHODS.serverRemoveMarketplace, AuthOrchestrationOperateScope],
   [WS_METHODS.serverUpgradeMarketplace, AuthOrchestrationOperateScope],
-  [WS_METHODS.scheduledTasksList, AuthOrchestrationReadScope],
-  [WS_METHODS.scheduledTasksCreate, AuthOrchestrationOperateScope],
-  [WS_METHODS.scheduledTasksUpdate, AuthOrchestrationOperateScope],
-  [WS_METHODS.scheduledTasksDelete, AuthOrchestrationOperateScope],
-  [WS_METHODS.scheduledTasksPause, AuthOrchestrationOperateScope],
-  [WS_METHODS.scheduledTasksResume, AuthOrchestrationOperateScope],
-  [WS_METHODS.scheduledTasksRunNow, AuthOrchestrationOperateScope],
-  [WS_METHODS.scheduledTaskRunsList, AuthOrchestrationReadScope],
   [WS_METHODS.cloudGetRelayClientStatus, AuthRelayWriteScope],
   [WS_METHODS.cloudInstallRelayClient, AuthRelayWriteScope],
   [WS_METHODS.sourceControlLookupRepository, AuthOrchestrationReadScope],
@@ -451,7 +442,6 @@ const makeWsRpcLayer = (
       );
       const sourceControlRepositories =
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
-      const scheduledTasks = yield* ScheduledTaskService;
       const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
       const sessions = yield* SessionStore.SessionStore;
       const processDiagnostics = yield* ProcessDiagnostics.ProcessDiagnostics;
@@ -1366,38 +1356,6 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "server",
             },
           ),
-        [WS_METHODS.scheduledTasksList]: (_input) =>
-          observeRpcEffect(WS_METHODS.scheduledTasksList, scheduledTasks.list(), {
-            "rpc.aggregate": "scheduled-tasks",
-          }),
-        [WS_METHODS.scheduledTasksCreate]: (input) =>
-          observeRpcEffect(WS_METHODS.scheduledTasksCreate, scheduledTasks.create(input), {
-            "rpc.aggregate": "scheduled-tasks",
-          }),
-        [WS_METHODS.scheduledTasksUpdate]: (input) =>
-          observeRpcEffect(WS_METHODS.scheduledTasksUpdate, scheduledTasks.update(input), {
-            "rpc.aggregate": "scheduled-tasks",
-          }),
-        [WS_METHODS.scheduledTasksDelete]: (input) =>
-          observeRpcEffect(WS_METHODS.scheduledTasksDelete, scheduledTasks.delete(input), {
-            "rpc.aggregate": "scheduled-tasks",
-          }),
-        [WS_METHODS.scheduledTasksPause]: (input) =>
-          observeRpcEffect(WS_METHODS.scheduledTasksPause, scheduledTasks.pause(input), {
-            "rpc.aggregate": "scheduled-tasks",
-          }),
-        [WS_METHODS.scheduledTasksResume]: (input) =>
-          observeRpcEffect(WS_METHODS.scheduledTasksResume, scheduledTasks.resume(input), {
-            "rpc.aggregate": "scheduled-tasks",
-          }),
-        [WS_METHODS.scheduledTasksRunNow]: (input) =>
-          observeRpcEffect(WS_METHODS.scheduledTasksRunNow, scheduledTasks.runNow(input), {
-            "rpc.aggregate": "scheduled-tasks",
-          }),
-        [WS_METHODS.scheduledTaskRunsList]: (input) =>
-          observeRpcEffect(WS_METHODS.scheduledTaskRunsList, scheduledTasks.listRuns(input), {
-            "rpc.aggregate": "scheduled-tasks",
-          }),
         [WS_METHODS.cloudGetRelayClientStatus]: (_input) =>
           observeRpcEffect(WS_METHODS.cloudGetRelayClientStatus, relayClient.resolve, {
             "rpc.aggregate": "cloud",

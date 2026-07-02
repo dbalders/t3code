@@ -87,16 +87,6 @@ function createBrowserLocalApi(): LocalApi {
       addMarketplace: () => Promise.reject(unavailableLocalBackendError()),
       removeMarketplace: () => Promise.reject(unavailableLocalBackendError()),
       upgradeMarketplace: () => Promise.reject(unavailableLocalBackendError()),
-      scheduledTasks: {
-        list: () => Promise.reject(unavailableLocalBackendError()),
-        create: () => Promise.reject(unavailableLocalBackendError()),
-        update: () => Promise.reject(unavailableLocalBackendError()),
-        delete: () => Promise.reject(unavailableLocalBackendError()),
-        pause: () => Promise.reject(unavailableLocalBackendError()),
-        resume: () => Promise.reject(unavailableLocalBackendError()),
-        runNow: () => Promise.reject(unavailableLocalBackendError()),
-        listRuns: () => Promise.reject(unavailableLocalBackendError()),
-      },
     },
   };
 }

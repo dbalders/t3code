@@ -240,37 +240,5 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:upgrade-marketplace",
       tag: WS_METHODS.serverUpgradeMarketplace,
     }),
-    scheduledTasksList: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:scheduled-tasks-list",
-      tag: WS_METHODS.scheduledTasksList,
-    }),
-    scheduledTasksCreate: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:scheduled-tasks-create",
-      tag: WS_METHODS.scheduledTasksCreate,
-    }),
-    scheduledTasksUpdate: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:scheduled-tasks-update",
-      tag: WS_METHODS.scheduledTasksUpdate,
-    }),
-    scheduledTasksDelete: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:scheduled-tasks-delete",
-      tag: WS_METHODS.scheduledTasksDelete,
-    }),
-    scheduledTasksPause: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:scheduled-tasks-pause",
-      tag: WS_METHODS.scheduledTasksPause,
-    }),
-    scheduledTasksResume: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:scheduled-tasks-resume",
-      tag: WS_METHODS.scheduledTasksResume,
-    }),
-    scheduledTasksRunNow: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:scheduled-tasks-run-now",
-      tag: WS_METHODS.scheduledTasksRunNow,
-    }),
-    scheduledTaskRunsList: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:scheduled-task-runs-list",
-      tag: WS_METHODS.scheduledTaskRunsList,
-    }),
   };
 }
