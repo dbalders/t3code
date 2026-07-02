@@ -9,6 +9,7 @@ import {
   analyzeAudioBufferSignal,
   encodeAudioBufferAsWav,
   hasSpeechLikeSignal,
+  isVoiceInputSilenceError,
   transcribeVoiceBlob,
 } from "./voiceInput";
 
@@ -125,6 +126,26 @@ describe("transcribeVoiceBlob", () => {
       language: "es",
     });
   });
+
+  it("rejects silent recordings before sending audio for transcription", async () => {
+    installFakeAudioContext(
+      fakeAudioBuffer({
+        channels: [new Float32Array(16_000)],
+        sampleRate: 16_000,
+      }) as AudioBuffer,
+    );
+    const transcribe = vi.fn(async () => ({ text: "should not be used" }));
+    let caught: unknown;
+
+    try {
+      await transcribeVoiceBlob(new Blob(["voice"], { type: "audio/wav" }), transcribe);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(isVoiceInputSilenceError(caught)).toBe(true);
+    expect(transcribe).not.toHaveBeenCalled();
+  });
 });
 
 describe("voice audio signal detection", () => {
@@ -157,7 +178,7 @@ describe("voice audio signal detection", () => {
 
     expect(signal.peakAmplitude).toBeGreaterThan(0.015);
     expect(signal.rmsAmplitude).toBeGreaterThan(0.002);
-    expect(signal.activeDurationSeconds).toBeGreaterThan(0.08);
+    expect(signal.activeDurationSeconds).toBeGreaterThan(0.22);
     expect(hasSpeechLikeSignal(signal)).toBe(true);
   });
 });

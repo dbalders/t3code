@@ -74,6 +74,8 @@ const emptyBackendObservabilitySettings: BackendObservabilitySettings = {
   otlpMetricsUrl: Option.none(),
 };
 
+const UCSD_ENV_FILE_PATH = [".agents", "ucsd", "env"] as const;
+
 const DESKTOP_BACKEND_ENV_NAMES = [
   TRITONAI_HOME_ENV,
   LEGACY_T3CODE_HOME_ENV,
@@ -104,6 +106,59 @@ const WSL_SERVER_SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bi
 
 const backendChildEnvPatch = (): Record<string, string | undefined> =>
   Object.fromEntries(DESKTOP_BACKEND_ENV_NAMES.map((name) => [name, undefined]));
+
+function parseShellExportLine(line: string): readonly [string, string] | null {
+  const match = line.match(/^export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u);
+  if (!match?.[1]) return null;
+  let value = match[2] ?? "";
+  if (value.startsWith("'") && value.endsWith("'")) {
+    value = value.slice(1, -1).replaceAll("'\\''", "'");
+  } else if (value.startsWith('"') && value.endsWith('"')) {
+    value = value.slice(1, -1).replace(/\\(["\\$`])/gu, "$1");
+  }
+  return [match[1], value] as const;
+}
+
+const readUcsdEnvironmentFile = Effect.gen(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const envFilePath = environment.path.join(environment.homeDirectory, ...UCSD_ENV_FILE_PATH);
+  const contents = yield* fileSystem.readFileString(envFilePath).pipe(
+    Effect.map(Option.some),
+    Effect.catchTags({
+      PlatformError: (cause) =>
+        cause.reason._tag === "NotFound"
+          ? Effect.succeed(Option.none<string>())
+          : Effect.logWarning("Failed to read UCSD installer environment file.").pipe(
+              Effect.annotateLogs({
+                component: "desktop-backend-configuration",
+                path: envFilePath,
+                error: cause.message || String(cause),
+              }),
+              Effect.as(Option.none<string>()),
+            ),
+    }),
+  );
+  if (Option.isNone(contents)) return {};
+
+  return Object.fromEntries(
+    contents.value
+      .split(/\r?\n/u)
+      .map((line) => parseShellExportLine(line.trim()))
+      .filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+});
+
+function ucsdEnvironmentFallback(
+  ucsdEnvironment: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(ucsdEnvironment).filter(([name]) => {
+      const inherited = process.env[name];
+      return inherited === undefined || inherited.length === 0;
+    }),
+  );
+}
 
 const getWslEnvEntryName = (entry: string): string => {
   const slashIndex = entry.indexOf("/");
@@ -338,11 +393,14 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
   ): Effect.fn.Return<
     DesktopBackendManager.DesktopBackendStartConfig,
     never,
-    DesktopEnvironment.DesktopEnvironment | DesktopServerExposure.DesktopServerExposure
+    | DesktopEnvironment.DesktopEnvironment
+    | DesktopServerExposure.DesktopServerExposure
+    | FileSystem.FileSystem
   > {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
     const backendExposure = yield* serverExposure.backendConfig;
+    const ucsdEnvironment = yield* readUcsdEnvironmentFile;
 
     const bootstrap = {
       mode: "desktop" as const,
@@ -362,6 +420,7 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       entryPath: environment.backendEntryPath,
       cwd: environment.backendCwd,
       env: {
+        ...ucsdEnvironmentFallback(ucsdEnvironment),
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
       },
@@ -391,6 +450,7 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
 > {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const wslEnvironment = yield* DesktopWslEnvironment.DesktopWslEnvironment;
+  const ucsdEnvironment = yield* readUcsdEnvironmentFile;
 
   // Bind to 0.0.0.0 inside WSL so the backend is reachable both via
   // WSL2's automatic localhost forwarding (wslhost: Windows 127.0.0.1
@@ -472,7 +532,10 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
   const forwardedEnv: Record<string, string> = {};
   const forwardedEnvNames: string[] = [];
   for (const name of WSL_FORWARDED_ENV_NAMES) {
-    const value = process.env[name];
+    const value =
+      process.env[name] && process.env[name].length > 0
+        ? process.env[name]
+        : ucsdEnvironment[name];
     if (value !== undefined && value.length > 0) {
       forwardedEnv[name] = value;
       forwardedEnvNames.push(name);
@@ -496,6 +559,7 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
     entryPath: wslEntryPath,
     cwd: environment.backendCwd,
     env: {
+      ...ucsdEnvironment,
       ...parentEnvWithoutManagedHome,
       ...backendChildEnvPatch(),
       ...forwardedEnv,
@@ -632,6 +696,7 @@ export const make = Effect.gen(function* () {
     return yield* resolvePrimaryStartConfig(shared).pipe(
       Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
       Effect.provideService(DesktopServerExposure.DesktopServerExposure, serverExposure),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
     );
   });
 

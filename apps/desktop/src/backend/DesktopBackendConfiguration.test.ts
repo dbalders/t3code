@@ -351,6 +351,66 @@ describe("DesktopBackendConfiguration", () => {
     ),
   );
 
+  it.effect("resolvePrimary passes UCSD installer environment into the backend process", () =>
+    Effect.gen(function* () {
+      const previousTritonAiKey = process.env.TRITONAI_API_KEY;
+      const previousUcsdAiBaseUrl = process.env.UCSD_AI_BASE_URL;
+      const previousOpenCodeConfig = process.env.OPENCODE_CONFIG;
+      try {
+        delete process.env.TRITONAI_API_KEY;
+        delete process.env.UCSD_AI_BASE_URL;
+        delete process.env.OPENCODE_CONFIG;
+
+        yield* withHarness(
+          Effect.gen(function* () {
+            const fileSystem = yield* FileSystem.FileSystem;
+            const environment = yield* DesktopEnvironment.DesktopEnvironment;
+            const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+            const envFile = environment.path.join(
+              environment.homeDirectory,
+              ".agents",
+              "ucsd",
+              "env",
+            );
+
+            yield* fileSystem.makeDirectory(environment.path.dirname(envFile), {
+              recursive: true,
+            });
+            yield* fileSystem.writeFileString(
+              envFile,
+              [
+                "export UCSD_AI_BASE_URL=https://tritonai-api.ucsd.edu/v1",
+                "export TRITONAI_API_KEY='triton-key'",
+                'export OPENCODE_CONFIG="/Users/test/.agents/ucsd/config/opencode/opencode.json"',
+                'export UCSD_ESCAPED_VALUE="escaped \\"quote\\" and \\$dollar and \\`tick\\`"',
+                "export UCSD_QUOTED_NAME='Triton AI'\\''s API'",
+                "export T3CODE_PORT=1234",
+                "export TRITONAI_HOME=/tmp/wrong-home",
+                "",
+              ].join("\n"),
+            );
+
+            const config = yield* configuration.resolvePrimary;
+            assert.equal(config.env.UCSD_AI_BASE_URL, "https://tritonai-api.ucsd.edu/v1");
+            assert.equal(config.env.TRITONAI_API_KEY, "triton-key");
+            assert.equal(
+              config.env.OPENCODE_CONFIG,
+              "/Users/test/.agents/ucsd/config/opencode/opencode.json",
+            );
+            assert.equal(config.env.UCSD_ESCAPED_VALUE, 'escaped "quote" and $dollar and `tick`');
+            assert.equal(config.env.UCSD_QUOTED_NAME, "Triton AI's API");
+            assert.isUndefined(config.env.T3CODE_PORT);
+            assert.isUndefined(config.env.TRITONAI_HOME);
+          }),
+        );
+      } finally {
+        restoreEnv("TRITONAI_API_KEY", previousTritonAiKey);
+        restoreEnv("UCSD_AI_BASE_URL", previousUcsdAiBaseUrl);
+        restoreEnv("OPENCODE_CONFIG", previousOpenCodeConfig);
+      }
+    }),
+  );
+
   it.effect("logs structured context when persisted observability settings cannot be read", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -504,6 +564,63 @@ describe("DesktopBackendConfiguration", () => {
         restoreEnv("WSLENV", previousWslEnv);
         restoreEnv("OPENAI_API_KEY", previousOpenAiKey);
         restoreEnv("ANTHROPIC_API_KEY", previousAnthropicKey);
+        restoreEnv("TRITONAI_API_KEY", previousTritonAiKey);
+        restoreEnv("UCSD_AI_BASE_URL", previousUcsdAiBaseUrl);
+      }
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("resolveWsl forwards UCSD installer environment file secrets", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-desktop-backend-config-test-",
+      });
+      const envFile = path.join(baseDir, ".agents", "ucsd", "env");
+      yield* fileSystem.makeDirectory(path.dirname(envFile), { recursive: true });
+      yield* fileSystem.writeFileString(
+        envFile,
+        [
+          "export TRITONAI_API_KEY='installer-triton-key'",
+          "export UCSD_AI_BASE_URL=https://installer.example.edu/v1",
+          "",
+        ].join("\n"),
+      );
+
+      const previousWslEnv = process.env.WSLENV;
+      const previousTritonAiKey = process.env.TRITONAI_API_KEY;
+      const previousUcsdAiBaseUrl = process.env.UCSD_AI_BASE_URL;
+      try {
+        process.env.WSLENV = "GOPATH/p";
+        delete process.env.TRITONAI_API_KEY;
+        delete process.env.UCSD_AI_BASE_URL;
+
+        yield* Effect.gen(function* () {
+          const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+          const config = yield* configuration.resolveWsl({ port: 5050, distro: null });
+
+          assert.equal(config.env.TRITONAI_API_KEY, "installer-triton-key");
+          assert.equal(config.env.UCSD_AI_BASE_URL, "https://installer.example.edu/v1");
+          assert.equal(config.env.WSLENV, "GOPATH/p:TRITONAI_API_KEY:UCSD_AI_BASE_URL");
+        }).pipe(
+          Effect.provide(
+            DesktopBackendConfiguration.layer.pipe(
+              Layer.provideMerge(serverExposureLayer),
+              Layer.provideMerge(DesktopAppSettings.layerTest()),
+              Layer.provideMerge(
+                DesktopWslEnvironment.layerTest({
+                  isAvailable: true,
+                  windowsToWslPath: () => Option.some("/mnt/c/repo/apps/server/src/index.ts"),
+                  getDistroIp: () => Option.some("172.27.0.99"),
+                }),
+              ),
+              Layer.provideMerge(makeEnvironmentLayer(baseDir, { platform: "win32" })),
+            ),
+          ),
+        );
+      } finally {
+        restoreEnv("WSLENV", previousWslEnv);
         restoreEnv("TRITONAI_API_KEY", previousTritonAiKey);
         restoreEnv("UCSD_AI_BASE_URL", previousUcsdAiBaseUrl);
       }
