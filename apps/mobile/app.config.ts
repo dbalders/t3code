@@ -14,7 +14,13 @@ const VARIANT_CONFIG: Record<
   {
     readonly appName: string;
     readonly scheme: string;
+    readonly appIcon: string;
+    readonly splashIcon: string;
+    readonly webFavicon: string;
     readonly iosIcon: string;
+    readonly androidIconForeground: string;
+    readonly androidIconBackground: string;
+    readonly androidIconMonochrome: string;
     readonly iosBundleIdentifier: string;
     readonly androidPackage: string;
   }
@@ -22,21 +28,39 @@ const VARIANT_CONFIG: Record<
   development: {
     appName: "T3 Code Dev",
     scheme: "t3code-dev",
+    appIcon: "./assets/dev-icon.png",
+    splashIcon: "./assets/dev-splash-icon.png",
+    webFavicon: "./assets/dev-favicon.png",
     iosIcon: "./assets/icon-composer-dev.icon",
+    androidIconForeground: "./assets/dev-android-icon-foreground.png",
+    androidIconBackground: "./assets/dev-android-icon-background.png",
+    androidIconMonochrome: "./assets/dev-android-icon-monochrome.png",
     iosBundleIdentifier: "com.t3tools.t3code.dev",
     androidPackage: "com.t3tools.t3code.dev",
   },
   preview: {
     appName: "T3 Code Preview",
     scheme: "t3code-preview",
+    appIcon: "./assets/icon.png",
+    splashIcon: "./assets/splash-icon.png",
+    webFavicon: "./assets/favicon.png",
     iosIcon: "./assets/icon-composer-prod.icon",
+    androidIconForeground: "./assets/android-icon-foreground.png",
+    androidIconBackground: "./assets/android-icon-background.png",
+    androidIconMonochrome: "./assets/android-icon-monochrome.png",
     iosBundleIdentifier: "com.t3tools.t3code.preview",
     androidPackage: "com.t3tools.t3code.preview",
   },
   production: {
     appName: "T3 Code",
     scheme: "t3code",
+    appIcon: "./assets/icon.png",
+    splashIcon: "./assets/splash-icon.png",
+    webFavicon: "./assets/favicon.png",
     iosIcon: "./assets/icon-composer-prod.icon",
+    androidIconForeground: "./assets/android-icon-foreground.png",
+    androidIconBackground: "./assets/android-icon-background.png",
+    androidIconMonochrome: "./assets/android-icon-monochrome.png",
     iosBundleIdentifier: "com.t3tools.t3code",
     androidPackage: "com.t3tools.t3code",
   },
@@ -65,7 +89,7 @@ const config: ExpoConfig = {
     policy: process.env.MOBILE_VERSION_POLICY ?? "appVersion",
   },
   orientation: "portrait",
-  icon: "./assets/icon.png",
+  icon: variant.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
     enabled: true,
@@ -87,18 +111,18 @@ const config: ExpoConfig = {
     },
   },
   android: {
-    icon: "./assets/icon.png",
+    icon: variant.appIcon,
     package: variant.androidPackage,
     adaptiveIcon: {
       backgroundColor: "#E6F4FE",
-      foregroundImage: "./assets/android-icon-foreground.png",
-      backgroundImage: "./assets/android-icon-background.png",
-      monochromeImage: "./assets/android-icon-monochrome.png",
+      foregroundImage: variant.androidIconForeground,
+      backgroundImage: variant.androidIconBackground,
+      monochromeImage: variant.androidIconMonochrome,
     },
     predictiveBackGestureEnabled: false,
   },
   web: {
-    favicon: "./assets/favicon.png",
+    favicon: variant.webFavicon,
   },
   plugins: [
     "expo-router",
@@ -116,12 +140,12 @@ const config: ExpoConfig = {
     [
       "expo-splash-screen",
       {
-        image: "./assets/splash-icon.png",
+        image: variant.splashIcon,
         resizeMode: "contain",
         backgroundColor: "#ffffff",
         imageWidth: 220,
         dark: {
-          image: "./assets/splash-icon.png",
+          image: variant.splashIcon,
           backgroundColor: "#0a0a0a",
         },
       },

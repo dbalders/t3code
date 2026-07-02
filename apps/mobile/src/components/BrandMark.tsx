@@ -2,7 +2,7 @@ import { Image, View } from "react-native";
 
 import { AppText as Text } from "./AppText";
 
-const BRAND_MARK_SOURCE = require("../../../../assets/dev/blueprint-ios-1024.png");
+const BRAND_MARK_SOURCE = require("../../../../assets/dev/tritonai-harness-dev-1024.png");
 
 export function BrandMark(props: { readonly compact?: boolean; readonly stageLabel?: string }) {
   const compact = props.compact ?? false;
@@ -23,7 +23,7 @@ export function BrandMark(props: { readonly compact?: boolean; readonly stageLab
       <View className="gap-1">
         <View className="flex-row items-center gap-2">
           <Text className="text-lg font-t3-bold text-foreground" style={{ letterSpacing: -0.4 }}>
-            T3 Code
+            TritonAI Harness
           </Text>
           {stageLabel.length > 0 ? (
             <View className="rounded-full bg-subtle px-2 py-1">

@@ -1,31 +1,20 @@
 {
   "fill": {
-    "solid": "display-p3:0.00000,0.00000,0.00000,1.00000"
+    "solid": "display-p3:0.00000,0.01961,0.07059,1.00000"
   },
   "groups": [
     {
       "layers": [
         {
-          "hidden": false,
-          "image-name": "gpt-image-1.5-jd70szmrd03p36z4zv48ycsbax81egvr.png",
-          "name": "gpt-image-1.5-jd70szmrd03p36z4zv48ycsbax81egvr",
+          "image-name": "tritonai-dev-rainbow.png",
+          "name": "TritonAI Harness Dev",
           "position": {
-            "scale": 1.1,
-            "translation-in-points": [0, 0]
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
           }
-        },
-        {
-          "image-name": "T3.svg",
-          "name": "T3",
-          "position": {
-            "scale": 10,
-            "translation-in-points": [0, 0]
-          }
-        },
-        {
-          "hidden": true,
-          "image-name": "Texturelabs_Paper_381XL.jpg",
-          "name": "Texturelabs_Paper_381XL"
         }
       ],
       "shadow": {
@@ -39,7 +28,9 @@
     }
   ],
   "supported-platforms": {
-    "circles": ["watchOS"],
+    "circles": [
+      "watchOS"
+    ],
     "squares": "shared"
   }
 }
