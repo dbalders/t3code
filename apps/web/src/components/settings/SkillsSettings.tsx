@@ -463,7 +463,10 @@ export function SkillsSettingsPanel() {
   }, [loadCatalog]);
 
   const installSkill = useCallback(
-    async (source: { type: "catalog"; catalogEntryId: string } | { type: "url"; url: string }, key: string) => {
+    async (
+      source: { type: "catalog"; catalogEntryId: string } | { type: "url"; url: string },
+      key: string,
+    ) => {
       if (!primaryEnvironmentId || !installProvider) {
         setOperationError("A Codex provider is required before installing skills.");
         return;
@@ -507,7 +510,11 @@ export function SkillsSettingsPanel() {
   }, [installSkill, installUrl]);
 
   const setSkillEnabled = useCallback(
-    async (providerInstanceId: ProviderInstanceId, skill: ServerProviderSkill, enabled: boolean) => {
+    async (
+      providerInstanceId: ProviderInstanceId,
+      skill: ServerProviderSkill,
+      enabled: boolean,
+    ) => {
       if (!primaryEnvironmentId) return;
       const skillKey = `${providerInstanceId}:${skill.path || skill.name}`;
       setUpdatingSkillKey(skillKey);

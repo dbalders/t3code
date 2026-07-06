@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  ChevronDownIcon,
-  PlusIcon,
-  Trash2Icon,
-  XIcon,
-} from "lucide-react";
+import { ChevronDownIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
 import { useState, type ReactNode } from "react";

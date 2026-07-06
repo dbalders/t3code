@@ -149,9 +149,7 @@ const readUcsdEnvironmentFile = Effect.gen(function* () {
   );
 });
 
-function ucsdEnvironmentFallback(
-  ucsdEnvironment: Record<string, string>,
-): Record<string, string> {
+function ucsdEnvironmentFallback(ucsdEnvironment: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(ucsdEnvironment).filter(([name]) => {
       const inherited = process.env[name];
@@ -533,9 +531,7 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
   const forwardedEnvNames: string[] = [];
   for (const name of WSL_FORWARDED_ENV_NAMES) {
     const value =
-      process.env[name] && process.env[name].length > 0
-        ? process.env[name]
-        : ucsdEnvironment[name];
+      process.env[name] && process.env[name].length > 0 ? process.env[name] : ucsdEnvironment[name];
     if (value !== undefined && value.length > 0) {
       forwardedEnv[name] = value;
       forwardedEnvNames.push(name);

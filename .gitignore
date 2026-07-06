@@ -12,6 +12,11 @@ packages/*/dist
 .env.local
 build/
 .logs/
+output/
+coverage/
+test-results/
+playwright-report/
+blob-report/
 release/
 release-mock/
 .t3

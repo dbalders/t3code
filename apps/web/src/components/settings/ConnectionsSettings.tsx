@@ -1684,7 +1684,9 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
       return;
     }
     if (enabled && !tokenResult.value) {
-      reportUpdateFailure(new Error("Sign in to TritonAI Connect before linking this environment."));
+      reportUpdateFailure(
+        new Error("Sign in to TritonAI Connect before linking this environment."),
+      );
       setIsUpdating(false);
       return;
     }
@@ -1899,7 +1901,9 @@ function ConfiguredCloudRemoteEnvironmentRows({
     }
     const cause = squashAtomCommandFailure(result);
     const message =
-      cause instanceof Error ? cause.message : "Could not connect the TritonAI Connect environment.";
+      cause instanceof Error
+        ? cause.message
+        : "Could not connect the TritonAI Connect environment.";
     const traceId = findErrorTraceId(cause);
     console.error("[t3-connect] Could not connect environment", { message, traceId, cause });
     toastManager.add({

@@ -452,7 +452,9 @@ function validateSkillBundle(
       }
       const caseInsensitiveKey = normalized.toLowerCase();
       if (seenCaseInsensitive.has(caseInsensitiveKey)) {
-        return yield* installError(`Skill bundle contains a case-only duplicate path: ${file.path}`);
+        return yield* installError(
+          `Skill bundle contains a case-only duplicate path: ${file.path}`,
+        );
       }
       seen.add(normalized);
       seenCaseInsensitive.add(caseInsensitiveKey);
@@ -616,7 +618,17 @@ function discoverGitSkillCheckoutPath(
       .run({
         operation: "installProviderSkill.gitListSkillEntrypoints",
         command: "git",
-        args: ["-C", repositoryPath, "ls-tree", "-r", "--name-only", "HEAD", "--", "SKILL.md", "skills"],
+        args: [
+          "-C",
+          repositoryPath,
+          "ls-tree",
+          "-r",
+          "--name-only",
+          "HEAD",
+          "--",
+          "SKILL.md",
+          "skills",
+        ],
         cwd: repositoryPath,
         timeoutMs: GIT_CLONE_TIMEOUT_MS,
         maxOutputBytes: 512 * 1024,
@@ -1073,19 +1085,23 @@ export function rollbackProviderSkillInstall(
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     if (rollback._tag === "remove") {
-      yield* fs.remove(rollback.skillDirectoryPath, { recursive: true, force: true }).pipe(
-        Effect.mapError((cause) =>
-          installError(`Failed to roll back ${rollback.skillDirectoryPath}.`, cause),
-        ),
-      );
+      yield* fs
+        .remove(rollback.skillDirectoryPath, { recursive: true, force: true })
+        .pipe(
+          Effect.mapError((cause) =>
+            installError(`Failed to roll back ${rollback.skillDirectoryPath}.`, cause),
+          ),
+        );
       return;
     }
 
-    yield* fs.remove(rollback.skillDirectoryPath, { recursive: true, force: true }).pipe(
-      Effect.mapError((cause) =>
-        installError(`Failed to clear ${rollback.skillDirectoryPath} for rollback.`, cause),
-      ),
-    );
+    yield* fs
+      .remove(rollback.skillDirectoryPath, { recursive: true, force: true })
+      .pipe(
+        Effect.mapError((cause) =>
+          installError(`Failed to clear ${rollback.skillDirectoryPath} for rollback.`, cause),
+        ),
+      );
     yield* fs
       .copy(rollback.backupDirectoryPath, rollback.skillDirectoryPath, { overwrite: true })
       .pipe(
@@ -1105,15 +1121,17 @@ export function discardProviderSkillInstallRollback(
       return;
     }
     const fs = yield* FileSystem.FileSystem;
-    yield* fs.remove(rollback.backupRootPath, { recursive: true, force: true }).pipe(
-      Effect.mapError((cause) =>
-        installError(`Failed to clean up ${rollback.backupRootPath}.`, cause),
-      ),
-    );
+    yield* fs
+      .remove(rollback.backupRootPath, { recursive: true, force: true })
+      .pipe(
+        Effect.mapError((cause) =>
+          installError(`Failed to clean up ${rollback.backupRootPath}.`, cause),
+        ),
+      );
   });
 }
 
-function registerInstalledSkillDirectory(input: {
+function registerInstalledSkillDirectory(_input: {
   readonly skillName: string;
   readonly skillDirectory: string;
 }): Effect.Effect<void, ServerProviderSkillInstallError, FileSystem.FileSystem | Path.Path> {

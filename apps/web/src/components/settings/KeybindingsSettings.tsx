@@ -74,11 +74,16 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
 
 function KeybindingPill({ value }: { value: string }) {
-  const parts = value.split("+");
+  const seenParts = new Map<string, number>();
+  const parts = value.split("+").map((part) => {
+    const occurrence = seenParts.get(part) ?? 0;
+    seenParts.set(part, occurrence + 1);
+    return { key: `${part}:${occurrence}`, part };
+  });
   return (
     <KbdGroup className="bg-transparent p-0 shadow-none">
-      {parts.map((part) => (
-        <Kbd key={part} className="min-w-6 justify-center px-1.5">
+      {parts.map(({ key, part }) => (
+        <Kbd key={key} className="min-w-6 justify-center px-1.5">
           {part === "mod"
             ? navigator.platform.toLowerCase().includes("mac")
               ? "⌘"

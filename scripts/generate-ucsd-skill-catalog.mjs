@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
 const repoRoot = process.cwd();
 const defaultCatalogBaseUrl = "https://tritonai-skills-catalog.pages.dev";
@@ -8,19 +8,19 @@ const generatedAt = process.env.UCSD_SKILL_CATALOG_GENERATED_AT ?? new Date().to
 
 const sourceCandidates = [
   process.env.UCSD_SKILLS_LIBRARY,
-  path.join(repoRoot, "..", "UCSD-Skills-Library"),
-  path.join(repoRoot, "..", "..", "UCSD-Skills-Library"),
+  NodePath.join(repoRoot, "..", "UCSD-Skills-Library"),
+  NodePath.join(repoRoot, "..", "..", "UCSD-Skills-Library"),
 ].filter(Boolean);
 
 const sourceRoot = sourceCandidates.find((candidate) =>
-  fs.existsSync(path.join(candidate, "ideas.json")),
+  NodeFS.existsSync(NodePath.join(candidate, "ideas.json")),
 );
 
 if (!sourceRoot) {
   throw new Error(`Could not find UCSD-Skills-Library. Tried: ${sourceCandidates.join(", ")}`);
 }
 
-const ideas = JSON.parse(fs.readFileSync(path.join(sourceRoot, "ideas.json"), "utf8"));
+const ideas = JSON.parse(NodeFS.readFileSync(NodePath.join(sourceRoot, "ideas.json"), "utf8"));
 const entries = [];
 const bundles = {};
 
@@ -30,10 +30,10 @@ function posixPath(...segments) {
 
 function walkFiles(root, prefix = "") {
   const files = [];
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+  for (const entry of NodeFS.readdirSync(root, { withFileTypes: true })) {
     if (entry.name.startsWith(".")) continue;
     const relative = prefix ? posixPath(prefix, entry.name) : entry.name;
-    const absolute = path.join(root, entry.name);
+    const absolute = NodePath.join(root, entry.name);
     if (entry.isDirectory()) {
       files.push(...walkFiles(absolute, relative));
     } else if (entry.isFile()) {
@@ -45,9 +45,9 @@ function walkFiles(root, prefix = "") {
 
 for (const idea of ideas) {
   if (!idea?.id || !idea?.name || idea.id === "_template") continue;
-  const skillDir = path.join(sourceRoot, "skills", idea.name);
-  const skillEntrypoint = path.join(skillDir, "SKILL.md");
-  if (!fs.existsSync(skillEntrypoint)) continue;
+  const skillDir = NodePath.join(sourceRoot, "skills", idea.name);
+  const skillEntrypoint = NodePath.join(skillDir, "SKILL.md");
+  if (!NodeFS.existsSync(skillEntrypoint)) continue;
 
   const section = idea.tier === "core" ? "recommended" : "community";
   const sourceUrl = `${catalogBaseUrl.replace(/\/+$/u, "")}/skills/${idea.id}.json`;
@@ -71,7 +71,7 @@ for (const idea of ideas) {
     skillId: idea.id,
     files: walkFiles(skillDir).map((relativePath) => ({
       path: relativePath,
-      content: fs.readFileSync(path.join(skillDir, relativePath), "utf8"),
+      content: NodeFS.readFileSync(NodePath.join(skillDir, relativePath), "utf8"),
     })),
   };
 }
@@ -90,18 +90,21 @@ const catalog = {
   entries,
 };
 
-const publicRoot = path.join(repoRoot, "infra", "skills-catalog", "public");
-const publicSkillsRoot = path.join(publicRoot, "skills");
-fs.mkdirSync(publicSkillsRoot, { recursive: true });
-fs.writeFileSync(path.join(publicRoot, "catalog.json"), `${JSON.stringify(catalog, null, 2)}\n`);
+const publicRoot = NodePath.join(repoRoot, "infra", "skills-catalog", "public");
+const publicSkillsRoot = NodePath.join(publicRoot, "skills");
+NodeFS.mkdirSync(publicSkillsRoot, { recursive: true });
+NodeFS.writeFileSync(
+  NodePath.join(publicRoot, "catalog.json"),
+  `${JSON.stringify(catalog, null, 2)}\n`,
+);
 for (const [id, bundle] of Object.entries(bundles)) {
-  fs.writeFileSync(
-    path.join(publicSkillsRoot, `${id}.json`),
+  NodeFS.writeFileSync(
+    NodePath.join(publicSkillsRoot, `${id}.json`),
     `${JSON.stringify(bundle, null, 2)}\n`,
   );
 }
 
-const serverDefaultsPath = path.join(
+const serverDefaultsPath = NodePath.join(
   repoRoot,
   "apps",
   "server",
@@ -132,5 +135,5 @@ export const DEFAULT_UCSD_SKILL_BUNDLES = ${JSON.stringify(
 )} satisfies Readonly<Record<string, ServerProviderSkillBundle>>;
 `;
 
-fs.writeFileSync(serverDefaultsPath, serverDefaults);
+NodeFS.writeFileSync(serverDefaultsPath, serverDefaults);
 console.log(`Generated ${entries.length} UCSD skill catalog entries from ${sourceRoot}`);

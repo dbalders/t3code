@@ -14,13 +14,11 @@ import {
   type ServerProvider,
   ServerProviderSkillConfigError,
   ServerProviderSkillInstallError,
-  type ServerProviderUpdatedPayload,
   ServerRemoveProviderSkillInput,
   ServerSetProviderSkillEnabledInput,
 } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -34,10 +32,7 @@ import type * as CodexSchema from "effect-codex-app-server/schema";
 import * as ServerConfig from "../config.ts";
 import { buildCodexInitializeParams } from "./Layers/CodexProvider.ts";
 import { expandHomePath } from "../pathExpansion.ts";
-import {
-  materializeCodexShadowHome,
-  resolveCodexHomeLayout,
-} from "./Drivers/CodexHomeLayout.ts";
+import { materializeCodexShadowHome, resolveCodexHomeLayout } from "./Drivers/CodexHomeLayout.ts";
 import { makeTritonAiCodexConfigArgs } from "./Drivers/TritonAiCodexConfig.ts";
 import { mergeProviderInstanceEnvironment } from "./ProviderInstanceEnvironment.ts";
 import {
@@ -46,7 +41,10 @@ import {
   listProviderSkillCatalog,
   rollbackProviderSkillInstall,
 } from "./installProviderSkill.ts";
-import { removeProviderSkillFolder, resolveProviderSkillRemovalTarget } from "./removeProviderSkill.ts";
+import {
+  removeProviderSkillFolder,
+  resolveProviderSkillRemovalTarget,
+} from "./removeProviderSkill.ts";
 import * as ProviderRegistry from "./Services/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
@@ -212,7 +210,9 @@ const resolveCodexManagementTarget = Effect.fn("resolveCodexManagementTarget")(f
 
   const rawConfig = instanceConfig?.config ?? settings.providers.codex;
   const codexSettings = yield* decodeCodexSettings(rawConfig).pipe(
-    Effect.mapError((cause) => pluginError(`Codex settings were invalid: ${schemaIssue(cause)}`, cause)),
+    Effect.mapError((cause) =>
+      pluginError(`Codex settings were invalid: ${schemaIssue(cause)}`, cause),
+    ),
   );
   const environment = mergeProviderInstanceEnvironment(instanceConfig?.environment);
   const configuredHomePath = codexSettings.homePath.trim();
@@ -378,13 +378,17 @@ const refreshProvidersAfterCodexMutation = Effect.fn("refreshProvidersAfterCodex
 
 export const installCodexPlugin = Effect.fn("installCodexPlugin")(function* (input: unknown) {
   const request = yield* decodePluginInstallInput(input).pipe(
-    Effect.mapError((cause) => pluginError(`Plugin install request is invalid: ${schemaIssue(cause)}`, cause)),
+    Effect.mapError((cause) =>
+      pluginError(`Plugin install request is invalid: ${schemaIssue(cause)}`, cause),
+    ),
   );
   const target = yield* resolveCodexManagementTarget();
   yield* withCodexClient(target, "plugin/install", (client) =>
     client.request("plugin/install", {
       pluginName: request.pluginName,
-      ...(request.marketplacePath !== undefined ? { marketplacePath: request.marketplacePath } : {}),
+      ...(request.marketplacePath !== undefined
+        ? { marketplacePath: request.marketplacePath }
+        : {}),
       ...(request.remoteMarketplaceName !== undefined
         ? { remoteMarketplaceName: request.remoteMarketplaceName }
         : {}),
@@ -396,7 +400,9 @@ export const installCodexPlugin = Effect.fn("installCodexPlugin")(function* (inp
 
 export const uninstallCodexPlugin = Effect.fn("uninstallCodexPlugin")(function* (input: unknown) {
   const request = yield* decodePluginUninstallInput(input).pipe(
-    Effect.mapError((cause) => pluginError(`Plugin uninstall request is invalid: ${schemaIssue(cause)}`, cause)),
+    Effect.mapError((cause) =>
+      pluginError(`Plugin uninstall request is invalid: ${schemaIssue(cause)}`, cause),
+    ),
   );
   const target = yield* resolveCodexManagementTarget();
   yield* withCodexClient(target, "plugin/uninstall", (client) =>
@@ -408,7 +414,9 @@ export const uninstallCodexPlugin = Effect.fn("uninstallCodexPlugin")(function* 
 
 export const addCodexMarketplace = Effect.fn("addCodexMarketplace")(function* (input: unknown) {
   const request = yield* decodeMarketplaceAddInput(input).pipe(
-    Effect.mapError((cause) => pluginError(`Marketplace add request is invalid: ${schemaIssue(cause)}`, cause)),
+    Effect.mapError((cause) =>
+      pluginError(`Marketplace add request is invalid: ${schemaIssue(cause)}`, cause),
+    ),
   );
   const target = yield* resolveCodexManagementTarget();
   yield* withCodexClient(target, "marketplace/add", (client) =>
@@ -446,9 +454,10 @@ export const upgradeCodexMarketplace = Effect.fn("upgradeCodexMarketplace")(func
   );
   const target = yield* resolveCodexManagementTarget();
   yield* withCodexClient(target, "marketplace/upgrade", (client) =>
-    client.request("marketplace/upgrade", {
-      ...(request.marketplaceName !== undefined ? { marketplaceName: request.marketplaceName } : {}),
-    }),
+    client.request(
+      "marketplace/upgrade",
+      request.marketplaceName !== undefined ? { marketplaceName: request.marketplaceName } : {},
+    ),
   ).pipe(Effect.scoped);
   return yield* listCodexPlugins({ includeRemote: true, instanceId: target.instanceId });
 });

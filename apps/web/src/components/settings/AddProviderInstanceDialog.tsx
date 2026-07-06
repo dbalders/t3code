@@ -190,8 +190,8 @@ export function AddProviderInstanceDialog({ open, onOpenChange }: AddProviderIns
       updateSettings({ providerInstances: nextMap });
       toastManager.add({
         type: "success",
-      title: "Runtime instance added",
-      description: `${driverOption.label} instance '${instanceId}' was added.`,
+        title: "Runtime instance added",
+        description: `${driverOption.label} instance '${instanceId}' was added.`,
       });
       onOpenChange(false);
     } catch (error) {

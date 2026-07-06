@@ -101,6 +101,7 @@ import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriver from "./vcs/VcsDriver.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
+import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
@@ -273,6 +274,7 @@ const makeBrowserOtlpPayload = (spanName: string) =>
                     }
                     resolveClose();
                   });
+                  server.closeAllConnections();
                 }),
             });
           });
@@ -627,7 +629,7 @@ const buildAppUnderTest = (options?: {
         }),
       ),
       Layer.provide(gitManagerLayer),
-      Layer.provide(gitVcsDriverLayer),
+      Layer.provide(Layer.mergeAll(gitVcsDriverLayer, VcsProcess.layer)),
       Layer.provide(gitWorkflowLayer),
       Layer.provide(reviewLayer),
       Layer.provide(vcsProvisioningLayer),
@@ -3872,6 +3874,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                       }
                       resolveClose();
                     });
+                    server.closeAllConnections();
                   }),
               });
             });

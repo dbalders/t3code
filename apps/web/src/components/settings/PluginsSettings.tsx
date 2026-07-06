@@ -480,7 +480,9 @@ export function PluginsSettingsPanel() {
   const upgradeMarketplace = useCallback(
     async (marketplaceName?: string) => {
       if (!primaryEnvironmentId) return;
-      const key = marketplaceName ? `marketplace:upgrade:${marketplaceName}` : "marketplace:upgrade";
+      const key = marketplaceName
+        ? `marketplace:upgrade:${marketplaceName}`
+        : "marketplace:upgrade";
       setMutatingKey(key);
       setOperationError(null);
       try {
@@ -550,7 +552,9 @@ export function PluginsSettingsPanel() {
               type="submit"
               size="sm"
               variant="outline"
-              disabled={unavailable || mutatingKey === "marketplace:add" || !marketplaceSource.trim()}
+              disabled={
+                unavailable || mutatingKey === "marketplace:add" || !marketplaceSource.trim()
+              }
               className="sm:w-24"
             >
               <PlusIcon className="size-3.5" />

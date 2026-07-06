@@ -253,7 +253,9 @@ export const ServerPluginSummary = Schema.Struct({
   marketplaceName: TrimmedNonEmptyString,
   marketplacePath: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
   source: ServerPluginSource,
-  keywords: Schema.Array(TrimmedNonEmptyString).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  keywords: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
 });
 export type ServerPluginSummary = typeof ServerPluginSummary.Type;
 

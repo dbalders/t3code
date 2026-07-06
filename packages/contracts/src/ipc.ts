@@ -1149,9 +1149,7 @@ export interface LocalApi {
     uninstallPlugin: (input: ServerPluginUninstallInput) => Promise<ServerPluginsListResult>;
     addMarketplace: (input: ServerMarketplaceAddInput) => Promise<ServerPluginsListResult>;
     removeMarketplace: (input: ServerMarketplaceRemoveInput) => Promise<ServerPluginsListResult>;
-    upgradeMarketplace: (
-      input?: ServerMarketplaceUpgradeInput,
-    ) => Promise<ServerPluginsListResult>;
+    upgradeMarketplace: (input?: ServerMarketplaceUpgradeInput) => Promise<ServerPluginsListResult>;
   };
 }
 

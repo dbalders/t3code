@@ -61,10 +61,12 @@ export function removeProviderSkillFolder(
 ): Effect.Effect<void, ServerProviderSkillRemovalError, FileSystem.FileSystem | Path.Path> {
   return Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
-    yield* fileSystem.remove(target.skillDirectoryPath, { recursive: true }).pipe(
-      Effect.mapError((cause) =>
-        removalError(`Failed to remove skill folder '${target.skillDirectoryPath}'.`, cause),
-      ),
-    );
+    yield* fileSystem
+      .remove(target.skillDirectoryPath, { recursive: true })
+      .pipe(
+        Effect.mapError((cause) =>
+          removalError(`Failed to remove skill folder '${target.skillDirectoryPath}'.`, cause),
+        ),
+      );
   });
 }

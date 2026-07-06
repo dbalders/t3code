@@ -1,16 +1,9 @@
 #!/usr/bin/env node
 
-import { execFileSync, spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 const DEFAULT_UPSTREAM_REMOTE = "upstream";
 const DEFAULT_UPSTREAM_URL = "https://github.com/pingdotgg/t3code.git";
@@ -94,7 +87,7 @@ Environment:
 }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const result = NodeChildProcess.spawnSync(command, args, {
     cwd: options.cwd,
     env: options.env,
     encoding: "utf8",
@@ -108,7 +101,7 @@ function run(command, args, options = {}) {
 }
 
 function capture(command, args, options = {}) {
-  return execFileSync(command, args, {
+  return NodeChildProcess.execFileSync(command, args, {
     cwd: options.cwd,
     env: options.env,
     encoding: "utf8",
@@ -178,7 +171,7 @@ function shell(command, options = {}) {
 }
 
 function readJsonObject(file) {
-  const raw = readFileSync(file, "utf8").trim();
+  const raw = NodeFS.readFileSync(file, "utf8").trim();
   if (!raw) return null;
   const parsed = JSON.parse(raw);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -241,11 +234,11 @@ function runAgentReview({ worktree, report, allowSecretNames }) {
     };
   }
 
-  const syncDir = path.join(worktree, ".tritonai-sync");
-  mkdirSync(syncDir, { recursive: true });
-  const promptFile = path.join(syncDir, "agent-prompt.md");
-  const responseFile = path.join(syncDir, "agent-response.json");
-  writeFileSync(
+  const syncDir = NodePath.join(worktree, ".tritonai-sync");
+  NodeFS.mkdirSync(syncDir, { recursive: true });
+  const promptFile = NodePath.join(syncDir, "agent-prompt.md");
+  const responseFile = NodePath.join(syncDir, "agent-response.json");
+  NodeFS.writeFileSync(
     promptFile,
     `You are reviewing an upstream sync into TritonAI Harness.
 
@@ -266,7 +259,7 @@ Current automation report:
 ${JSON.stringify(report, null, 2)}
 `,
   );
-  writeFileSync(responseFile, "");
+  NodeFS.writeFileSync(responseFile, "");
 
   const env = makeSanitizedEnv({
     allowSecretNames,
@@ -331,10 +324,8 @@ function main() {
   const upstreamRemote = process.env.TRITONAI_SYNC_UPSTREAM_REMOTE ?? DEFAULT_UPSTREAM_REMOTE;
   const upstreamUrl = process.env.TRITONAI_SYNC_UPSTREAM_URL ?? DEFAULT_UPSTREAM_URL;
   const upstreamBranch = process.env.TRITONAI_SYNC_UPSTREAM_BRANCH ?? DEFAULT_UPSTREAM_BRANCH;
-  const downstreamRemote =
-    process.env.TRITONAI_SYNC_DOWNSTREAM_REMOTE ?? DEFAULT_DOWNSTREAM_REMOTE;
-  const downstreamBranch =
-    process.env.TRITONAI_SYNC_DOWNSTREAM_BRANCH ?? DEFAULT_DOWNSTREAM_BRANCH;
+  const downstreamRemote = process.env.TRITONAI_SYNC_DOWNSTREAM_REMOTE ?? DEFAULT_DOWNSTREAM_REMOTE;
+  const downstreamBranch = process.env.TRITONAI_SYNC_DOWNSTREAM_BRANCH ?? DEFAULT_DOWNSTREAM_BRANCH;
   const syncBranchPrefix = process.env.TRITONAI_SYNC_BRANCH_PREFIX ?? DEFAULT_SYNC_BRANCH_PREFIX;
   const checks = process.env.TRITONAI_SYNC_CHECKS ?? DEFAULT_CHECKS;
   const allowSecretNames = parseCsv(
@@ -368,8 +359,8 @@ function main() {
   }
 
   const branch = `${syncBranchPrefix}${nowStamp()}-${upstreamSha.slice(0, 12)}`;
-  const worktreeRoot = mkdtempSync(path.join(tmpdir(), "tritonai-sync-"));
-  const worktree = path.join(worktreeRoot, "worktree");
+  const worktreeRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tritonai-sync-"));
+  const worktree = NodePath.join(worktreeRoot, "worktree");
   const report = {
     status: "needs-human-review",
     upstreamRef,
@@ -446,9 +437,9 @@ function main() {
   } finally {
     if (args.keepWorktree) {
       console.error(`Kept sync worktree at ${worktree}`);
-    } else if (existsSync(worktreeRoot)) {
+    } else if (NodeFS.existsSync(worktreeRoot)) {
       run("git", ["worktree", "remove", "--force", worktree], { cwd: repoRoot, check: false });
-      rmSync(worktreeRoot, { recursive: true, force: true });
+      NodeFS.rmSync(worktreeRoot, { recursive: true, force: true });
     }
   }
 }
