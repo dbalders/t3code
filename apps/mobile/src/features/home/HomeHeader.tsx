@@ -12,7 +12,6 @@ import { Stack } from "expo-router";
 import { Text as RNText, View } from "react-native";
 
 import { useThemeColor } from "../../lib/useThemeColor";
-import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
 import type { HomeProjectSortOrder } from "./homeThreadList";
 
 export interface HomeHeaderEnvironment {
@@ -107,7 +106,7 @@ export function HomeHeader(props: {
         <Stack.Toolbar.View hidesSharedBackground>
           <View
             style={{
-              width: 128,
+              width: 188,
               height: 32,
               flexDirection: "row",
               alignItems: "center",
@@ -117,12 +116,12 @@ export function HomeHeader(props: {
             <RNText
               style={{
                 fontFamily: "DMSans_700Bold",
-                fontSize: MOBILE_TYPOGRAPHY.headline.fontSize,
+                fontSize: 18,
                 color: iconColor,
-                letterSpacing: -0.4,
+                letterSpacing: 0,
               }}
             >
-              T3 Code
+              TritonAI Harness
             </RNText>
           </View>
         </Stack.Toolbar.View>

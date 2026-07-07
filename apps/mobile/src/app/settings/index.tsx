@@ -182,8 +182,8 @@ function ConfiguredSettingsRouteScreen() {
 
   const promptSignIn = useCallback(() => {
     Alert.alert(
-      "Request T3 Cloud access",
-      "Live Activity updates require approved T3 Cloud access so relay can deliver updates to this device.",
+      "Request TritonAI Harness Cloud access",
+      "Live Activity updates require approved TritonAI Harness Cloud access so the relay can deliver updates to this device.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Continue", onPress: () => push("/settings/waitlist") },
@@ -254,7 +254,7 @@ function ConfiguredSettingsRouteScreen() {
 
       Alert.alert(
         "Disable notifications",
-        "Notification permission is controlled by iOS. Open Settings to disable notifications for T3 Code.",
+        "Notification permission is controlled by iOS. Open Settings to disable notifications for TritonAI Harness.",
         [
           { text: "Cancel", style: "cancel" },
           { text: "Open Settings", onPress: () => void Linking.openSettings() },
@@ -341,13 +341,13 @@ function ConfiguredSettingsRouteScreen() {
           <SettingsSection title="Account">
             <SettingsRow
               icon="person.crop.circle"
-              label="T3 Account"
+              label="TritonAI Account"
               value={accountLabel}
               onPress={openAccount}
             />
           </SettingsSection>
           <Text className="px-2 text-sm leading-[18px] text-foreground-muted">
-            T3 Code works locally without signing in. Cloud features are optional.
+            TritonAI Harness works locally without signing in. Cloud features are optional.
           </Text>
         </View>
 
