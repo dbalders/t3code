@@ -34,6 +34,7 @@ import {
   type DesktopServerExposureState,
   type DesktopWslState,
   type EnvironmentId,
+  type MicrosoftGraphAccessLevel,
   type MicrosoftGraphConnectionStatus,
   type MicrosoftGraphStartSignInResult,
 } from "@t3tools/contracts";
@@ -66,6 +67,7 @@ import {
 } from "./settingsLayout";
 import { Input } from "../ui/input";
 import { Checkbox } from "../ui/checkbox";
+import { Radio, RadioGroup } from "../ui/radio-group";
 import {
   Dialog,
   DialogClose,
@@ -181,6 +183,10 @@ function formatAccessTimestamp(value: string): string {
 function microsoftGraphAccountLabel(status: MicrosoftGraphConnectionStatus | null): string | null {
   const account = status?.account;
   return account?.mail ?? account?.userPrincipalName ?? account?.displayName ?? null;
+}
+
+function microsoftGraphAccessLevelLabel(accessLevel: MicrosoftGraphAccessLevel): string {
+  return accessLevel === "full" ? "Full access" : "Read only";
 }
 
 function microsoftGraphErrorMessage(error: unknown, fallback: string): string {
@@ -2189,6 +2195,9 @@ export function ConnectionsSettings() {
     useState<MicrosoftGraphConnectionStatus | null>(null);
   const [microsoftGraphSignInFlow, setMicrosoftGraphSignInFlow] =
     useState<MicrosoftGraphStartSignInResult | null>(null);
+  const [isMicrosoftGraphAccessDialogOpen, setIsMicrosoftGraphAccessDialogOpen] = useState(false);
+  const [microsoftGraphSelectedAccessLevel, setMicrosoftGraphSelectedAccessLevel] =
+    useState<MicrosoftGraphAccessLevel>("read_only");
   const [microsoftGraphError, setMicrosoftGraphError] = useState<string | null>(null);
   const [isLoadingMicrosoftGraph, setIsLoadingMicrosoftGraph] = useState(false);
   const [isStartingMicrosoftGraphSignIn, setIsStartingMicrosoftGraphSignIn] = useState(false);
@@ -2459,44 +2468,49 @@ export function ConnectionsSettings() {
     }
   }, []);
 
-  const handleStartMicrosoftGraphSignIn = useCallback(async () => {
-    if (!primaryEnvironmentId || !canManageMicrosoftGraph) return;
+  const handleStartMicrosoftGraphSignIn = useCallback(
+    async (accessLevel: MicrosoftGraphAccessLevel) => {
+      if (!primaryEnvironmentId || !canManageMicrosoftGraph) return;
 
-    setIsStartingMicrosoftGraphSignIn(true);
-    setMicrosoftGraphError(null);
-    const result = await startMicrosoftGraphSignInCommand({
-      environmentId: primaryEnvironmentId,
-      input: {},
-    });
-    if (result._tag === "Failure") {
-      if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        const message = microsoftGraphErrorMessage(
-          error,
-          "Failed to start Microsoft Graph sign-in.",
-        );
-        setMicrosoftGraphError(message);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not start Microsoft sign-in",
-            description: message,
-          }),
-        );
+      setIsStartingMicrosoftGraphSignIn(true);
+      setMicrosoftGraphError(null);
+      const result = await startMicrosoftGraphSignInCommand({
+        environmentId: primaryEnvironmentId,
+        input: { accessLevel },
+      });
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          const message = microsoftGraphErrorMessage(
+            error,
+            "Failed to start Microsoft Graph sign-in.",
+          );
+          setMicrosoftGraphError(message);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Could not start Microsoft sign-in",
+              description: message,
+            }),
+          );
+        }
+        setIsStartingMicrosoftGraphSignIn(false);
+        return;
       }
-      setIsStartingMicrosoftGraphSignIn(false);
-      return;
-    }
 
-    setMicrosoftGraphSignInFlow(result.value);
-    await openMicrosoftGraphSignIn(result.value);
-    setIsStartingMicrosoftGraphSignIn(false);
-  }, [
-    canManageMicrosoftGraph,
-    openMicrosoftGraphSignIn,
-    primaryEnvironmentId,
-    startMicrosoftGraphSignInCommand,
-  ]);
+      setMicrosoftGraphSignInFlow(result.value);
+      setIsMicrosoftGraphAccessDialogOpen(false);
+      setMicrosoftGraphSelectedAccessLevel("read_only");
+      await openMicrosoftGraphSignIn(result.value);
+      setIsStartingMicrosoftGraphSignIn(false);
+    },
+    [
+      canManageMicrosoftGraph,
+      openMicrosoftGraphSignIn,
+      primaryEnvironmentId,
+      startMicrosoftGraphSignInCommand,
+    ],
+  );
 
   const handleDisconnectMicrosoftGraph = useCallback(async () => {
     if (!primaryEnvironmentId || !canManageMicrosoftGraph) return;
@@ -3493,6 +3507,11 @@ export function ConnectionsSettings() {
     const requiredScopes =
       microsoftGraphStatus?.requiredScopes ?? microsoftGraphSignInFlow?.requiredScopes ?? [];
     const grantedScopes = microsoftGraphStatus?.grantedScopes ?? [];
+    const accessLevel =
+      microsoftGraphStatus?.accessLevel ?? microsoftGraphSignInFlow?.accessLevel ?? null;
+    const accessLevelLabel = accessLevel
+      ? `Access: ${microsoftGraphAccessLevelLabel(accessLevel)}`
+      : null;
     const statusDescription = !canReadMicrosoftGraph
       ? "Requires access:read to inspect and access:write to connect."
       : isLoadingMicrosoftGraph && microsoftGraphStatus === null
@@ -3562,7 +3581,9 @@ export function ConnectionsSettings() {
               ) : null}
               {canReadMicrosoftGraph && microsoftGraphStatus ? (
                 <span>
-                  {[scopeLabel, tokenExpiryLabel, updatedAtLabel].filter(Boolean).join(" · ")}
+                  {[accessLevelLabel, scopeLabel, tokenExpiryLabel, updatedAtLabel]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
               ) : null}
             </div>
@@ -3587,23 +3608,115 @@ export function ConnectionsSettings() {
                 Disconnect
               </Button>
             ) : (
-              <Button
-                size="xs"
-                variant="outline"
-                disabled={
-                  !canManageMicrosoftGraph ||
-                  primaryEnvironmentId === null ||
-                  isStartingMicrosoftGraphSignIn
-                }
-                onClick={() => void handleStartMicrosoftGraphSignIn()}
+              <Dialog
+                open={isMicrosoftGraphAccessDialogOpen}
+                onOpenChange={(open) => {
+                  if (isStartingMicrosoftGraphSignIn) return;
+                  setIsMicrosoftGraphAccessDialogOpen(open);
+                  if (!open) setMicrosoftGraphSelectedAccessLevel("read_only");
+                }}
               >
-                {isStartingMicrosoftGraphSignIn ? (
-                  <Spinner className="size-3" />
-                ) : (
-                  <LogInIcon className="size-3" />
-                )}
-                Sign in
-              </Button>
+                <DialogTrigger
+                  render={
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      disabled={
+                        !canManageMicrosoftGraph ||
+                        primaryEnvironmentId === null ||
+                        microsoftGraphSignInFlow !== null ||
+                        isStartingMicrosoftGraphSignIn
+                      }
+                    >
+                      {isStartingMicrosoftGraphSignIn ? (
+                        <Spinner className="size-3" />
+                      ) : (
+                        <LogInIcon className="size-3" />
+                      )}
+                      Sign in
+                    </Button>
+                  }
+                />
+                <DialogPopup className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Choose Microsoft Graph access</DialogTitle>
+                    <DialogDescription>
+                      Choose what TritonAI Harness can do with your Outlook mail and calendar. You
+                      can disconnect and choose a different level later.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogPanel>
+                    <RadioGroup
+                      value={microsoftGraphSelectedAccessLevel}
+                      onValueChange={(value) => {
+                        if (value === "read_only" || value === "full") {
+                          setMicrosoftGraphSelectedAccessLevel(value);
+                        }
+                      }}
+                      aria-label="Microsoft Graph access level"
+                      className="gap-2"
+                    >
+                      <label
+                        className={cn(
+                          "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors",
+                          microsoftGraphSelectedAccessLevel === "read_only"
+                            ? "border-primary bg-primary/5"
+                            : "border-input hover:bg-muted/40",
+                        )}
+                      >
+                        <Radio value="read_only" className="mt-0.5" />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-foreground">
+                            Read only <span className="text-muted-foreground">· Recommended</span>
+                          </span>
+                          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                            Read your profile, Outlook mail, and calendar. The Harness cannot send
+                            messages or change mailbox and calendar data.
+                          </span>
+                        </span>
+                      </label>
+                      <label
+                        className={cn(
+                          "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors",
+                          microsoftGraphSelectedAccessLevel === "full"
+                            ? "border-primary bg-primary/5"
+                            : "border-input hover:bg-muted/40",
+                        )}
+                      >
+                        <Radio value="full" className="mt-0.5" />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-foreground">
+                            Full access
+                          </span>
+                          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                            Read and manage Outlook mail, send messages, and create, update, or
+                            delete calendar events.
+                          </span>
+                        </span>
+                      </label>
+                    </RadioGroup>
+                  </DialogPanel>
+                  <DialogFooter variant="bare">
+                    <Button
+                      variant="outline"
+                      disabled={isStartingMicrosoftGraphSignIn}
+                      onClick={() => setIsMicrosoftGraphAccessDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      disabled={isStartingMicrosoftGraphSignIn}
+                      onClick={() =>
+                        void handleStartMicrosoftGraphSignIn(microsoftGraphSelectedAccessLevel)
+                      }
+                    >
+                      {isStartingMicrosoftGraphSignIn ? <Spinner className="size-3" /> : null}
+                      Continue with{" "}
+                      {microsoftGraphAccessLevelLabel(microsoftGraphSelectedAccessLevel)}
+                    </Button>
+                  </DialogFooter>
+                </DialogPopup>
+              </Dialog>
             )
           }
         >

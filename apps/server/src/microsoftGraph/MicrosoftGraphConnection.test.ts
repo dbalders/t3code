@@ -62,6 +62,7 @@ function tokenResponse(input?: {
   readonly accessToken?: string;
   readonly refreshToken?: string;
   readonly expiresIn?: number;
+  readonly scopes?: string;
 }) {
   return {
     status: 200,
@@ -71,7 +72,7 @@ function tokenResponse(input?: {
       access_token: input?.accessToken ?? "access-token",
       refresh_token: input?.refreshToken ?? "refresh-token",
       expires_in: input?.expiresIn ?? 3600,
-      scope: "User.Read Mail.Read Calendars.Read offline_access",
+      scope: input?.scopes ?? "User.Read Mail.Read Calendars.Read offline_access",
     },
   } satisfies FakeGraphResponse;
 }
@@ -96,7 +97,8 @@ it.layer(NodeServices.layer)("MicrosoftGraphConnection", (it) => {
       const service = yield* MicrosoftGraphConnection.MicrosoftGraphConnection;
       const secrets = yield* ServerSecretStore.ServerSecretStore;
 
-      const start = yield* service.startSignIn();
+      const start = yield* service.startSignIn({});
+      assert.equal(start.accessLevel, "read_only");
       assert.equal(start.clientId, MicrosoftGraphConnection.MicrosoftGraphClientId);
       assert.equal(start.tenantId, MicrosoftGraphConnection.MicrosoftGraphTenantId);
       assert.equal(start.userCode, "ABCD-EFGH");
@@ -109,6 +111,7 @@ it.layer(NodeServices.layer)("MicrosoftGraphConnection", (it) => {
       const connected = yield* service.pollSignIn({ flowId: start.flowId });
       assert.equal(connected.state, "connected");
       assert.equal(connected.status.state, "connected");
+      assert.equal(connected.status.accessLevel, "read_only");
       assert.equal(connected.status.account?.userPrincipalName, "david@example.com");
       assert.deepStrictEqual(connected.status.grantedScopes, [
         "User.Read",
@@ -126,6 +129,7 @@ it.layer(NodeServices.layer)("MicrosoftGraphConnection", (it) => {
       if (Option.isSome(encoded)) {
         const persisted = new TextDecoder().decode(encoded.value);
         assert.include(persisted, "refresh-token");
+        assert.include(persisted, '"accessLevel":"read_only"');
         assert.notInclude(persisted, "access-token");
         assert.notInclude(persisted, "device-code-secret");
       }
@@ -166,12 +170,67 @@ it.layer(NodeServices.layer)("MicrosoftGraphConnection", (it) => {
     );
   });
 
+  it.effect("requests and persists the full-access scope profile", () =>
+    Effect.gen(function* () {
+      const service = yield* MicrosoftGraphConnection.MicrosoftGraphConnection;
+      const secrets = yield* ServerSecretStore.ServerSecretStore;
+
+      const start = yield* service.startSignIn({ accessLevel: "full" });
+      assert.equal(start.accessLevel, "full");
+      assert.deepStrictEqual(start.requiredScopes, [
+        "User.Read",
+        "Mail.ReadWrite",
+        "Mail.Send",
+        "Calendars.ReadWrite",
+        "offline_access",
+      ]);
+
+      const connected = yield* service.pollSignIn({ flowId: start.flowId });
+      assert.equal(connected.state, "connected");
+      assert.equal(connected.status.accessLevel, "full");
+      assert.deepStrictEqual(connected.status.requiredScopes, start.requiredScopes);
+      assert.deepStrictEqual(connected.status.grantedScopes, start.requiredScopes);
+
+      const encoded = yield* secrets.get(
+        MicrosoftGraphConnection.MICROSOFT_GRAPH_CREDENTIAL_SECRET_NAME,
+      );
+      assert.isTrue(Option.isSome(encoded));
+      if (Option.isSome(encoded)) {
+        const persisted = new TextDecoder().decode(encoded.value);
+        assert.include(persisted, '"accessLevel":"full"');
+        assert.include(persisted, "refresh-token");
+        assert.notInclude(persisted, "access-token");
+      }
+    }).pipe(
+      Effect.provide(
+        makeGraphLayer((request) => {
+          if (request.url === graphDeviceCodeUrl) {
+            assert.equal(
+              request.form?.scope,
+              "User.Read Mail.ReadWrite Mail.Send Calendars.ReadWrite offline_access",
+            );
+            return deviceCodeResponse();
+          }
+          if (request.url === graphTokenUrl && request.form?.grant_type?.includes("device_code")) {
+            return tokenResponse({
+              scopes: "User.Read Mail.ReadWrite Mail.Send Calendars.ReadWrite offline_access",
+            });
+          }
+          if (request.url.startsWith("https://graph.microsoft.com/v1.0/me?")) {
+            return accountResponse();
+          }
+          throw new Error(`Unexpected request: ${request.url}`);
+        }),
+      ),
+    ),
+  );
+
   it.effect("refreshes before server-side Graph requests using the stored refresh token", () => {
     const requests: GraphHttpRequest[] = [];
     return Effect.gen(function* () {
       const service = yield* MicrosoftGraphConnection.MicrosoftGraphConnection;
 
-      const start = yield* service.startSignIn();
+      const start = yield* service.startSignIn({ accessLevel: "read_only" });
       const connected = yield* service.pollSignIn({ flowId: start.flowId });
       assert.equal(connected.state, "connected");
 
@@ -180,6 +239,13 @@ it.layer(NodeServices.layer)("MicrosoftGraphConnection", (it) => {
       });
 
       assert.deepStrictEqual(messages, { value: [{ id: "message-1" }] });
+      const refreshRequest = requests.find(
+        (request) => request.url === graphTokenUrl && request.form?.grant_type === "refresh_token",
+      );
+      assert.equal(
+        refreshRequest?.form?.scope,
+        "User.Read Mail.Read Calendars.Read offline_access",
+      );
       assert.deepStrictEqual(
         requests.map((request) =>
           request.url === graphTokenUrl && request.form?.grant_type === "refresh_token"
@@ -234,7 +300,7 @@ it.layer(NodeServices.layer)("MicrosoftGraphConnection", (it) => {
       const service = yield* MicrosoftGraphConnection.MicrosoftGraphConnection;
       const secrets = yield* ServerSecretStore.ServerSecretStore;
 
-      const start = yield* service.startSignIn();
+      const start = yield* service.startSignIn({ accessLevel: "read_only" });
       const connected = yield* service.pollSignIn({ flowId: start.flowId });
       assert.equal(connected.status.state, "connected");
 
@@ -265,7 +331,7 @@ it.layer(NodeServices.layer)("MicrosoftGraphConnection", (it) => {
     Effect.gen(function* () {
       const service = yield* MicrosoftGraphConnection.MicrosoftGraphConnection;
 
-      const error = yield* Effect.flip(service.startSignIn());
+      const error = yield* Effect.flip(service.startSignIn({ accessLevel: "read_only" }));
       assert.equal(error._tag, "MicrosoftGraphConnectionError");
       assert.equal(error.code, "invalid_response");
       assert.equal(error.cause, undefined);

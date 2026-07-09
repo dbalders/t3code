@@ -1,14 +1,17 @@
 import {
   MicrosoftGraphAccount as MicrosoftGraphAccountSchema,
+  MicrosoftGraphAccessLevel,
   MicrosoftGraphClientId,
   MicrosoftGraphConnectionError,
-  MicrosoftGraphRequiredScopes,
+  MicrosoftGraphFullAccessScopes,
+  MicrosoftGraphReadOnlyScopes,
   MicrosoftGraphTenantId,
   type MicrosoftGraphAccount,
   type MicrosoftGraphConnectionStatus,
   type MicrosoftGraphDisconnectResult,
   type MicrosoftGraphPollSignInInput,
   type MicrosoftGraphPollSignInResult,
+  type MicrosoftGraphStartSignInInput,
   type MicrosoftGraphStartSignInResult,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
@@ -23,7 +26,12 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstab
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 
-export { MicrosoftGraphClientId, MicrosoftGraphRequiredScopes, MicrosoftGraphTenantId };
+export {
+  MicrosoftGraphClientId,
+  MicrosoftGraphFullAccessScopes,
+  MicrosoftGraphReadOnlyScopes,
+  MicrosoftGraphTenantId,
+};
 
 export const MICROSOFT_GRAPH_CREDENTIAL_SECRET_NAME = "microsoft-graph-refresh-token-cache";
 const DEVICE_CODE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
@@ -67,10 +75,9 @@ export interface MicrosoftGraphConnectionShape {
     MicrosoftGraphConnectionStatus,
     MicrosoftGraphConnectionError
   >;
-  readonly startSignIn: () => Effect.Effect<
-    MicrosoftGraphStartSignInResult,
-    MicrosoftGraphConnectionError
-  >;
+  readonly startSignIn: (
+    input: MicrosoftGraphStartSignInInput,
+  ) => Effect.Effect<MicrosoftGraphStartSignInResult, MicrosoftGraphConnectionError>;
   readonly pollSignIn: (
     input: MicrosoftGraphPollSignInInput,
   ) => Effect.Effect<MicrosoftGraphPollSignInResult, MicrosoftGraphConnectionError>;
@@ -93,6 +100,7 @@ const PersistedCredential = Schema.Struct({
   clientId: Schema.Literal(MicrosoftGraphClientId),
   tenantId: Schema.Literal(MicrosoftGraphTenantId),
   refreshToken: Schema.String,
+  accessLevel: Schema.optional(MicrosoftGraphAccessLevel),
   grantedScopes: Schema.Array(Schema.String),
   account: Schema.NullOr(MicrosoftGraphAccountSchema),
   updatedAt: Schema.String,
@@ -116,6 +124,7 @@ interface ParsedTokenResponse extends ActiveAccessToken {
 interface PendingDeviceFlow {
   readonly flowId: string;
   readonly deviceCode: string;
+  readonly accessLevel: MicrosoftGraphAccessLevel;
   readonly expiresAtEpochMs: number;
   readonly intervalSeconds: number;
 }
@@ -161,13 +170,25 @@ function isoFromEpochMs(epochMs: number): string {
   return DateTime.formatIso(DateTime.makeUnsafe(epochMs));
 }
 
-function scopeString(): string {
-  return MicrosoftGraphRequiredScopes.join(" ");
+function scopesForAccessLevel(accessLevel: MicrosoftGraphAccessLevel): ReadonlyArray<string> {
+  return accessLevel === "full" ? MicrosoftGraphFullAccessScopes : MicrosoftGraphReadOnlyScopes;
 }
 
-function splitScopes(scope: string | undefined): ReadonlyArray<string> {
+function scopeStringForAccessLevel(accessLevel: MicrosoftGraphAccessLevel): string {
+  return scopesForAccessLevel(accessLevel).join(" ");
+}
+
+function splitScopes(
+  scope: string | undefined,
+  fallbackScopes: ReadonlyArray<string>,
+): ReadonlyArray<string> {
   const scopes = scope?.trim().split(/\s+/u).filter(Boolean) ?? [];
-  return scopes.length > 0 ? scopes : [...MicrosoftGraphRequiredScopes];
+  return scopes.length > 0 ? scopes : [...fallbackScopes];
+}
+
+function credentialAccessLevel(credential: PersistedCredential): MicrosoftGraphAccessLevel {
+  // Credentials created by the original connector only had the read-only scope set.
+  return credential.accessLevel ?? "read_only";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -216,12 +237,14 @@ function toStatus(
   credential: PersistedCredential | null,
   activeAccessToken: ActiveAccessToken | null,
 ): MicrosoftGraphConnectionStatus {
+  const accessLevel = credential ? credentialAccessLevel(credential) : null;
   return {
     state: credential ? "connected" : "not_connected",
+    accessLevel,
     account: credential?.account ?? null,
     clientId: MicrosoftGraphClientId,
     tenantId: MicrosoftGraphTenantId,
-    requiredScopes: [...MicrosoftGraphRequiredScopes],
+    requiredScopes: [...scopesForAccessLevel(accessLevel ?? "read_only")],
     grantedScopes: credential?.grantedScopes ?? [],
     accessTokenExpiresAt: activeAccessToken
       ? isoFromEpochMs(activeAccessToken.expiresAtEpochMs)
@@ -233,6 +256,7 @@ function toStatus(
 function parseDeviceCodeResponse(
   response: JsonHttpResponse,
   flowId: string,
+  accessLevel: MicrosoftGraphAccessLevel,
   nowEpochMs: number,
 ): Effect.Effect<
   {
@@ -265,10 +289,12 @@ function parseDeviceCodeResponse(
     pending: {
       flowId,
       deviceCode,
+      accessLevel,
       expiresAtEpochMs,
       intervalSeconds,
     },
     result: {
+      accessLevel,
       flowId,
       verificationUri,
       verificationUriComplete: stringField(response.json, "verification_uri_complete") ?? null,
@@ -278,7 +304,7 @@ function parseDeviceCodeResponse(
       intervalSeconds,
       clientId: MicrosoftGraphClientId,
       tenantId: MicrosoftGraphTenantId,
-      requiredScopes: [...MicrosoftGraphRequiredScopes],
+      requiredScopes: [...scopesForAccessLevel(accessLevel)],
     },
   });
 }
@@ -286,6 +312,7 @@ function parseDeviceCodeResponse(
 function parseTokenResponse(
   response: JsonHttpResponse,
   nowEpochMs: number,
+  accessLevel: MicrosoftGraphAccessLevel,
   existing?: PersistedCredential,
 ): Effect.Effect<ParsedTokenResponse, MicrosoftGraphConnectionError> {
   const accessToken = stringField(response.json, "access_token");
@@ -304,7 +331,10 @@ function parseTokenResponse(
   return Effect.succeed({
     accessToken,
     refreshToken,
-    grantedScopes: splitScopes(stringField(response.json, "scope")),
+    grantedScopes: splitScopes(
+      stringField(response.json, "scope"),
+      scopesForAccessLevel(accessLevel),
+    ),
     expiresAtEpochMs: nowEpochMs + expiresIn * 1000,
   });
 }
@@ -417,9 +447,13 @@ export const make = Effect.fn("makeMicrosoftGraphConnection")(function* () {
       .pipe(Effect.flatMap(parseAccount));
 
   const persistTokenResponse = Effect.fn("MicrosoftGraphConnection.persistTokenResponse")(
-    function* (response: JsonHttpResponse, existing?: PersistedCredential) {
+    function* (
+      response: JsonHttpResponse,
+      accessLevel: MicrosoftGraphAccessLevel,
+      existing?: PersistedCredential,
+    ) {
       const now = yield* nowEpochMs();
-      const token = yield* parseTokenResponse(response, now, existing);
+      const token = yield* parseTokenResponse(response, now, accessLevel, existing);
       activeAccessToken = {
         accessToken: token.accessToken,
         expiresAtEpochMs: token.expiresAtEpochMs,
@@ -431,6 +465,7 @@ export const make = Effect.fn("makeMicrosoftGraphConnection")(function* () {
         clientId: MicrosoftGraphClientId,
         tenantId: MicrosoftGraphTenantId,
         refreshToken: token.refreshToken,
+        accessLevel,
         grantedScopes: [...token.grantedScopes],
         account,
         updatedAt: isoFromEpochMs(now),
@@ -443,6 +478,7 @@ export const make = Effect.fn("makeMicrosoftGraphConnection")(function* () {
   const refreshAccessToken = Effect.fn("MicrosoftGraphConnection.refreshAccessToken")(function* (
     credential: PersistedCredential,
   ) {
+    const scopeString = () => scopeStringForAccessLevel(credentialAccessLevel(credential));
     const response = yield* http.requestJson({
       method: "POST",
       url: tokenEndpoint(),
@@ -463,7 +499,7 @@ export const make = Effect.fn("makeMicrosoftGraphConnection")(function* () {
       );
     }
 
-    return yield* persistTokenResponse(response, credential);
+    return yield* persistTokenResponse(response, credentialAccessLevel(credential), credential);
   });
 
   const ensureAccessToken = Effect.fn("MicrosoftGraphConnection.ensureAccessToken")(function* () {
@@ -488,7 +524,10 @@ export const make = Effect.fn("makeMicrosoftGraphConnection")(function* () {
     return activeAccessToken.accessToken;
   });
 
-  const startSignIn = Effect.fn("MicrosoftGraphConnection.startSignIn")(function* () {
+  const startSignIn = Effect.fn("MicrosoftGraphConnection.startSignIn")(function* (
+    input: MicrosoftGraphStartSignInInput,
+  ) {
+    const accessLevel = input.accessLevel ?? "read_only";
     const [flowId, now] = yield* Effect.all([
       crypto.randomUUIDv4.pipe(
         Effect.mapError((cause) =>
@@ -506,7 +545,7 @@ export const make = Effect.fn("makeMicrosoftGraphConnection")(function* () {
       url: deviceCodeEndpoint(),
       form: {
         client_id: MicrosoftGraphClientId,
-        scope: scopeString(),
+        scope: scopeStringForAccessLevel(accessLevel),
       },
     });
 
@@ -519,7 +558,7 @@ export const make = Effect.fn("makeMicrosoftGraphConnection")(function* () {
       );
     }
 
-    const parsed = yield* parseDeviceCodeResponse(response, flowId, now);
+    const parsed = yield* parseDeviceCodeResponse(response, flowId, accessLevel, now);
     pendingFlows.set(flowId, parsed.pending);
     return parsed.result;
   });
@@ -606,7 +645,7 @@ export const make = Effect.fn("makeMicrosoftGraphConnection")(function* () {
       );
     }
 
-    const credential = yield* persistTokenResponse(response);
+    const credential = yield* persistTokenResponse(response, flow.accessLevel);
     pendingFlows.delete(input.flowId);
     return {
       state: "connected",
@@ -659,7 +698,7 @@ export const make = Effect.fn("makeMicrosoftGraphConnection")(function* () {
 
   return MicrosoftGraphConnection.of({
     getStatus: () => exposeConnectionEffect(getStatus()),
-    startSignIn: () => exposeConnectionEffect(startSignIn()),
+    startSignIn: (input) => exposeConnectionEffect(startSignIn(input)),
     pollSignIn: (input) => exposeConnectionEffect(pollSignIn(input)),
     disconnect: () => exposeConnectionEffect(disconnect()),
     requestGraphJson: (input) => exposeConnectionEffect(requestGraphJson(input)),

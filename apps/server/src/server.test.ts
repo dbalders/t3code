@@ -17,7 +17,7 @@ import {
   MessageId,
   MicrosoftGraphClientId,
   type MicrosoftGraphConnectionStatus,
-  MicrosoftGraphRequiredScopes,
+  MicrosoftGraphReadOnlyScopes,
   MicrosoftGraphTenantId,
   ExternalLauncherCommandNotFoundError,
   type OrchestrationThreadShell,
@@ -129,10 +129,11 @@ const defaultModelSelection = {
 } as const;
 const defaultMicrosoftGraphStatus = (): MicrosoftGraphConnectionStatus => ({
   state: "not_connected",
+  accessLevel: null,
   account: null,
   clientId: MicrosoftGraphClientId,
   tenantId: MicrosoftGraphTenantId,
-  requiredScopes: [...MicrosoftGraphRequiredScopes],
+  requiredScopes: [...MicrosoftGraphReadOnlyScopes],
   grantedScopes: [],
   accessTokenExpiresAt: null,
   updatedAt: null,

@@ -130,6 +130,7 @@ function redactMicrosoftGraphStatusForWriteOnly(
 ): MicrosoftGraphConnectionStatus {
   return {
     state: status.state,
+    accessLevel: null,
     account: null,
     clientId: status.clientId,
     tenantId: status.tenantId,
@@ -1416,10 +1417,14 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.microsoftGraphGetStatus, microsoftGraph.getStatus(), {
             "rpc.aggregate": "microsoft-graph",
           }),
-        [WS_METHODS.microsoftGraphStartSignIn]: (_input) =>
-          observeRpcEffect(WS_METHODS.microsoftGraphStartSignIn, microsoftGraph.startSignIn(), {
-            "rpc.aggregate": "microsoft-graph",
-          }),
+        [WS_METHODS.microsoftGraphStartSignIn]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.microsoftGraphStartSignIn,
+            microsoftGraph.startSignIn(input),
+            {
+              "rpc.aggregate": "microsoft-graph",
+            },
+          ),
         [WS_METHODS.microsoftGraphPollSignIn]: (input) =>
           observeRpcEffect(
             WS_METHODS.microsoftGraphPollSignIn,

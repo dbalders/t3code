@@ -70,6 +70,7 @@ import {
   MicrosoftGraphDisconnectResult,
   MicrosoftGraphPollSignInInput,
   MicrosoftGraphPollSignInResult,
+  MicrosoftGraphStartSignInInput,
   MicrosoftGraphStartSignInResult,
 } from "./microsoftGraph.ts";
 import {
@@ -460,7 +461,7 @@ export const WsMicrosoftGraphGetStatusRpc = Rpc.make(WS_METHODS.microsoftGraphGe
 });
 
 export const WsMicrosoftGraphStartSignInRpc = Rpc.make(WS_METHODS.microsoftGraphStartSignIn, {
-  payload: Schema.Struct({}),
+  payload: MicrosoftGraphStartSignInInput,
   success: MicrosoftGraphStartSignInResult,
   error: Schema.Union([MicrosoftGraphConnectionError, EnvironmentAuthorizationError]),
 });

@@ -4,12 +4,22 @@ import { IsoDateTime, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.t
 
 export const MicrosoftGraphClientId = "fcfe0e23-a675-4851-99a7-704dfd153b9c" as const;
 export const MicrosoftGraphTenantId = "8a198873-4fec-4e76-8182-ca479edbbd60" as const;
-export const MicrosoftGraphRequiredScopes = [
+export const MicrosoftGraphReadOnlyScopes = [
   "User.Read",
   "Mail.Read",
   "Calendars.Read",
   "offline_access",
 ] as const;
+export const MicrosoftGraphFullAccessScopes = [
+  "User.Read",
+  "Mail.ReadWrite",
+  "Mail.Send",
+  "Calendars.ReadWrite",
+  "offline_access",
+] as const;
+
+export const MicrosoftGraphAccessLevel = Schema.Literals(["read_only", "full"]);
+export type MicrosoftGraphAccessLevel = typeof MicrosoftGraphAccessLevel.Type;
 
 export const MicrosoftGraphConnectionState = Schema.Literals(["not_connected", "connected"]);
 export type MicrosoftGraphConnectionState = typeof MicrosoftGraphConnectionState.Type;
@@ -32,6 +42,7 @@ export type MicrosoftGraphAccount = typeof MicrosoftGraphAccount.Type;
 
 export const MicrosoftGraphConnectionStatus = Schema.Struct({
   state: MicrosoftGraphConnectionState,
+  accessLevel: Schema.NullOr(MicrosoftGraphAccessLevel),
   account: Schema.NullOr(MicrosoftGraphAccount),
   clientId: Schema.Literal(MicrosoftGraphClientId),
   tenantId: Schema.Literal(MicrosoftGraphTenantId),
@@ -42,7 +53,13 @@ export const MicrosoftGraphConnectionStatus = Schema.Struct({
 });
 export type MicrosoftGraphConnectionStatus = typeof MicrosoftGraphConnectionStatus.Type;
 
+export const MicrosoftGraphStartSignInInput = Schema.Struct({
+  accessLevel: Schema.optional(MicrosoftGraphAccessLevel),
+});
+export type MicrosoftGraphStartSignInInput = typeof MicrosoftGraphStartSignInInput.Type;
+
 export const MicrosoftGraphStartSignInResult = Schema.Struct({
+  accessLevel: MicrosoftGraphAccessLevel,
   flowId: TrimmedNonEmptyString,
   verificationUri: TrimmedNonEmptyString,
   verificationUriComplete: Schema.NullOr(TrimmedNonEmptyString),
